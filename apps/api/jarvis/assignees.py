@@ -6,6 +6,30 @@ from .domain import DomainError, preferences
 from .models import Actor
 
 
+def active_actors_named(db, owner, name):
+    """Non-archived actors whose display name equals ``name`` exactly (case-sensitive,
+    matching the former owner-plus-name constraint). Display names may repeat."""
+    return list(db.scalars(select(Actor).where(
+        Actor.owner_id == owner, Actor.name == name, Actor.archived.is_(False)).order_by(Actor.created_at, Actor.id)))
+
+
+def resolve_actor_by_name(db, owner, name):
+    """The one active actor called ``name``, or None when there is none.
+
+    Several active actors with that name raise AMBIGUOUS_ACTOR: the caller must pass an
+    actor ID instead. Archived actors never count. Callers decide what None means.
+    """
+    matches = active_actors_named(db, owner, name)
+    if len(matches) > 1:
+        raise DomainError(
+            "AMBIGUOUS_ACTOR",
+            f"Several people are named {name}. Choose one by its actor ID from organization_list.",
+            409,
+            data={"candidates": [{"id": a.id, "name": a.name, "kind": a.kind} for a in matches]},
+        )
+    return matches[0] if matches else None
+
+
 def resolve_assignee(db, owner, value):
     value = value.strip()
     from .access import principal

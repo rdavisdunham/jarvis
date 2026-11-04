@@ -1,0 +1,44 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "gamma-06",
+  "title": "Quillmark demo (duplicate recording)",
+  "occurred_at": "2026-08-18T10:00:00-07:00",
+  "ended_at": "2026-08-18T10:30:00-07:00",
+  "timezone": "America/Los_Angeles",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@ashgrove.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Wes Okoro",
+      "email": "wes.okoro@quillmark.example",
+      "role": "attendee",
+      "speaker_label": "Wes Okoro"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Robin Hale",
+      "text": "Action: Robin to book a reference call with another Quillmark customer by 2026-08-21.",
+      "start_ms": 0,
+      "end_ms": 7000,
+      "attribution": "owner"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Wes Okoro",
+      "text": "The reporting module supports 30 custom dashboards.",
+      "start_ms": 8500,
+      "end_ms": 12500,
+      "attribution": "other"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@ashgrove.example",
+  "upstream_owner_name": "Robin Hale"
+}

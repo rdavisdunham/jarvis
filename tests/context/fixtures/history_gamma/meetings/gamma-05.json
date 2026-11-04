@@ -1,0 +1,52 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "gamma-05",
+  "title": "Legal check-in",
+  "occurred_at": "2026-08-11T15:00:00-07:00",
+  "ended_at": "2026-08-11T15:30:00-07:00",
+  "timezone": "America/Los_Angeles",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@ashgrove.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Nadia Rahman",
+      "email": "nadia.rahman@ashgrove.example",
+      "role": "attendee",
+      "speaker_label": "Nadia Rahman"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Nadia Rahman",
+      "text": "Legal finished the addendum review; two clauses need changes.",
+      "start_ms": 0,
+      "end_ms": 5000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Nadia Rahman",
+      "text": "Action: Nadia to send our redlines to Quillmark by 2026-08-14.",
+      "start_ms": 6500,
+      "end_ms": 11500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Robin Hale",
+      "text": "Does the two-year term include price protection on renewal?",
+      "start_ms": 13000,
+      "end_ms": 17000,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@ashgrove.example",
+  "upstream_owner_name": "Robin Hale"
+}

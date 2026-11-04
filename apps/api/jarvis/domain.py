@@ -207,6 +207,19 @@ class ResolveMemory(Args):
     content: str | None = Field(default=None, min_length=1, max_length=20000)
 
 
+class ResolveContext(Args):
+    """Answer a meeting-context Question (`context.service.ResolveInput`): keep/both for contested context,
+    link/dismiss for an unresolved person, accept/dismiss for an agent's suggestion."""
+
+    question_key: str = Field(min_length=1, max_length=200)
+    expected_revision: int = Field(ge=0)
+    action: Literal["keep", "both", "link", "dismiss", "accept"]
+    assertion_id: str | None = Field(default=None, max_length=100)
+    entity_type: Literal["actor", "project", "client", "area", "goal", "task", "calendar_event",
+                         "linear_issue"] = "actor"
+    entity_id: str | None = Field(default=None, max_length=100)
+
+
 class NotificationAction(Args):
     until: str | None = Field(
         default=None,
@@ -259,6 +272,7 @@ class SettingsUpdate(Args):
 
 COMMANDS = {
     "review.defer": ReviewDefer,
+    "context.resolve": ResolveContext,
     "project.create": ProjectCreate,
     "project.update": ProjectUpdate,
     "schedule.update": ScheduleUpdate,
@@ -643,7 +657,7 @@ def mutate(db, owner, tool, args, command_id):
         return quick_sort.mutate(db, owner, tool, args, command_id)
     if tool == "review.defer":
         from .review_questions import defer
-        return defer(db, owner, args)
+        return defer(db, owner, args, command_id)
     if tool in {"record.mark_reviewed", "record.review"}:
         from . import record_reviews
         return record_reviews.mutate(db, owner, tool, args, command_id)
@@ -958,6 +972,18 @@ def mutate(db, owner, tool, args, command_id):
         from .memory_review import resolve
 
         return resolve(db, owner, args, command_id)
+    if tool == "context.resolve":
+        # Origin follows the command ID (routing.human_command): a browser answer is human, Dani's is agent.
+        from .bot_access import current_id
+        from .context import service as context_service
+        from .context import settings as context_settings
+
+        if not context_settings.enabled():
+            raise DomainError("CONTEXT_DISABLED", "Meeting context is not turned on.", 403)
+        advisory(db, f"context-questions:{owner}")
+        bot = current_id()
+        return context_service.resolve(db, owner, context_service.ResolveInput.model_validate(args.model_dump()),
+                                       command_id=command_id, principal="bot:" + bot if bot else owner)
     if tool == "memory.capture":
         source = capture_source(db, owner, args.content, f"capture:{command_id}", explicit=True)
         from .memory_review import attribution

@@ -47,8 +47,8 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        # Keep the major/patch in sync with compose.upgrade.yml.
-        image: postgres:16.15-bookworm
+        # Keep in sync with compose.upgrade.yml; matches production (PostgreSQL 16.15 + pgvector 0.8.6).
+        image: pgvector/pgvector:0.8.6-pg16-bookworm
         env:
           POSTGRES_USER: jarvis
           POSTGRES_PASSWORD: ci-only
@@ -103,7 +103,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:16.15-bookworm
+        image: pgvector/pgvector:0.8.6-pg16-bookworm
         env:
           POSTGRES_USER: jarvis
           POSTGRES_PASSWORD: ci-only

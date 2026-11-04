@@ -6,15 +6,16 @@ import { SettingsGroup } from "./SettingsLayout";
 export type BotKey = { id: string; name: string; prefix: string; scopes: string[];
   expires_at: string; created_at: string; revoked_at: string | null; last_used_at: string | null };
 type KeyList = { items: BotKey[]; api_url: string; mcp_url: string };
-export function permissionScopes(levels: Record<string, string>, queued: boolean, runTools = false, runRead = false) {
+export function permissionScopes(levels: Record<string, string>, queued: boolean, runTools = false, runRead = false, sources = false) {
   return [...Object.entries(levels).filter(([,level]) => level !== "none").map(([group,level]) => `${group}:${level}`),
-    ...(queued ? ["work:run"] : []), ...(runTools ? ["agents:session"] : []), ...(runRead ? ["agents:read"] : [])];
+    ...(queued ? ["work:run"] : []), ...(runTools ? ["agents:session"] : []), ...(runRead ? ["agents:read"] : []),
+    ...(sources ? ["sources:write"] : [])];
 }
 export function BotSettings({ workspace, readOnly = false, canDesign = true }: { workspace: string; readOnly?: boolean; canDesign?: boolean }) {
   const [data, setData] = useState<KeyList | null>(null), [error, setError] = useState("");
   const [adding, setAdding] = useState(false), [busy, setBusy] = useState(false), [name, setName] = useState("");
-  const [days, setDays] = useState(90), [queued, setQueued] = useState(false), [runTools, setRunTools] = useState(false), [runRead, setRunRead] = useState(false);
-  const [levels, setLevels] = useState<Record<string,string>>({ tasks: readOnly ? "read" : "write", organization: "read", notes: "none", records: "none", schema: "read", sessions: "none" });
+  const [days, setDays] = useState(90), [queued, setQueued] = useState(false), [runTools, setRunTools] = useState(false), [runRead, setRunRead] = useState(false), [sources, setSources] = useState(false);
+  const [levels, setLevels] = useState<Record<string,string>>({ tasks: readOnly ? "read" : "write", organization: "read", notes: "none", records: "none", schema: "read", sessions: "none", context: "none" });
   const [secret, setSecret] = useState(""), [visible, setVisible] = useState(false), [copied, setCopied] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
@@ -31,7 +32,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     event.preventDefault(); setBusy(true); setError(""); setSecret(""); setCopied("");
     try {
       const result = await post<{ credential: BotKey; token: string }>("/bot-keys", {
-        name, scopes: permissionScopes(levels, queued, runTools, runRead), expires_in_days: days,
+        name, scopes: permissionScopes(levels, queued, runTools, runRead, sources), expires_in_days: days,
       });
       setSecret(result.token); setVisible(false); setAdding(false); setName(""); setRevision(n => n + 1);
     } catch(e) { setError((e as Error).message); setRevision(n => n + 1); }
@@ -43,7 +44,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     catch(e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  const scopeLabel = (scope: string) => scope === "work:run" ? "Dani requests" : scope === "agents:session" ? "Run tools" : scope === "agents:read" ? "Runs, read" : scope === "agents:control" ? "remotea link"
+  const scopeLabel = (scope: string) => scope === "work:run" ? "Dani requests" : scope === "agents:session" ? "Run tools" : scope === "agents:read" ? "Runs, read" : scope === "agents:control" ? "remotea link" : scope === "sources:write" ? "Meeting submission"
     : scope.replace("organization", "Goals & projects").replace(":write", ", edit").replace(":read", ", read").replace(/^./, c => c.toUpperCase());
   return <SettingsGroup className="bot-settings" icon={<KeyRound size={18}/>} title="Connected agents"
     description={`Let other assistants work in ${workspace}. Their changes appear in Activity.`}
@@ -53,7 +54,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     {!data && !error && <p role="status" className="settings-empty">Loading connected agents…</p>}
     {adding && <form className="settings-form bot-key-form" onSubmit={create}>
       <label className="field wide"><span className="field-label-text">Agent name</span><input autoFocus value={name} maxLength={80} required placeholder="For example, Codex" onChange={e => setName(e.target.value)}/></label>
-      {[["records","Custom records (includes note content)"],["schema","Structure definitions"],["tasks","Task scheduling"],["organization","Legacy organization"],["notes","Notes"],["sessions","Agent sessions (where coding and chat work happened)"]].map(([group,label]) =>
+      {[["records","Custom records (includes note content)"],["schema","Structure definitions"],["tasks","Task scheduling"],["organization","Legacy organization"],["notes","Notes"],["sessions","Agent sessions (where coding and chat work happened)"],["context","Meeting context (personal workspace only)"]].map(([group,label]) =>
         <label className="field" key={group}><span className="field-label-text">{label}</span><select value={levels[group]} onChange={e => setLevels({...levels, [group]:e.target.value})}>
           <option value="none">No access</option><option value="read">Read</option>{!readOnly && (group!=="schema"||canDesign) && <option value="write">Read & edit</option>}
         </select></label>)}
@@ -65,8 +66,10 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
         Run tools for coding agents started from a task (remotea): read the plan, tick steps, submit the plan</label>}
       <label className="inline-check wide"><input type="checkbox" checked={runRead} onChange={e => setRunRead(e.target.checked)}/>
         Read runs started from tasks (remotea): plan, timeline, questions and judge verdicts</label>
+      {!readOnly && <label className="inline-check wide"><input type="checkbox" checked={sources} onChange={e => setSources(e.target.checked)}/>
+        Submit meeting transcripts and notes (personal workspace only; reading them back needs Meeting context)</label>}
       <p className="footnote">Access applies to this workspace. Personal memory, conversations and connected accounts stay private. Revoking a key stops future actions, including queued work.</p>
-      <div className="settings-form-actions"><button className="btn btn-primary" disabled={busy || !name.trim() || Object.values(levels).every(v => v === "none")}>{busy ? "Creating…" : "Create key"}</button></div>
+      <div className="settings-form-actions"><button className="btn btn-primary" disabled={busy || !name.trim() || (Object.values(levels).every(v => v === "none") && !sources)}>{busy ? "Creating…" : "Create key"}</button></div>
     </form>}
     {secret && <div className="bot-secret" role="region" aria-label="New agent key">
       <strong>Copy this key now</strong><p>This is the only time it will be shown.</p>

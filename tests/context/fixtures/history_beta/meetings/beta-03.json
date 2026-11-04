@@ -1,0 +1,66 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "beta-03",
+  "title": "Analytics review",
+  "occurred_at": "2026-09-15T14:00:00+01:00",
+  "ended_at": "2026-09-15T14:45:00+01:00",
+  "timezone": "Europe/London",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@fernhill.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Sam Patel",
+      "email": "s.patel@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Sam Patel"
+    },
+    {
+      "name": "Mei Lin",
+      "email": "mei.lin@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Mei Lin"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Mei Lin",
+      "text": "The navigation migration is merged, so that's done.",
+      "start_ms": 0,
+      "end_ms": 4000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Sam Patel",
+      "text": "Day-30 retention dropped from 41 to 36 percent after the August update.",
+      "start_ms": 5500,
+      "end_ms": 10500,
+      "attribution": "other"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Sam Patel",
+      "text": "Action: Sam to send the retention cohort analysis by 2026-09-25.",
+      "start_ms": 12000,
+      "end_ms": 17000,
+      "attribution": "other"
+    },
+    {
+      "seq": 3,
+      "speaker_label": "Robin Hale",
+      "text": "Thanks, that will shape the onboarding work.",
+      "start_ms": 18500,
+      "end_ms": 22500,
+      "attribution": "owner"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@fernhill.example",
+  "upstream_owner_name": "Robin Hale"
+}

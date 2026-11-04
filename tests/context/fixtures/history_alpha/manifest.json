@@ -1,0 +1,103 @@
+{
+  "history": "alpha",
+  "description": "Client engagement: Hale Studio builds a patient portal for Larkspur Dental Group.",
+  "synthetic": true,
+  "owner_id": "fixture-owner",
+  "owner_actor": "alpha-robin",
+  "actors": [
+    {
+      "id": "alpha-robin",
+      "name": "Robin Hale",
+      "kind": "person",
+      "emails": [
+        "robin.hale@halestudio.example"
+      ],
+      "organization": "Hale Studio",
+      "role": "owner, consultant"
+    },
+    {
+      "id": "alpha-alex-larkspur",
+      "name": "Alex Chen",
+      "kind": "person",
+      "emails": [
+        "alex.chen@larkspur.example"
+      ],
+      "organization": "Larkspur Dental Group",
+      "role": "client CTO"
+    },
+    {
+      "id": "alpha-alex-studio",
+      "name": "Alex Chen",
+      "kind": "person",
+      "emails": [
+        "alex@chenstudio.example"
+      ],
+      "organization": "Chen Studio",
+      "role": "contract designer"
+    },
+    {
+      "id": "alpha-priya",
+      "name": "Priya Nair",
+      "kind": "person",
+      "emails": [
+        "priya.nair@larkspur.example"
+      ],
+      "organization": "Larkspur Dental Group",
+      "role": "client operations lead"
+    },
+    {
+      "id": "alpha-tomas",
+      "name": "Tomas Varga",
+      "kind": "person",
+      "emails": [
+        "tomas@halestudio.example"
+      ],
+      "organization": "Hale Studio",
+      "role": "developer"
+    }
+  ],
+  "meetings": [
+    {
+      "key": "alpha-01",
+      "file": "meetings/alpha-01.json",
+      "received_at": "2026-08-04T11:20:00-05:00",
+      "deleted_at": null
+    },
+    {
+      "key": "alpha-02",
+      "file": "meetings/alpha-02.json",
+      "received_at": "2026-08-11T15:30:00-05:00",
+      "deleted_at": null
+    },
+    {
+      "key": "alpha-03",
+      "file": "meetings/alpha-03.json",
+      "received_at": "2026-08-18T11:10:00-05:00",
+      "deleted_at": null
+    },
+    {
+      "key": "alpha-04",
+      "file": "meetings/alpha-04.json",
+      "received_at": "2026-09-02T09:00:00-05:00",
+      "deleted_at": null
+    },
+    {
+      "key": "alpha-05",
+      "file": "meetings/alpha-05.json",
+      "received_at": "2026-09-01T12:00:00-05:00",
+      "deleted_at": null
+    },
+    {
+      "key": "alpha-06",
+      "file": "meetings/alpha-06.json",
+      "received_at": "2026-09-10T10:45:00-05:00",
+      "deleted_at": "2026-09-12T08:00:00-05:00"
+    },
+    {
+      "key": "alpha-07",
+      "file": "meetings/alpha-07.json",
+      "received_at": "2026-09-22T11:00:00-05:00",
+      "deleted_at": null
+    }
+  ]
+}

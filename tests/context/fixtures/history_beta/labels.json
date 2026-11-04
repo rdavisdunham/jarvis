@@ -1,0 +1,535 @@
+{
+  "history": "beta",
+  "label_version": 1,
+  "owner_actor": "beta-robin",
+  "note": "Synthetic expected outcomes. Every label stays verified=false until a human adjudicates it; only verified labels count toward release scoring.",
+  "speakers": {
+    "beta-02": {
+      "Speaker 1": "beta-robin",
+      "Speaker 2": "beta-jonas",
+      "Speaker 3": "beta-sam-pm"
+    },
+    "beta-05": {
+      "Speaker 1": "beta-robin",
+      "Speaker 2": "beta-mei",
+      "Speaker 3": "beta-sam-pm"
+    }
+  },
+  "assertions": [
+    {
+      "id": "b01-dec-oct14",
+      "kind": "decision",
+      "statement": "The 4.0 release ships on 2026-10-14.",
+      "meeting": "beta-01",
+      "evidence": [
+        {
+          "meeting": "beta-01",
+          "quote": "Decision: the 4.0 release ships on 2026-10-14."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b01-fact-crashfree",
+      "kind": "fact",
+      "statement": "Crash-free sessions are at 97.2 percent.",
+      "meeting": "beta-01",
+      "evidence": [
+        {
+          "meeting": "beta-01",
+          "quote": "Crash-free sessions are at 97.2 percent"
+        }
+      ],
+      "numbers": [
+        {
+          "value": 97.2,
+          "unit": "percent"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b01-fact-target",
+      "kind": "fact",
+      "statement": "The release needs 99 percent crash-free sessions.",
+      "meeting": "beta-01",
+      "evidence": [
+        {
+          "meeting": "beta-01",
+          "quote": "we need 99 before release"
+        }
+      ],
+      "numbers": [
+        {
+          "value": 99,
+          "unit": "percent"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-navigation",
+      "kind": "commitment",
+      "statement": "Mei migrates the app to the new navigation library.",
+      "meeting": "beta-01",
+      "evidence": [
+        {
+          "meeting": "beta-01",
+          "quote": "I'll migrate the app to the new navigation library in two weeks."
+        }
+      ],
+      "responsible": [
+        "beta-mei"
+      ],
+      "due": "2026-09-15",
+      "due_expression": "in two weeks",
+      "fulfilled": {
+        "meeting": "beta-03",
+        "quote": "The navigation migration is merged, so that's done.",
+        "at": "2026-09-15"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b01-fact-oncall",
+      "kind": "fact",
+      "statement": "Mei is carrying both the navigation work and the on-call rotation.",
+      "meeting": "beta-01",
+      "evidence": [
+        {
+          "meeting": "beta-01",
+          "quote": "Mei is carrying both the navigation work and the on-call rotation."
+        }
+      ],
+      "segment_kind": "private_note",
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-regression-plan",
+      "kind": "commitment",
+      "statement": "Jonas writes the regression plan for checkout.",
+      "meeting": "beta-02",
+      "evidence": [
+        {
+          "meeting": "beta-02",
+          "quote": "I'll write the regression plan for checkout by 2026-09-18."
+        }
+      ],
+      "responsible": [
+        "beta-jonas"
+      ],
+      "due": "2026-09-18",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "beta-07",
+        "quote": "The regression plan for checkout went out on the 17th",
+        "at": "2026-09-17"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b02-risk-sdk",
+      "kind": "risk",
+      "statement": "The payment SDK update could break checkout on older Android phones.",
+      "meeting": "beta-02",
+      "evidence": [
+        {
+          "meeting": "beta-02",
+          "quote": "The payment SDK update could break checkout on older Android phones."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b03-fact-retention",
+      "kind": "fact",
+      "statement": "Day-30 retention dropped from 41 to 36 percent after the August update.",
+      "meeting": "beta-03",
+      "evidence": [
+        {
+          "meeting": "beta-03",
+          "quote": "Day-30 retention dropped from 41 to 36 percent after the August update."
+        }
+      ],
+      "numbers": [
+        {
+          "value": 41,
+          "unit": "percent"
+        },
+        {
+          "value": 36,
+          "unit": "percent"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-cohort",
+      "kind": "commitment",
+      "statement": "Sam Patel (data) sends the retention cohort analysis.",
+      "meeting": "beta-03",
+      "evidence": [
+        {
+          "meeting": "beta-03",
+          "quote": "Action: Sam to send the retention cohort analysis by 2026-09-25."
+        }
+      ],
+      "responsible": [
+        "beta-sam-data"
+      ],
+      "due": "2026-09-25",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "beta-07",
+        "quote": "I sent the cohort analysis on the 24th.",
+        "at": "2026-09-24"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b04-fact-sdk-fix",
+      "kind": "fact",
+      "statement": "The payment SDK fix landed but needs another week of QA.",
+      "meeting": "beta-04",
+      "evidence": [
+        {
+          "meeting": "beta-04",
+          "quote": "The payment SDK fix landed but it needs another week of QA."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b04-dec-oct21",
+      "kind": "decision",
+      "statement": "The 4.0 release ships on 2026-10-21.",
+      "meeting": "beta-04",
+      "evidence": [
+        {
+          "meeting": "beta-04",
+          "quote": "Decision: we move the 4.0 release to 2026-10-21"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b04-rat-oct21",
+      "kind": "rationale",
+      "statement": "The release moved because the payment SDK fix needs another week of QA.",
+      "meeting": "beta-04",
+      "evidence": [
+        {
+          "meeting": "beta-04",
+          "quote": "because the payment SDK fix needs another week of QA"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-regression-rerun",
+      "kind": "commitment",
+      "statement": "Jonas reruns the full regression suite.",
+      "meeting": "beta-04",
+      "evidence": [
+        {
+          "meeting": "beta-04",
+          "quote": "Action: Jonas to rerun the full regression suite by 2026-10-16."
+        }
+      ],
+      "responsible": [
+        "beta-jonas"
+      ],
+      "due": "2026-10-16",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "beta-07",
+        "quote": "the full regression suite passed this morning",
+        "at": "2026-10-13"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b05-fact-bug",
+      "kind": "fact",
+      "statement": "The Android checkout bug is still open.",
+      "meeting": "beta-05",
+      "evidence": [
+        {
+          "meeting": "beta-05",
+          "quote": "The Android checkout bug is still open."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-pair",
+      "kind": "commitment",
+      "statement": "Mei pairs with Jonas on the Android checkout bug.",
+      "meeting": "beta-05",
+      "evidence": [
+        {
+          "meeting": "beta-05",
+          "quote": "I'll pair with Jonas on the Android checkout bug tomorrow."
+        }
+      ],
+      "responsible": [
+        "beta-mei"
+      ],
+      "due": "2026-09-30",
+      "due_expression": "tomorrow",
+      "fulfilled": null,
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b05-q-flag",
+      "kind": "open_question",
+      "statement": "Do we need a feature flag for the new onboarding flow?",
+      "meeting": "beta-05",
+      "evidence": [
+        {
+          "meeting": "beta-05",
+          "quote": "Do we need a feature flag for the new onboarding flow?"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-certs",
+      "kind": "commitment",
+      "statement": "Mei rotates the signing certificates.",
+      "meeting": "beta-06",
+      "evidence": [
+        {
+          "meeting": "beta-06",
+          "quote": "Action: Mei to rotate the signing certificates by 2026-10-09."
+        }
+      ],
+      "responsible": [
+        "beta-mei"
+      ],
+      "due": "2026-10-09",
+      "due_expression": null,
+      "fulfilled": null,
+      "from_deleted_source": true,
+      "verified": false
+    },
+    {
+      "id": "b06-fact-ci",
+      "kind": "fact",
+      "statement": "The CI runners cost 3,400 pounds last month.",
+      "meeting": "beta-06",
+      "evidence": [
+        {
+          "meeting": "beta-06",
+          "quote": "The CI runners cost 3,400 pounds last month."
+        }
+      ],
+      "from_deleted_source": true,
+      "numbers": [
+        {
+          "value": 3400,
+          "unit": "GBP"
+        }
+      ],
+      "verified": false
+    },
+    {
+      "id": "b07-dec-sdk",
+      "kind": "decision",
+      "statement": "Keep the analytics SDK and ship the tracking prompt.",
+      "meeting": "beta-07",
+      "evidence": [
+        {
+          "meeting": "beta-07",
+          "quote": "Decision: we keep the analytics SDK and ship the tracking prompt."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-announcement",
+      "kind": "commitment",
+      "statement": "Robin sends the release announcement to support.",
+      "meeting": "beta-07",
+      "evidence": [
+        {
+          "meeting": "beta-07",
+          "quote": "I will send the release announcement to support on 2026-10-20."
+        }
+      ],
+      "responsible": [
+        "beta-robin"
+      ],
+      "due": "2026-10-20",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "beta-08",
+        "quote": "I sent the release announcement to support last Tuesday.",
+        "at": "2026-10-20"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "b08-fact-release",
+      "kind": "fact",
+      "statement": "The 4.0 release went out on 2026-10-21 with 99.3 percent crash-free sessions.",
+      "meeting": "beta-08",
+      "evidence": [
+        {
+          "meeting": "beta-08",
+          "quote": "The 4.0 release went out on 2026-10-21 with 99.3 percent crash-free sessions."
+        }
+      ],
+      "numbers": [
+        {
+          "value": 99.3,
+          "unit": "percent"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    }
+  ],
+  "changes": [
+    {
+      "id": "x-beta-release",
+      "from": "b01-dec-oct14",
+      "to": "b04-dec-oct21",
+      "key": "decision",
+      "effective_at": "2026-09-22T10:00:00+01:00",
+      "verified": false
+    }
+  ],
+  "must_not": [
+    {
+      "id": "n-beta-sdk",
+      "kind": "commitment",
+      "meeting": "beta-01",
+      "quote": "If legal blocks the tracking prompt, I'll drop the analytics SDK entirely.",
+      "reason": "hypothetical",
+      "verified": false
+    },
+    {
+      "id": "n-beta-release-notes",
+      "kind": "commitment",
+      "meeting": "beta-02",
+      "quote": "I'm not going to own the release notes this time.",
+      "reason": "negated",
+      "verified": false
+    },
+    {
+      "id": "n-beta-copy",
+      "kind": "commitment",
+      "meeting": "beta-05",
+      "quote": "I'll rewrite the onboarding copy if the experiment loses.",
+      "reason": "hypothetical",
+      "verified": false
+    },
+    {
+      "id": "n-beta-tablet",
+      "kind": "commitment",
+      "meeting": "beta-08",
+      "quote": "I will not take on the tablet layout until the new year.",
+      "reason": "negated",
+      "verified": false
+    }
+  ],
+  "open_loops": [
+    {
+      "id": "l-beta-sep10",
+      "as_of": "2026-09-10T12:00:00+01:00",
+      "expected": [
+        "c-navigation",
+        "c-regression-plan"
+      ],
+      "verified": false
+    },
+    {
+      "id": "l-beta-oct01",
+      "as_of": "2026-10-01T12:00:00+01:00",
+      "expected": [
+        "c-regression-rerun",
+        "c-pair"
+      ],
+      "verified": false
+    },
+    {
+      "id": "l-beta-oct22",
+      "as_of": "2026-10-22T12:00:00+01:00",
+      "expected": [
+        "c-pair"
+      ],
+      "verified": false
+    }
+  ],
+  "as_of": [
+    {
+      "id": "q-beta-release-sep",
+      "question": "When does the 4.0 release ship?",
+      "valid_at": "2026-09-10T12:00:00+01:00",
+      "kinds": [
+        "decision"
+      ],
+      "family": [
+        "b01-dec-oct14",
+        "b04-dec-oct21"
+      ],
+      "expected": "b01-dec-oct14",
+      "verified": false
+    },
+    {
+      "id": "q-beta-release-oct",
+      "question": "When does the 4.0 release ship?",
+      "valid_at": "2026-10-01T12:00:00+01:00",
+      "kinds": [
+        "decision"
+      ],
+      "family": [
+        "b01-dec-oct14",
+        "b04-dec-oct21"
+      ],
+      "expected": "b04-dec-oct21",
+      "verified": false
+    }
+  ],
+  "scenarios": {
+    "decision_change": "x-beta-release",
+    "fulfilled_commitment": "c-navigation",
+    "shared_display_name": [
+      "beta-sam-pm",
+      "beta-sam-data"
+    ],
+    "reused_speaker_label": {
+      "label": "Speaker 2",
+      "meetings": [
+        "beta-02",
+        "beta-05"
+      ]
+    },
+    "late_arrival": "beta-05",
+    "deleted_source": "beta-06",
+    "private_note": "b01-fact-oncall",
+    "number": "b01-fact-crashfree",
+    "relative_date": "c-navigation",
+    "hypothetical": "n-beta-sdk",
+    "negated": "n-beta-release-notes"
+  }
+}

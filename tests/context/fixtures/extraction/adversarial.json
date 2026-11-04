@@ -1,0 +1,429 @@
+{
+ "_note": "Adversarial and control enrichment items (data, never instructions). Meeting: Tuesday 2026-11-03, America/New_York.",
+ "occurred_at": "2026-11-03T15:00:00+00:00",
+ "timezone": "America/New_York",
+ "segments": [
+  {
+   "seq": 0,
+   "speaker_label": "Priya",
+   "text": "Sounds right. I'll send the revised budget by 2026-11-20."
+  },
+  {
+   "seq": 1,
+   "speaker_label": "Priya",
+   "text": "The pilot covers 40 clinics in the first wave."
+  },
+  {
+   "seq": 2,
+   "speaker_label": "Lena",
+   "text": "If we were to drop the vendor, we would save about a month."
+  },
+  {
+   "seq": 3,
+   "speaker_label": "Marco",
+   "text": "We won't ship the mobile app this quarter."
+  },
+  {
+   "seq": 4,
+   "speaker_label": "Davin",
+   "text": "The deck is getting out of date."
+  },
+  {
+   "seq": 5,
+   "speaker_label": "Priya",
+   "text": "I'll send the contract in two weeks."
+  },
+  {
+   "seq": 6,
+   "speaker_label": "Lena",
+   "text": "I'll maybe look at the contract if I have time."
+  },
+  {
+   "seq": 7,
+   "speaker_label": null,
+   "text": "I'll check the server logs tomorrow."
+  },
+  {
+   "seq": 8,
+   "speaker_label": "Marco",
+   "text": "We'll circulate the notes after the call."
+  },
+  {
+   "seq": 9,
+   "speaker_label": "Davin",
+   "text": "Let's say the budget is fixed for now."
+  }
+ ],
+ "cases": [
+  {
+   "name": "misattributed_speaker",
+   "expect": "attribution_mismatch",
+   "item": {
+    "kind": "commitment",
+    "statement": "Marco sends the revised budget by 2026-11-20.",
+    "evidence": [
+     {
+      "segment_seq": 0,
+      "quote": "I'll send the revised budget by 2026-11-20."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Marco",
+      "candidate_id": null
+     }
+    ],
+    "due": {
+     "expression": "by 2026-11-20",
+     "value": "2026-11-20",
+     "precision": "day",
+     "derivation": "from the meeting's local date 2026-11-03"
+    }
+   }
+  },
+  {
+   "name": "invented_number",
+   "expect": "ungrounded_number",
+   "item": {
+    "kind": "fact",
+    "statement": "The pilot covers 45 clinics in the first wave.",
+    "evidence": [
+     {
+      "segment_seq": 1,
+      "quote": "The pilot covers 40 clinics in the first wave."
+     }
+    ]
+   }
+  },
+  {
+   "name": "invented_duration",
+   "expect": "ungrounded_number",
+   "item": {
+    "kind": "commitment",
+    "statement": "Priya sends the contract within three weeks.",
+    "evidence": [
+     {
+      "segment_seq": 5,
+      "quote": "I'll send the contract in two weeks."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Priya",
+      "candidate_id": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "invented_quote",
+   "expect": "quote_not_found",
+   "item": {
+    "kind": "fact",
+    "statement": "The pilot covers 50 clinics.",
+    "evidence": [
+     {
+      "segment_seq": 1,
+      "quote": "The pilot covers 50 clinics"
+     }
+    ]
+   }
+  },
+  {
+   "name": "unknown_segment",
+   "expect": "unknown_segment",
+   "item": {
+    "kind": "fact",
+    "statement": "The pilot covers 40 clinics.",
+    "evidence": [
+     {
+      "segment_seq": 42,
+      "quote": "The pilot covers 40 clinics"
+     }
+    ]
+   }
+  },
+  {
+   "name": "hypothetical_if_we_were_to",
+   "expect": "hypothetical_as_asserted",
+   "item": {
+    "kind": "fact",
+    "statement": "Dropping the vendor saves about a month.",
+    "evidence": [
+     {
+      "segment_seq": 2,
+      "quote": "If we were to drop the vendor, we would save about a month."
+     }
+    ]
+   }
+  },
+  {
+   "name": "hypothetical_lets_say",
+   "expect": "hypothetical_as_asserted",
+   "item": {
+    "kind": "fact",
+    "statement": "The budget is fixed.",
+    "evidence": [
+     {
+      "segment_seq": 9,
+      "quote": "Let's say the budget is fixed for now."
+     }
+    ]
+   }
+  },
+  {
+   "name": "negated_we_wont_commitment",
+   "expect": "no_promise_language",
+   "item": {
+    "kind": "commitment",
+    "statement": "The team will ship the mobile app this quarter.",
+    "evidence": [
+     {
+      "segment_seq": 3,
+      "quote": "We won't ship the mobile app this quarter."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "we",
+      "candidate_id": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "negated_we_wont_decision",
+   "expect": "negation_as_asserted",
+   "item": {
+    "kind": "decision",
+    "statement": "The team ships the mobile app this quarter.",
+    "evidence": [
+     {
+      "segment_seq": 3,
+      "quote": "We won't ship the mobile app this quarter."
+     }
+    ]
+   }
+  },
+  {
+   "name": "negated_commitment_modality",
+   "expect": "commitment_not_asserted",
+   "item": {
+    "kind": "commitment",
+    "statement": "Marco ships the mobile app this quarter.",
+    "evidence": [
+     {
+      "segment_seq": 3,
+      "quote": "We won't ship the mobile app this quarter."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Marco",
+      "candidate_id": null
+     }
+    ],
+    "modality": "negated"
+   }
+  },
+  {
+   "name": "fabricated_action",
+   "expect": "no_promise_language",
+   "item": {
+    "kind": "commitment",
+    "statement": "Davin will update the deck.",
+    "evidence": [
+     {
+      "segment_seq": 4,
+      "quote": "The deck is getting out of date."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Davin",
+      "candidate_id": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "invented_date",
+   "expect": "date_derivation_mismatch",
+   "item": {
+    "kind": "commitment",
+    "statement": "Priya sends the contract by 2026-11-24.",
+    "evidence": [
+     {
+      "segment_seq": 5,
+      "quote": "I'll send the contract in two weeks."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Priya",
+      "candidate_id": null
+     }
+    ],
+    "due": {
+     "expression": "in two weeks",
+     "value": "2026-11-24",
+     "precision": "day",
+     "derivation": "from the meeting's local date 2026-11-03"
+    }
+   }
+  },
+  {
+   "name": "tentative_promise",
+   "expect": "tentative_commitment",
+   "item": {
+    "kind": "commitment",
+    "statement": "Lena looks at the contract.",
+    "evidence": [
+     {
+      "segment_seq": 6,
+      "quote": "I'll maybe look at the contract if I have time."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Lena",
+      "candidate_id": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "unknown_speaker_forced",
+   "expect": "attribution_mismatch",
+   "item": {
+    "kind": "commitment",
+    "statement": "Davin checks the server logs tomorrow.",
+    "evidence": [
+     {
+      "segment_seq": 7,
+      "quote": "I'll check the server logs tomorrow."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Davin",
+      "candidate_id": null
+     }
+    ]
+   }
+  },
+  {
+   "name": "relative_date_grounded",
+   "expect": "accepted",
+   "item": {
+    "kind": "commitment",
+    "statement": "Priya sends the contract by 2026-11-17.",
+    "evidence": [
+     {
+      "segment_seq": 5,
+      "quote": "I'll send the contract in two weeks."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Priya",
+      "candidate_id": null
+     }
+    ],
+    "due": {
+     "expression": "in two weeks",
+     "value": "2026-11-17",
+     "precision": "day",
+     "derivation": "from the meeting's local date 2026-11-03"
+    }
+   }
+  },
+  {
+   "name": "negated_decision_marked",
+   "expect": "accepted",
+   "item": {
+    "kind": "decision",
+    "statement": "The team ships the mobile app this quarter.",
+    "evidence": [
+     {
+      "segment_seq": 3,
+      "quote": "We won't ship the mobile app this quarter."
+     }
+    ],
+    "modality": "negated"
+   }
+  },
+  {
+   "name": "hypothetical_marked",
+   "expect": "accepted",
+   "item": {
+    "kind": "fact",
+    "statement": "Dropping the vendor saves about a month.",
+    "evidence": [
+     {
+      "segment_seq": 2,
+      "quote": "If we were to drop the vendor, we would save about a month."
+     }
+    ],
+    "modality": "hypothetical"
+   }
+  },
+  {
+   "name": "unknown_speaker_kept",
+   "expect": "accepted",
+   "item": {
+    "kind": "commitment",
+    "statement": "An unidentified participant checks the server logs on 2026-11-04.",
+    "evidence": [
+     {
+      "segment_seq": 7,
+      "quote": "I'll check the server logs tomorrow."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "Unknown speaker",
+      "candidate_id": null
+     }
+    ],
+    "due": {
+     "expression": "tomorrow",
+     "value": "2026-11-04",
+     "precision": "day",
+     "derivation": "from the meeting's local date 2026-11-03"
+    }
+   }
+  },
+  {
+   "name": "collective_we",
+   "expect": "accepted",
+   "item": {
+    "kind": "commitment",
+    "statement": "The team circulates the notes after the call.",
+    "evidence": [
+     {
+      "segment_seq": 8,
+      "quote": "We'll circulate the notes after the call."
+     }
+    ],
+    "responsible": [
+     {
+      "entity_type": "actor",
+      "mention": "we",
+      "candidate_id": null
+     }
+    ]
+   }
+  }
+ ]
+}

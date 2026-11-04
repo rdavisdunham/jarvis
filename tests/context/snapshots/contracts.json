@@ -1,0 +1,5433 @@
+{
+  "enums": {
+    "ASSERTION_KINDS": [
+      "fact",
+      "preference",
+      "decision",
+      "rationale",
+      "risk",
+      "open_question",
+      "procedure",
+      "relationship",
+      "commitment"
+    ],
+    "ASSERTION_LIFECYCLES": [
+      "current",
+      "superseded",
+      "retracted",
+      "contested",
+      "shadow"
+    ],
+    "BRIEF_SECTIONS": [
+      "current_state_and_why",
+      "open_loops",
+      "next_meeting_prep",
+      "who_is_who",
+      "recent_changes",
+      "unknowns"
+    ],
+    "CONNECTORS": [
+      "upload",
+      "api",
+      "granola",
+      "zoom"
+    ],
+    "COVERAGE": [
+      "extracted",
+      "no_content",
+      "skipped",
+      "failed"
+    ],
+    "DECISION_OPERATIONS": [
+      "wrong",
+      "changed",
+      "confirm",
+      "confirm_link",
+      "reject_link",
+      "no_merge",
+      "merge",
+      "unmerge",
+      "approve",
+      "dismiss",
+      "later",
+      "undo"
+    ],
+    "DECISION_ORIGINS": [
+      "human",
+      "agent",
+      "system"
+    ],
+    "ENTITY_TYPES": [
+      "actor",
+      "project",
+      "client",
+      "area",
+      "goal",
+      "task",
+      "calendar_event",
+      "linear_issue"
+    ],
+    "EVIDENCE_ORIGINS": [
+      "independent",
+      "derived"
+    ],
+    "EVIDENCE_ROLES": [
+      "support",
+      "contradiction"
+    ],
+    "EXCLUSIVE_KEYS": [
+      "due_date",
+      "responsible"
+    ],
+    "HIT_REF_TYPES": [
+      "assertion",
+      "segment",
+      "chunk"
+    ],
+    "LINK_STATUSES": [
+      "exact",
+      "inferred",
+      "confirmed",
+      "rejected",
+      "unresolved"
+    ],
+    "MODALITIES": [
+      "asserted",
+      "proposed",
+      "hypothetical",
+      "negated",
+      "question"
+    ],
+    "PARTICIPANT_ROLES": [
+      "organizer",
+      "attendee",
+      "speaker"
+    ],
+    "PROPOSAL_DISPOSITIONS": [
+      "pending",
+      "selected",
+      "approved",
+      "dismissed",
+      "later",
+      "published",
+      "superseded"
+    ],
+    "PROPOSAL_KINDS": [
+      "create",
+      "update",
+      "link",
+      "suggestion"
+    ],
+    "RECONCILE_OPS": [
+      "equivalent",
+      "conflict",
+      "supersede",
+      "link_change",
+      "no_change"
+    ],
+    "RUN_STAGES": [
+      "ingest",
+      "extract",
+      "link",
+      "reconcile",
+      "embed",
+      "brief",
+      "lint",
+      "proposals"
+    ],
+    "RUN_STATUSES": [
+      "queued",
+      "running",
+      "succeeded",
+      "partial",
+      "failed",
+      "stale",
+      "cancelled"
+    ],
+    "SEGMENT_KINDS": [
+      "transcript",
+      "private_note"
+    ],
+    "SOURCE_STATUSES": [
+      "received",
+      "queued",
+      "processing",
+      "partial",
+      "ready",
+      "failed",
+      "awaiting_input",
+      "deleted"
+    ],
+    "SPEAKER_ATTRIBUTIONS": [
+      "owner",
+      "other"
+    ],
+    "TIME_PRECISIONS": [
+      "instant",
+      "day",
+      "week",
+      "month",
+      "quarter",
+      "year",
+      "unknown"
+    ]
+  },
+  "schemas": {
+    "AssertionView": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        },
+        "TimeBound": {
+          "additionalProperties": false,
+          "description": "A normalized time with its precision and, when it came from words, the raw expression (\"in two weeks\").",
+          "properties": {
+            "at": {
+              "format": "date-time",
+              "title": "At",
+              "type": "string"
+            },
+            "expression": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expression"
+            },
+            "precision": {
+              "default": "instant",
+              "enum": [
+                "instant",
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "unknown"
+              ],
+              "title": "Precision",
+              "type": "string"
+            }
+          },
+          "required": [
+            "at"
+          ],
+          "title": "TimeBound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "A canonical assertion as engines see it. `valid_from` is always resolved.",
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "due": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeBound"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "inferred": {
+          "default": false,
+          "title": "Inferred",
+          "type": "boolean"
+        },
+        "key": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "preference",
+            "decision",
+            "rationale",
+            "risk",
+            "open_question",
+            "procedure",
+            "relationship",
+            "commitment"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "lifecycle": {
+          "default": "current",
+          "enum": [
+            "current",
+            "superseded",
+            "retracted",
+            "contested",
+            "shadow"
+          ],
+          "title": "Lifecycle",
+          "type": "string"
+        },
+        "modality": {
+          "default": "asserted",
+          "enum": [
+            "asserted",
+            "proposed",
+            "hypothetical",
+            "negated",
+            "question"
+          ],
+          "title": "Modality",
+          "type": "string"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "recipient": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "responsible": {
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "title": "Responsible",
+          "type": "array"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "source_revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Revision Id"
+        },
+        "statement": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "valid_from": {
+          "$ref": "#/$defs/TimeBound"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeBound"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "kind",
+        "statement",
+        "valid_from",
+        "evidence",
+        "id",
+        "revision",
+        "recorded_at"
+      ],
+      "title": "AssertionView",
+      "type": "object"
+    },
+    "BriefClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "assertion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assertion Ids",
+          "type": "array"
+        },
+        "task_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Ids",
+          "type": "array"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "BriefClaim",
+      "type": "object"
+    },
+    "BriefRequest": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "ScopePredicate": {
+          "additionalProperties": false,
+          "description": "Authorization and temporal scope, applied inside the engine's candidate query.\n\nDefaults exclude superseded and retracted assertions; `shadow` assertions are never returned.\n`valid_at` filters effective time (`None`: current state by lifecycle); `known_at` filters recorded time\n(`None`: current recorded state).",
+          "properties": {
+            "entities": {
+              "items": {
+                "$ref": "#/$defs/EntityRef"
+              },
+              "title": "Entities",
+              "type": "array"
+            },
+            "include_retracted": {
+              "default": false,
+              "title": "Include Retracted",
+              "type": "boolean"
+            },
+            "include_superseded": {
+              "default": false,
+              "title": "Include Superseded",
+              "type": "boolean"
+            },
+            "kinds": {
+              "items": {
+                "enum": [
+                  "fact",
+                  "preference",
+                  "decision",
+                  "rationale",
+                  "risk",
+                  "open_question",
+                  "procedure",
+                  "relationship",
+                  "commitment"
+                ],
+                "type": "string"
+              },
+              "title": "Kinds",
+              "type": "array"
+            },
+            "known_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Known At"
+            },
+            "owner_id": {
+              "minLength": 1,
+              "title": "Owner Id",
+              "type": "string"
+            },
+            "valid_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Valid At"
+            }
+          },
+          "required": [
+            "owner_id"
+          ],
+          "title": "ScopePredicate",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "query": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopePredicate"
+        },
+        "sections": {
+          "items": {
+            "enum": [
+              "current_state_and_why",
+              "open_loops",
+              "next_meeting_prep",
+              "who_is_who",
+              "recent_changes",
+              "unknowns"
+            ],
+            "type": "string"
+          },
+          "title": "Sections",
+          "type": "array"
+        }
+      },
+      "required": [
+        "scope"
+      ],
+      "title": "BriefRequest",
+      "type": "object"
+    },
+    "BriefSection": {
+      "$defs": {
+        "BriefClaim": {
+          "additionalProperties": false,
+          "properties": {
+            "assertion_ids": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Assertion Ids",
+              "type": "array"
+            },
+            "task_ids": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Task Ids",
+              "type": "array"
+            },
+            "text": {
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "title": "BriefClaim",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/BriefClaim"
+          },
+          "title": "Claims",
+          "type": "array"
+        },
+        "gaps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Gaps",
+          "type": "array"
+        },
+        "name": {
+          "enum": [
+            "current_state_and_why",
+            "open_loops",
+            "next_meeting_prep",
+            "who_is_who",
+            "recent_changes",
+            "unknowns"
+          ],
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "BriefSection",
+      "type": "object"
+    },
+    "CandidateAssertion": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        },
+        "TimeBound": {
+          "additionalProperties": false,
+          "description": "A normalized time with its precision and, when it came from words, the raw expression (\"in two weeks\").",
+          "properties": {
+            "at": {
+              "format": "date-time",
+              "title": "At",
+              "type": "string"
+            },
+            "expression": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expression"
+            },
+            "precision": {
+              "default": "instant",
+              "enum": [
+                "instant",
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "unknown"
+              ],
+              "title": "Precision",
+              "type": "string"
+            }
+          },
+          "required": [
+            "at"
+          ],
+          "title": "TimeBound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "due": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeBound"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "inferred": {
+          "default": false,
+          "title": "Inferred",
+          "type": "boolean"
+        },
+        "key": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key"
+        },
+        "kind": {
+          "enum": [
+            "fact",
+            "preference",
+            "decision",
+            "rationale",
+            "risk",
+            "open_question",
+            "procedure",
+            "relationship",
+            "commitment"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "modality": {
+          "default": "asserted",
+          "enum": [
+            "asserted",
+            "proposed",
+            "hypothetical",
+            "negated",
+            "question"
+          ],
+          "title": "Modality",
+          "type": "string"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "recipient": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "responsible": {
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "title": "Responsible",
+          "type": "array"
+        },
+        "statement": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        },
+        "subject": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeBound"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeBound"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "kind",
+        "statement",
+        "evidence"
+      ],
+      "title": "CandidateAssertion",
+      "type": "object"
+    },
+    "Chunk": {
+      "additionalProperties": false,
+      "description": "Consecutive segments `[segment_start, segment_end]` (inclusive seqs) of one revision; the embedding unit.",
+      "properties": {
+        "segment_end": {
+          "minimum": 0,
+          "title": "Segment End",
+          "type": "integer"
+        },
+        "segment_start": {
+          "minimum": 0,
+          "title": "Segment Start",
+          "type": "integer"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "token_count": {
+          "minimum": 0,
+          "title": "Token Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seq",
+        "segment_start",
+        "segment_end",
+        "token_count",
+        "text"
+      ],
+      "title": "Chunk",
+      "type": "object"
+    },
+    "Citation": {
+      "additionalProperties": false,
+      "properties": {
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Quote"
+        },
+        "segment_end": {
+          "minimum": 0,
+          "title": "Segment End",
+          "type": "integer"
+        },
+        "segment_start": {
+          "minimum": 0,
+          "title": "Segment Start",
+          "type": "integer"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "source_revision_id": {
+          "title": "Source Revision Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "source_revision_id",
+        "segment_start",
+        "segment_end"
+      ],
+      "title": "Citation",
+      "type": "object"
+    },
+    "Decision": {
+      "additionalProperties": false,
+      "description": "A prior human, agent or system decision an engine must respect (e.g. a scoped \"wrong\" or \"reject_link\").",
+      "properties": {
+        "expected_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Revision"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "operation": {
+          "enum": [
+            "wrong",
+            "changed",
+            "confirm",
+            "confirm_link",
+            "reject_link",
+            "no_merge",
+            "merge",
+            "unmerge",
+            "approve",
+            "dismiss",
+            "later",
+            "undo"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "origin": {
+          "enum": [
+            "human",
+            "agent",
+            "system"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "statement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statement"
+        },
+        "target_id": {
+          "title": "Target Id",
+          "type": "string"
+        },
+        "target_type": {
+          "maxLength": 50,
+          "title": "Target Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "seq",
+        "operation",
+        "origin",
+        "target_type",
+        "target_id",
+        "recorded_at"
+      ],
+      "title": "Decision",
+      "type": "object"
+    },
+    "EntityCandidate": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "An authorized entity an engine may link to.",
+      "properties": {
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "ref": {
+          "$ref": "#/$defs/EntityRef"
+        }
+      },
+      "required": [
+        "ref",
+        "name"
+      ],
+      "title": "EntityCandidate",
+      "type": "object"
+    },
+    "EntityRef": {
+      "additionalProperties": false,
+      "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+      "properties": {
+        "entity_id": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Id"
+        },
+        "entity_type": {
+          "enum": [
+            "actor",
+            "project",
+            "client",
+            "area",
+            "goal",
+            "task",
+            "calendar_event",
+            "linear_issue"
+          ],
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "mention": {
+          "anyOf": [
+            {
+              "maxLength": 300,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mention"
+        }
+      },
+      "required": [
+        "entity_type"
+      ],
+      "title": "EntityRef",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+      "properties": {
+        "char_end": {
+          "minimum": 0,
+          "title": "Char End",
+          "type": "integer"
+        },
+        "char_start": {
+          "minimum": 0,
+          "title": "Char Start",
+          "type": "integer"
+        },
+        "origin": {
+          "default": "independent",
+          "enum": [
+            "independent",
+            "derived"
+          ],
+          "title": "Origin",
+          "type": "string"
+        },
+        "quote": {
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        },
+        "role": {
+          "default": "support",
+          "enum": [
+            "support",
+            "contradiction"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "segment_seq": {
+          "minimum": 0,
+          "title": "Segment Seq",
+          "type": "integer"
+        },
+        "source_revision_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Revision Id"
+        }
+      },
+      "required": [
+        "segment_seq",
+        "quote",
+        "char_start",
+        "char_end"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "ExtractLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "max_actions": {
+          "default": 50,
+          "minimum": 0,
+          "title": "Max Actions",
+          "type": "integer"
+        },
+        "max_assertions": {
+          "default": 200,
+          "minimum": 0,
+          "title": "Max Assertions",
+          "type": "integer"
+        }
+      },
+      "title": "ExtractLimits",
+      "type": "object"
+    },
+    "ExtractRequest": {
+      "$defs": {
+        "Decision": {
+          "additionalProperties": false,
+          "description": "A prior human, agent or system decision an engine must respect (e.g. a scoped \"wrong\" or \"reject_link\").",
+          "properties": {
+            "expected_revision": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expected Revision"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "wrong",
+                "changed",
+                "confirm",
+                "confirm_link",
+                "reject_link",
+                "no_merge",
+                "merge",
+                "unmerge",
+                "approve",
+                "dismiss",
+                "later",
+                "undo"
+              ],
+              "title": "Operation",
+              "type": "string"
+            },
+            "origin": {
+              "enum": [
+                "human",
+                "agent",
+                "system"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "reason": {
+              "default": "",
+              "title": "Reason",
+              "type": "string"
+            },
+            "recorded_at": {
+              "format": "date-time",
+              "title": "Recorded At",
+              "type": "string"
+            },
+            "seq": {
+              "minimum": 0,
+              "title": "Seq",
+              "type": "integer"
+            },
+            "statement": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Statement"
+            },
+            "target_id": {
+              "title": "Target Id",
+              "type": "string"
+            },
+            "target_type": {
+              "maxLength": 50,
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "seq",
+            "operation",
+            "origin",
+            "target_type",
+            "target_id",
+            "recorded_at"
+          ],
+          "title": "Decision",
+          "type": "object"
+        },
+        "EntityCandidate": {
+          "additionalProperties": false,
+          "description": "An authorized entity an engine may link to.",
+          "properties": {
+            "aliases": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Aliases",
+              "type": "array"
+            },
+            "detail": {
+              "default": "",
+              "title": "Detail",
+              "type": "string"
+            },
+            "name": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            },
+            "ref": {
+              "$ref": "#/$defs/EntityRef"
+            }
+          },
+          "required": [
+            "ref",
+            "name"
+          ],
+          "title": "EntityCandidate",
+          "type": "object"
+        },
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "ExtractLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "max_actions": {
+              "default": 50,
+              "minimum": 0,
+              "title": "Max Actions",
+              "type": "integer"
+            },
+            "max_assertions": {
+              "default": 200,
+              "minimum": 0,
+              "title": "Max Assertions",
+              "type": "integer"
+            }
+          },
+          "title": "ExtractLimits",
+          "type": "object"
+        },
+        "Participant": {
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "anyOf": [
+                {
+                  "maxLength": 320,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "role": {
+              "default": "attendee",
+              "enum": [
+                "organizer",
+                "attendee",
+                "speaker"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "speaker_label": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Speaker Label"
+            }
+          },
+          "title": "Participant",
+          "type": "object"
+        },
+        "Segment": {
+          "additionalProperties": false,
+          "description": "One utterance or note block. Offsets index the revision text: `text == revision_text[char_start:char_end]`.",
+          "properties": {
+            "attribution": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "owner",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Attribution"
+            },
+            "char_end": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Char End"
+            },
+            "char_start": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Char Start"
+            },
+            "end_ms": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "End Ms"
+            },
+            "kind": {
+              "default": "transcript",
+              "enum": [
+                "transcript",
+                "private_note"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "seq": {
+              "minimum": 0,
+              "title": "Seq",
+              "type": "integer"
+            },
+            "speaker_label": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Speaker Label"
+            },
+            "start_ms": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Start Ms"
+            },
+            "text": {
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "seq",
+            "text"
+          ],
+          "title": "Segment",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "items": {
+            "$ref": "#/$defs/EntityCandidate"
+          },
+          "title": "Candidates",
+          "type": "array"
+        },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/Decision"
+          },
+          "title": "Decisions",
+          "type": "array"
+        },
+        "limits": {
+          "$ref": "#/$defs/ExtractLimits",
+          "default": {
+            "max_actions": 50,
+            "max_assertions": 200
+          }
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "owner_id": {
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/$defs/Participant"
+          },
+          "title": "Participants",
+          "type": "array"
+        },
+        "segments": {
+          "items": {
+            "$ref": "#/$defs/Segment"
+          },
+          "minItems": 1,
+          "title": "Segments",
+          "type": "array"
+        },
+        "source_revision_id": {
+          "title": "Source Revision Id",
+          "type": "string"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timezone"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "owner_id",
+        "source_revision_id",
+        "occurred_at",
+        "segments"
+      ],
+      "title": "ExtractRequest",
+      "type": "object"
+    },
+    "ExtractionResult": {
+      "$defs": {
+        "CandidateAssertion": {
+          "additionalProperties": false,
+          "properties": {
+            "confidence": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Confidence"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "title": "Evidence",
+              "type": "array"
+            },
+            "inferred": {
+              "default": false,
+              "title": "Inferred",
+              "type": "boolean"
+            },
+            "key": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Key"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "preference",
+                "decision",
+                "rationale",
+                "risk",
+                "open_question",
+                "procedure",
+                "relationship",
+                "commitment"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "modality": {
+              "default": "asserted",
+              "enum": [
+                "asserted",
+                "proposed",
+                "hypothetical",
+                "negated",
+                "question"
+              ],
+              "title": "Modality",
+              "type": "string"
+            },
+            "object": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "recipient": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "responsible": {
+              "items": {
+                "$ref": "#/$defs/EntityRef"
+              },
+              "title": "Responsible",
+              "type": "array"
+            },
+            "statement": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Statement",
+              "type": "string"
+            },
+            "subject": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "valid_from": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "valid_to": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "kind",
+            "statement",
+            "evidence"
+          ],
+          "title": "CandidateAssertion",
+          "type": "object"
+        },
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        },
+        "LinkProposal": {
+          "additionalProperties": false,
+          "description": "An engine's proposed resolution of a mention. Engines propose `exact`, `inferred` or `unresolved`;\n`confirmed` and `rejected` come only from decisions.",
+          "properties": {
+            "candidate": {
+              "$ref": "#/$defs/EntityRef"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "title": "Evidence",
+              "type": "array"
+            },
+            "margin": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Margin"
+            },
+            "mention": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Mention",
+              "type": "string"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Score"
+            },
+            "status": {
+              "enum": [
+                "exact",
+                "inferred",
+                "confirmed",
+                "rejected",
+                "unresolved"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mention",
+            "candidate",
+            "status"
+          ],
+          "title": "LinkProposal",
+          "type": "object"
+        },
+        "ProposedAction": {
+          "additionalProperties": false,
+          "properties": {
+            "assertion_indexes": {
+              "items": {
+                "type": "integer"
+              },
+              "title": "Assertion Indexes",
+              "type": "array"
+            },
+            "description": {
+              "default": "",
+              "maxLength": 5000,
+              "title": "Description",
+              "type": "string"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "title": "Evidence",
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "create",
+                "update",
+                "link",
+                "suggestion"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "responsible": {
+              "items": {
+                "$ref": "#/$defs/EntityRef"
+              },
+              "title": "Responsible",
+              "type": "array"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "title": {
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "title",
+            "evidence"
+          ],
+          "title": "ProposedAction",
+          "type": "object"
+        },
+        "TimeBound": {
+          "additionalProperties": false,
+          "description": "A normalized time with its precision and, when it came from words, the raw expression (\"in two weeks\").",
+          "properties": {
+            "at": {
+              "format": "date-time",
+              "title": "At",
+              "type": "string"
+            },
+            "expression": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expression"
+            },
+            "precision": {
+              "default": "instant",
+              "enum": [
+                "instant",
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "unknown"
+              ],
+              "title": "Precision",
+              "type": "string"
+            }
+          },
+          "required": [
+            "at"
+          ],
+          "title": "TimeBound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/ProposedAction"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "assertions": {
+          "items": {
+            "$ref": "#/$defs/CandidateAssertion"
+          },
+          "title": "Assertions",
+          "type": "array"
+        },
+        "coverage": {
+          "additionalProperties": {
+            "enum": [
+              "extracted",
+              "no_content",
+              "skipped",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "title": "Coverage",
+          "type": "object"
+        },
+        "diagnostics": {
+          "additionalProperties": true,
+          "title": "Diagnostics",
+          "type": "object"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/LinkProposal"
+          },
+          "title": "Links",
+          "type": "array"
+        }
+      },
+      "title": "ExtractionResult",
+      "type": "object"
+    },
+    "Hit": {
+      "$defs": {
+        "Citation": {
+          "additionalProperties": false,
+          "properties": {
+            "quote": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Quote"
+            },
+            "segment_end": {
+              "minimum": 0,
+              "title": "Segment End",
+              "type": "integer"
+            },
+            "segment_start": {
+              "minimum": 0,
+              "title": "Segment Start",
+              "type": "integer"
+            },
+            "source_id": {
+              "title": "Source Id",
+              "type": "string"
+            },
+            "source_revision_id": {
+              "title": "Source Revision Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "source_id",
+            "source_revision_id",
+            "segment_start",
+            "segment_end"
+          ],
+          "title": "Citation",
+          "type": "object"
+        },
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "citation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Citation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "entities": {
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "fact",
+                "preference",
+                "decision",
+                "rationale",
+                "risk",
+                "open_question",
+                "procedure",
+                "relationship",
+                "commitment"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Kind"
+        },
+        "lifecycle": {
+          "anyOf": [
+            {
+              "enum": [
+                "current",
+                "superseded",
+                "retracted",
+                "contested",
+                "shadow"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lifecycle"
+        },
+        "rank": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Rank",
+          "type": "object"
+        },
+        "ref_type": {
+          "enum": [
+            "assertion",
+            "segment",
+            "chunk"
+          ],
+          "title": "Ref Type",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "snippet": {
+          "default": "",
+          "title": "Snippet",
+          "type": "string"
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Superseded By"
+        },
+        "valid_from": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid From"
+        },
+        "valid_to": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid To"
+        }
+      },
+      "required": [
+        "ref_type",
+        "id",
+        "revision",
+        "score"
+      ],
+      "title": "Hit",
+      "type": "object"
+    },
+    "LinkProposal": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "An engine's proposed resolution of a mention. Engines propose `exact`, `inferred` or `unresolved`;\n`confirmed` and `rejected` come only from decisions.",
+      "properties": {
+        "candidate": {
+          "$ref": "#/$defs/EntityRef"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "margin": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Margin"
+        },
+        "mention": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Mention",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "status": {
+          "enum": [
+            "exact",
+            "inferred",
+            "confirmed",
+            "rejected",
+            "unresolved"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mention",
+        "candidate",
+        "status"
+      ],
+      "title": "LinkProposal",
+      "type": "object"
+    },
+    "Participant": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Email"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "role": {
+          "default": "attendee",
+          "enum": [
+            "organizer",
+            "attendee",
+            "speaker"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "speaker_label": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker Label"
+        }
+      },
+      "title": "Participant",
+      "type": "object"
+    },
+    "ProposedAction": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        },
+        "TimeBound": {
+          "additionalProperties": false,
+          "description": "A normalized time with its precision and, when it came from words, the raw expression (\"in two weeks\").",
+          "properties": {
+            "at": {
+              "format": "date-time",
+              "title": "At",
+              "type": "string"
+            },
+            "expression": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expression"
+            },
+            "precision": {
+              "default": "instant",
+              "enum": [
+                "instant",
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "unknown"
+              ],
+              "title": "Precision",
+              "type": "string"
+            }
+          },
+          "required": [
+            "at"
+          ],
+          "title": "TimeBound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "assertion_indexes": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Assertion Indexes",
+          "type": "array"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 5000,
+          "title": "Description",
+          "type": "string"
+        },
+        "due": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeBound"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "kind": {
+          "enum": [
+            "create",
+            "update",
+            "link",
+            "suggestion"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "responsible": {
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "title": "Responsible",
+          "type": "array"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EntityRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "title",
+        "evidence"
+      ],
+      "title": "ProposedAction",
+      "type": "object"
+    },
+    "ReconcileOp": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        },
+        "LinkProposal": {
+          "additionalProperties": false,
+          "description": "An engine's proposed resolution of a mention. Engines propose `exact`, `inferred` or `unresolved`;\n`confirmed` and `rejected` come only from decisions.",
+          "properties": {
+            "candidate": {
+              "$ref": "#/$defs/EntityRef"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "title": "Evidence",
+              "type": "array"
+            },
+            "margin": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Margin"
+            },
+            "mention": {
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Mention",
+              "type": "string"
+            },
+            "score": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Score"
+            },
+            "status": {
+              "enum": [
+                "exact",
+                "inferred",
+                "confirmed",
+                "rejected",
+                "unresolved"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mention",
+            "candidate",
+            "status"
+          ],
+          "title": "LinkProposal",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "`targets` are assertion IDs; for `supersede` they are `[old, new]`. `target_revisions` pins the revisions\nthe op was computed against so core can refuse stale ops.",
+      "properties": {
+        "dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Dependencies",
+          "type": "array"
+        },
+        "explanation": {
+          "default": "",
+          "title": "Explanation",
+          "type": "string"
+        },
+        "link": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LinkProposal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "op": {
+          "enum": [
+            "equivalent",
+            "conflict",
+            "supersede",
+            "link_change",
+            "no_change"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "target_revisions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Target Revisions",
+          "type": "object"
+        },
+        "targets": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Targets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "op",
+        "targets"
+      ],
+      "title": "ReconcileOp",
+      "type": "object"
+    },
+    "ReconcileRequest": {
+      "$defs": {
+        "AssertionView": {
+          "additionalProperties": false,
+          "description": "A canonical assertion as engines see it. `valid_from` is always resolved.",
+          "properties": {
+            "confidence": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Confidence"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "title": "Evidence",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "inferred": {
+              "default": false,
+              "title": "Inferred",
+              "type": "boolean"
+            },
+            "key": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Key"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "preference",
+                "decision",
+                "rationale",
+                "risk",
+                "open_question",
+                "procedure",
+                "relationship",
+                "commitment"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "lifecycle": {
+              "default": "current",
+              "enum": [
+                "current",
+                "superseded",
+                "retracted",
+                "contested",
+                "shadow"
+              ],
+              "title": "Lifecycle",
+              "type": "string"
+            },
+            "modality": {
+              "default": "asserted",
+              "enum": [
+                "asserted",
+                "proposed",
+                "hypothetical",
+                "negated",
+                "question"
+              ],
+              "title": "Modality",
+              "type": "string"
+            },
+            "object": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "recipient": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "recorded_at": {
+              "format": "date-time",
+              "title": "Recorded At",
+              "type": "string"
+            },
+            "responsible": {
+              "items": {
+                "$ref": "#/$defs/EntityRef"
+              },
+              "title": "Responsible",
+              "type": "array"
+            },
+            "revision": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            },
+            "statement": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Statement",
+              "type": "string"
+            },
+            "subject": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "valid_from": {
+              "$ref": "#/$defs/TimeBound"
+            },
+            "valid_to": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "kind",
+            "statement",
+            "valid_from",
+            "evidence",
+            "id",
+            "revision",
+            "recorded_at"
+          ],
+          "title": "AssertionView",
+          "type": "object"
+        },
+        "Decision": {
+          "additionalProperties": false,
+          "description": "A prior human, agent or system decision an engine must respect (e.g. a scoped \"wrong\" or \"reject_link\").",
+          "properties": {
+            "expected_revision": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expected Revision"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "operation": {
+              "enum": [
+                "wrong",
+                "changed",
+                "confirm",
+                "confirm_link",
+                "reject_link",
+                "no_merge",
+                "merge",
+                "unmerge",
+                "approve",
+                "dismiss",
+                "later",
+                "undo"
+              ],
+              "title": "Operation",
+              "type": "string"
+            },
+            "origin": {
+              "enum": [
+                "human",
+                "agent",
+                "system"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "reason": {
+              "default": "",
+              "title": "Reason",
+              "type": "string"
+            },
+            "recorded_at": {
+              "format": "date-time",
+              "title": "Recorded At",
+              "type": "string"
+            },
+            "seq": {
+              "minimum": 0,
+              "title": "Seq",
+              "type": "integer"
+            },
+            "statement": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Statement"
+            },
+            "target_id": {
+              "title": "Target Id",
+              "type": "string"
+            },
+            "target_type": {
+              "maxLength": 50,
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "seq",
+            "operation",
+            "origin",
+            "target_type",
+            "target_id",
+            "recorded_at"
+          ],
+          "title": "Decision",
+          "type": "object"
+        },
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        },
+        "TimeBound": {
+          "additionalProperties": false,
+          "description": "A normalized time with its precision and, when it came from words, the raw expression (\"in two weeks\").",
+          "properties": {
+            "at": {
+              "format": "date-time",
+              "title": "At",
+              "type": "string"
+            },
+            "expression": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expression"
+            },
+            "precision": {
+              "default": "instant",
+              "enum": [
+                "instant",
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "unknown"
+              ],
+              "title": "Precision",
+              "type": "string"
+            }
+          },
+          "required": [
+            "at"
+          ],
+          "title": "TimeBound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "changed": {
+          "items": {
+            "$ref": "#/$defs/AssertionView"
+          },
+          "minItems": 1,
+          "title": "Changed",
+          "type": "array"
+        },
+        "decisions": {
+          "items": {
+            "$ref": "#/$defs/Decision"
+          },
+          "title": "Decisions",
+          "type": "array"
+        },
+        "exclusive_keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclusive Keys",
+          "type": "array"
+        },
+        "owner_id": {
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "related": {
+          "items": {
+            "$ref": "#/$defs/AssertionView"
+          },
+          "title": "Related",
+          "type": "array"
+        }
+      },
+      "required": [
+        "owner_id",
+        "changed"
+      ],
+      "title": "ReconcileRequest",
+      "type": "object"
+    },
+    "RetrieveQuery": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "ScopePredicate": {
+          "additionalProperties": false,
+          "description": "Authorization and temporal scope, applied inside the engine's candidate query.\n\nDefaults exclude superseded and retracted assertions; `shadow` assertions are never returned.\n`valid_at` filters effective time (`None`: current state by lifecycle); `known_at` filters recorded time\n(`None`: current recorded state).",
+          "properties": {
+            "entities": {
+              "items": {
+                "$ref": "#/$defs/EntityRef"
+              },
+              "title": "Entities",
+              "type": "array"
+            },
+            "include_retracted": {
+              "default": false,
+              "title": "Include Retracted",
+              "type": "boolean"
+            },
+            "include_superseded": {
+              "default": false,
+              "title": "Include Superseded",
+              "type": "boolean"
+            },
+            "kinds": {
+              "items": {
+                "enum": [
+                  "fact",
+                  "preference",
+                  "decision",
+                  "rationale",
+                  "risk",
+                  "open_question",
+                  "procedure",
+                  "relationship",
+                  "commitment"
+                ],
+                "type": "string"
+              },
+              "title": "Kinds",
+              "type": "array"
+            },
+            "known_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Known At"
+            },
+            "owner_id": {
+              "minLength": 1,
+              "title": "Owner Id",
+              "type": "string"
+            },
+            "valid_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Valid At"
+            }
+          },
+          "required": [
+            "owner_id"
+          ],
+          "title": "ScopePredicate",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "include_raw": {
+          "default": false,
+          "title": "Include Raw",
+          "type": "boolean"
+        },
+        "limit": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "scope": {
+          "$ref": "#/$defs/ScopePredicate"
+        },
+        "text": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "scope"
+      ],
+      "title": "RetrieveQuery",
+      "type": "object"
+    },
+    "RunMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "config_version": {
+          "title": "Config Version",
+          "type": "string"
+        },
+        "decision_watermark": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Decision Watermark",
+          "type": "integer"
+        },
+        "engine": {
+          "minLength": 1,
+          "title": "Engine",
+          "type": "string"
+        },
+        "input_revisions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Input Revisions",
+          "type": "object"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "prompt_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Version"
+        },
+        "stage": {
+          "enum": [
+            "ingest",
+            "extract",
+            "link",
+            "reconcile",
+            "embed",
+            "brief",
+            "lint",
+            "proposals"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage",
+        "engine",
+        "config_version"
+      ],
+      "title": "RunMeta",
+      "type": "object"
+    },
+    "ScopePredicate": {
+      "$defs": {
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Authorization and temporal scope, applied inside the engine's candidate query.\n\nDefaults exclude superseded and retracted assertions; `shadow` assertions are never returned.\n`valid_at` filters effective time (`None`: current state by lifecycle); `known_at` filters recorded time\n(`None`: current recorded state).",
+      "properties": {
+        "entities": {
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "include_retracted": {
+          "default": false,
+          "title": "Include Retracted",
+          "type": "boolean"
+        },
+        "include_superseded": {
+          "default": false,
+          "title": "Include Superseded",
+          "type": "boolean"
+        },
+        "kinds": {
+          "items": {
+            "enum": [
+              "fact",
+              "preference",
+              "decision",
+              "rationale",
+              "risk",
+              "open_question",
+              "procedure",
+              "relationship",
+              "commitment"
+            ],
+            "type": "string"
+          },
+          "title": "Kinds",
+          "type": "array"
+        },
+        "known_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Known At"
+        },
+        "owner_id": {
+          "minLength": 1,
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "valid_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Valid At"
+        }
+      },
+      "required": [
+        "owner_id"
+      ],
+      "title": "ScopePredicate",
+      "type": "object"
+    },
+    "Segment": {
+      "additionalProperties": false,
+      "description": "One utterance or note block. Offsets index the revision text: `text == revision_text[char_start:char_end]`.",
+      "properties": {
+        "attribution": {
+          "anyOf": [
+            {
+              "enum": [
+                "owner",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attribution"
+        },
+        "char_end": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Char End"
+        },
+        "char_start": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Char Start"
+        },
+        "end_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Ms"
+        },
+        "kind": {
+          "default": "transcript",
+          "enum": [
+            "transcript",
+            "private_note"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "seq": {
+          "minimum": 0,
+          "title": "Seq",
+          "type": "integer"
+        },
+        "speaker_label": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker Label"
+        },
+        "start_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Ms"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "seq",
+        "text"
+      ],
+      "title": "Segment",
+      "type": "object"
+    },
+    "SourceEnvelope": {
+      "$defs": {
+        "Participant": {
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "anyOf": [
+                {
+                  "maxLength": 320,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Email"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Name"
+            },
+            "role": {
+              "default": "attendee",
+              "enum": [
+                "organizer",
+                "attendee",
+                "speaker"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "speaker_label": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Speaker Label"
+            }
+          },
+          "title": "Participant",
+          "type": "object"
+        },
+        "Segment": {
+          "additionalProperties": false,
+          "description": "One utterance or note block. Offsets index the revision text: `text == revision_text[char_start:char_end]`.",
+          "properties": {
+            "attribution": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "owner",
+                    "other"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Attribution"
+            },
+            "char_end": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Char End"
+            },
+            "char_start": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Char Start"
+            },
+            "end_ms": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "End Ms"
+            },
+            "kind": {
+              "default": "transcript",
+              "enum": [
+                "transcript",
+                "private_note"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "seq": {
+              "minimum": 0,
+              "title": "Seq",
+              "type": "integer"
+            },
+            "speaker_label": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Speaker Label"
+            },
+            "start_ms": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Start Ms"
+            },
+            "text": {
+              "minLength": 1,
+              "title": "Text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "seq",
+            "text"
+          ],
+          "title": "Segment",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "What every connector delivers to `sources.receive`. Exactly one of `segments` or `text`.\n\nPrivate notes travel in `private_notes` (they become `private_note` segments attributed to the owner);\n`summary` is display-only and never evidence.",
+      "properties": {
+        "calendar_event_id": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Calendar Event Id"
+        },
+        "connector": {
+          "enum": [
+            "upload",
+            "api",
+            "granola",
+            "zoom"
+          ],
+          "title": "Connector",
+          "type": "string"
+        },
+        "content_hash": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Hash"
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ended At"
+        },
+        "envelope_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Envelope Version",
+          "type": "integer"
+        },
+        "external_id": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "External Id",
+          "type": "string"
+        },
+        "external_revision": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "External Revision"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "participants": {
+          "items": {
+            "$ref": "#/$defs/Participant"
+          },
+          "title": "Participants",
+          "type": "array"
+        },
+        "private_notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Private Notes"
+        },
+        "segments": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Segment"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Segments"
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "timezone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timezone"
+        },
+        "title": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Title",
+          "type": "string"
+        },
+        "upstream_owner_email": {
+          "anyOf": [
+            {
+              "maxLength": 320,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upstream Owner Email"
+        },
+        "upstream_owner_name": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upstream Owner Name"
+        }
+      },
+      "required": [
+        "connector",
+        "external_id",
+        "occurred_at"
+      ],
+      "title": "SourceEnvelope",
+      "type": "object"
+    },
+    "SynthesizeRequest": {
+      "$defs": {
+        "AssertionView": {
+          "additionalProperties": false,
+          "description": "A canonical assertion as engines see it. `valid_from` is always resolved.",
+          "properties": {
+            "confidence": {
+              "anyOf": [
+                {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Confidence"
+            },
+            "due": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/$defs/EvidenceRef"
+              },
+              "minItems": 1,
+              "title": "Evidence",
+              "type": "array"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "inferred": {
+              "default": false,
+              "title": "Inferred",
+              "type": "boolean"
+            },
+            "key": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Key"
+            },
+            "kind": {
+              "enum": [
+                "fact",
+                "preference",
+                "decision",
+                "rationale",
+                "risk",
+                "open_question",
+                "procedure",
+                "relationship",
+                "commitment"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "lifecycle": {
+              "default": "current",
+              "enum": [
+                "current",
+                "superseded",
+                "retracted",
+                "contested",
+                "shadow"
+              ],
+              "title": "Lifecycle",
+              "type": "string"
+            },
+            "modality": {
+              "default": "asserted",
+              "enum": [
+                "asserted",
+                "proposed",
+                "hypothetical",
+                "negated",
+                "question"
+              ],
+              "title": "Modality",
+              "type": "string"
+            },
+            "object": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "recipient": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "recorded_at": {
+              "format": "date-time",
+              "title": "Recorded At",
+              "type": "string"
+            },
+            "responsible": {
+              "items": {
+                "$ref": "#/$defs/EntityRef"
+              },
+              "title": "Responsible",
+              "type": "array"
+            },
+            "revision": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            },
+            "statement": {
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Statement",
+              "type": "string"
+            },
+            "subject": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "valid_from": {
+              "$ref": "#/$defs/TimeBound"
+            },
+            "valid_to": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TimeBound"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "kind",
+            "statement",
+            "valid_from",
+            "evidence",
+            "id",
+            "revision",
+            "recorded_at"
+          ],
+          "title": "AssertionView",
+          "type": "object"
+        },
+        "BriefRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "entity": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EntityRef"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "query": {
+              "anyOf": [
+                {
+                  "maxLength": 2000,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Query"
+            },
+            "scope": {
+              "$ref": "#/$defs/ScopePredicate"
+            },
+            "sections": {
+              "items": {
+                "enum": [
+                  "current_state_and_why",
+                  "open_loops",
+                  "next_meeting_prep",
+                  "who_is_who",
+                  "recent_changes",
+                  "unknowns"
+                ],
+                "type": "string"
+              },
+              "title": "Sections",
+              "type": "array"
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "title": "BriefRequest",
+          "type": "object"
+        },
+        "EntityRef": {
+          "additionalProperties": false,
+          "description": "An Eridani entity as `(entity_type, entity_id)`, or an unresolved mention of one (`entity_id` absent).",
+          "properties": {
+            "entity_id": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Entity Id"
+            },
+            "entity_type": {
+              "enum": [
+                "actor",
+                "project",
+                "client",
+                "area",
+                "goal",
+                "task",
+                "calendar_event",
+                "linear_issue"
+              ],
+              "title": "Entity Type",
+              "type": "string"
+            },
+            "mention": {
+              "anyOf": [
+                {
+                  "maxLength": 300,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Mention"
+            }
+          },
+          "required": [
+            "entity_type"
+          ],
+          "title": "EntityRef",
+          "type": "object"
+        },
+        "EvidenceRef": {
+          "additionalProperties": false,
+          "description": "An exact quote: `segment.text[char_start:char_end] == quote`. `source_revision_id` is absent inside an\nextraction result, where it means the revision being extracted.",
+          "properties": {
+            "char_end": {
+              "minimum": 0,
+              "title": "Char End",
+              "type": "integer"
+            },
+            "char_start": {
+              "minimum": 0,
+              "title": "Char Start",
+              "type": "integer"
+            },
+            "origin": {
+              "default": "independent",
+              "enum": [
+                "independent",
+                "derived"
+              ],
+              "title": "Origin",
+              "type": "string"
+            },
+            "quote": {
+              "minLength": 1,
+              "title": "Quote",
+              "type": "string"
+            },
+            "role": {
+              "default": "support",
+              "enum": [
+                "support",
+                "contradiction"
+              ],
+              "title": "Role",
+              "type": "string"
+            },
+            "segment_seq": {
+              "minimum": 0,
+              "title": "Segment Seq",
+              "type": "integer"
+            },
+            "source_revision_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Source Revision Id"
+            }
+          },
+          "required": [
+            "segment_seq",
+            "quote",
+            "char_start",
+            "char_end"
+          ],
+          "title": "EvidenceRef",
+          "type": "object"
+        },
+        "ScopePredicate": {
+          "additionalProperties": false,
+          "description": "Authorization and temporal scope, applied inside the engine's candidate query.\n\nDefaults exclude superseded and retracted assertions; `shadow` assertions are never returned.\n`valid_at` filters effective time (`None`: current state by lifecycle); `known_at` filters recorded time\n(`None`: current recorded state).",
+          "properties": {
+            "entities": {
+              "items": {
+                "$ref": "#/$defs/EntityRef"
+              },
+              "title": "Entities",
+              "type": "array"
+            },
+            "include_retracted": {
+              "default": false,
+              "title": "Include Retracted",
+              "type": "boolean"
+            },
+            "include_superseded": {
+              "default": false,
+              "title": "Include Superseded",
+              "type": "boolean"
+            },
+            "kinds": {
+              "items": {
+                "enum": [
+                  "fact",
+                  "preference",
+                  "decision",
+                  "rationale",
+                  "risk",
+                  "open_question",
+                  "procedure",
+                  "relationship",
+                  "commitment"
+                ],
+                "type": "string"
+              },
+              "title": "Kinds",
+              "type": "array"
+            },
+            "known_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Known At"
+            },
+            "owner_id": {
+              "minLength": 1,
+              "title": "Owner Id",
+              "type": "string"
+            },
+            "valid_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Valid At"
+            }
+          },
+          "required": [
+            "owner_id"
+          ],
+          "title": "ScopePredicate",
+          "type": "object"
+        },
+        "TaskView": {
+          "additionalProperties": false,
+          "properties": {
+            "assertion_ids": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Assertion Ids",
+              "type": "array"
+            },
+            "due_at": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Due At"
+            },
+            "id": {
+              "title": "Id",
+              "type": "string"
+            },
+            "revision": {
+              "minimum": 1,
+              "title": "Revision",
+              "type": "integer"
+            },
+            "status": {
+              "title": "Status",
+              "type": "string"
+            },
+            "title": {
+              "title": "Title",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "revision",
+            "title",
+            "status"
+          ],
+          "title": "TaskView",
+          "type": "object"
+        },
+        "TimeBound": {
+          "additionalProperties": false,
+          "description": "A normalized time with its precision and, when it came from words, the raw expression (\"in two weeks\").",
+          "properties": {
+            "at": {
+              "format": "date-time",
+              "title": "At",
+              "type": "string"
+            },
+            "expression": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Expression"
+            },
+            "precision": {
+              "default": "instant",
+              "enum": [
+                "instant",
+                "day",
+                "week",
+                "month",
+                "quarter",
+                "year",
+                "unknown"
+              ],
+              "title": "Precision",
+              "type": "string"
+            }
+          },
+          "required": [
+            "at"
+          ],
+          "title": "TimeBound",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "assertions": {
+          "items": {
+            "$ref": "#/$defs/AssertionView"
+          },
+          "title": "Assertions",
+          "type": "array"
+        },
+        "brief": {
+          "$ref": "#/$defs/BriefRequest"
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/AssertionView"
+          },
+          "title": "History",
+          "type": "array"
+        },
+        "tasks": {
+          "items": {
+            "$ref": "#/$defs/TaskView"
+          },
+          "title": "Tasks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "brief"
+      ],
+      "title": "SynthesizeRequest",
+      "type": "object"
+    },
+    "TaskView": {
+      "additionalProperties": false,
+      "properties": {
+        "assertion_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Assertion Ids",
+          "type": "array"
+        },
+        "due_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Due At"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "title",
+        "status"
+      ],
+      "title": "TaskView",
+      "type": "object"
+    },
+    "TimeBound": {
+      "additionalProperties": false,
+      "description": "A normalized time with its precision and, when it came from words, the raw expression (\"in two weeks\").",
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "expression": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expression"
+        },
+        "precision": {
+          "default": "instant",
+          "enum": [
+            "instant",
+            "day",
+            "week",
+            "month",
+            "quarter",
+            "year",
+            "unknown"
+          ],
+          "title": "Precision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "at"
+      ],
+      "title": "TimeBound",
+      "type": "object"
+    }
+  }
+}

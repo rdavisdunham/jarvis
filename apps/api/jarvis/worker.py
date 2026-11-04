@@ -53,6 +53,10 @@ def perform_job(job_id):
         job = db.get(Job, job_id)
         kind = job.kind if job else None
         learning = kind in {"extract_memory", "embed_memory"}
+    if kind and kind.startswith("context_"):
+        from .context import pipeline
+
+        return pipeline.perform(job_id)
     if kind in {"agent_intake", "agent_action"}:
         from . import work_intake, work_runner
         asyncio.run((work_intake if kind == "agent_intake" else work_runner).run(job_id))
@@ -157,7 +161,8 @@ def dispatch_outbox(client, after=None):
             client.enqueue(
                 {
                     "workflow_name": "jarvis_job_v1",
-                    "queue_name": "jarvis-intake" if job.kind == "agent_intake"
+                    "queue_name": "jarvis-context" if job.kind.startswith("context_")
+                    else "jarvis-intake" if job.kind == "agent_intake"
                     else "jarvis-agent" if job.kind == "agent_action"
                     else "jarvis-linear"
                     if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write", "linear_comment"}
@@ -179,6 +184,7 @@ def notification_url(notification):
     from urllib.parse import urlencode
     target=notification.target or {}
     if target.get("view")=="remotea":return "/?"+urlencode({"view":"remotea","run":target.get("run_id") or ""})
+    if target.get("view")=="meetings":return "/?"+urlencode({"view":"meetings",**({"source":target["source_id"]} if target.get("source_id") else {})})
     if notification.task_id:return "/?"+urlencode({"view":"tasks","tab":"all","record":"task:"+notification.task_id,"workspace":"personal"})
     if target.get("view")=="activity":return "/?view=tasks&activity=1"
     if target.get("view")=="tasks":return "/?view=tasks&tab=today"
@@ -309,6 +315,8 @@ def housekeeping():
         )
     for owner in owners:
         isolated("housekeeping_owner", in_session, housekeeping_owner, owner)
+    if get_settings().context_enabled:
+        isolated("context_scheduler", in_session, context_tick)
     with session_scope() as db:
         # A lost interactive request is not silently replayed after a process restart.
         for job in db.scalars(
@@ -329,6 +337,13 @@ def housekeeping():
                 "message": "The connection ended before a reply was saved. Check your saved tasks before repeating the request.",
             }
             budget.close(db, job.owner_id, job.id, uncertain=True)
+
+
+def context_tick(db):
+    """Context schedules, weekly lint and meeting notices (context/scheduler.py)."""
+    from .context import scheduler
+
+    return scheduler.tick(db, now())
 
 
 def reap_agent_work():
@@ -542,6 +557,8 @@ def run_supervisor(stop, lease):
     Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
     Queue("jarvis-intake", concurrency=4, worker_concurrency=4)
     Queue("jarvis-agent", concurrency=settings.agent_parallelism, worker_concurrency=settings.agent_parallelism)
+    Queue("jarvis-context", concurrency=settings.context_queue_concurrency,
+          worker_concurrency=settings.context_queue_concurrency)
     DBOS.launch()
     client = DBOSClient(
         system_database_url=settings.database_url, system_database_pool_size=settings.dbos_client_pool_size

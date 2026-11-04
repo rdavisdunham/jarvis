@@ -46,6 +46,10 @@
       "feature": "google_writes"
     },
     {
+      "name": "context.resolve",
+      "feature": "meeting_context"
+    },
+    {
       "name": "control.answer",
       "feature": "agent_control"
     },
@@ -908,6 +912,279 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/context/admin/pause",
+      "handler": "post_pause",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/admin/resume",
+      "handler": "post_resume",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/admin/rollback-drill",
+      "handler": "post_rollback_drill",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/admin/status",
+      "handler": "get_status",
+      "source": "apps/api/jarvis/context/routes/admin.py",
+      "feature": "operations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/brief",
+      "handler": "brief",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/changes",
+      "handler": "changes",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/evidence/{assertion_id}",
+      "handler": "evidence",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/meeting-prep",
+      "handler": "meeting_prep",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/open-loops",
+      "handler": "open_loops",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/people",
+      "handler": "list_people",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/people/{actor_id}",
+      "handler": "get_person",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/links/{link_id}",
+      "handler": "settle_link",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/merge",
+      "handler": "merge",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/not-same",
+      "handler": "not_same",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/people/{actor_id}/unmerge",
+      "handler": "unmerge",
+      "source": "apps/api/jarvis/context/routes/people.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/reviews",
+      "handler": "list_reviews",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/publications/{publication_id}/retry",
+      "handler": "retry",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/reviews/{source_id}",
+      "handler": "get_review",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/apply-updates",
+      "handler": "apply_updates",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/approve",
+      "handler": "approve",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/changed",
+      "handler": "changed",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/dismiss",
+      "handler": "dismiss",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/done",
+      "handler": "done",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/later",
+      "handler": "later",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/speakers",
+      "handler": "speakers",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/wrong",
+      "handler": "wrong",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/search",
+      "handler": "search",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/settings",
+      "handler": "overview",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola",
+      "handler": "granola_connect",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/context/settings/granola/{connection_id}",
+      "handler": "granola_remove",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/backfill",
+      "handler": "granola_backfill",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/sync",
+      "handler": "granola_sync_now",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/granola/{connection_id}/test",
+      "handler": "granola_test",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/settings/import",
+      "handler": "import_file",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/context/settings/preferences",
+      "handler": "update_preferences",
+      "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/sources",
+      "handler": "list_sources",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/context/sources/{source_id}",
+      "handler": "delete_source",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/sources/{source_id}",
+      "handler": "get_source",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/sources/{source_id}/segments",
+      "handler": "source_segments",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/conversations",
       "handler": "create_conversation",
       "source": "apps/api/jarvis/api.py",
@@ -1047,6 +1324,76 @@
       "feature": "external_agents"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/external/context/brief",
+      "handler": "brief",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/changes",
+      "handler": "changes",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/evidence/{assertion_id}",
+      "handler": "evidence",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/feedback",
+      "handler": "feedback",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/meeting-prep",
+      "handler": "meeting_prep",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/open-loops",
+      "handler": "open_loops",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/reviews",
+      "handler": "list_reviews_bot",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/reviews/{source_id}",
+      "handler": "get_review_bot",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/search",
+      "handler": "search",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/sources/{source_id}",
+      "handler": "source",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/external/records/{kind}",
       "handler": "records",
@@ -1136,6 +1483,27 @@
       "handler": "session_link",
       "source": "apps/api/jarvis/external_routes.py",
       "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/sources",
+      "handler": "list_sources",
+      "source": "apps/api/jarvis/context/routes/sources.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/external/sources/{connector}/{external_id}",
+      "handler": "submit_source",
+      "source": "apps/api/jarvis/context/routes/sources.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/sources/{source_id}",
+      "handler": "get_source",
+      "source": "apps/api/jarvis/context/routes/sources.py",
+      "feature": "meeting_context"
     },
     {
       "method": "GET",

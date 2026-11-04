@@ -733,5 +733,27 @@
       "tests/test_run_automation.py"
     ],
     "status": "active"
+  },
+  {
+    "id": "meeting_context",
+    "title": "Meeting context",
+    "description": "Transcript submission and import, source-backed extraction, temporal correction, cited retrieval over MCP, meeting review and task publication, person pages, notices and pause controls.",
+    "order": 45,
+    "target_cases": 31,
+    "source_files": [
+      "apps/api/jarvis/context/sources.py",
+      "apps/api/jarvis/context/pipeline.py",
+      "apps/api/jarvis/context/service.py",
+      "apps/api/jarvis/context/mcp.py",
+      "apps/api/jarvis/context/notices.py"
+    ],
+    "regression_files": [
+      "tests/context/test_sources_api.py",
+      "tests/context/test_end_to_end.py",
+      "tests/context/test_context_api.py",
+      "tests/context/test_context_mcp.py",
+      "tests/context/test_context_owner.py"
+    ],
+    "status": "active"
   }
 ]

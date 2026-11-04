@@ -45,6 +45,7 @@ EXACT = {
     "note.file": "note_lists",
     "memory.capture": "memory_capture",
     "memory.resolve": "memory_dream",
+    "context.resolve": "meeting_context",  # answers a context Questions item
     "memory_review_list": "memory_dream",
     "routing.run": "routing_dream",
     "routing.answer": "routing_dream",
@@ -79,6 +80,11 @@ def owner(name):
 
 
 def route_owner(path, source):
+    if path.startswith("/api/v1/context/"):
+        # Meeting context session routes; the owner's pause, resume and rollback drill are operations.
+        return "operations" if path.startswith("/api/v1/context/admin") else "meeting_context"
+    if path.startswith(("/api/v1/external/sources", "/api/v1/external/context/")):
+        return "meeting_context"
     if "/questions" in path:return "memory_dream"
     if "/quick-lists" in path:return "quick_capture"
     if "/onboarding" in path:return "onboarding"
@@ -161,6 +167,11 @@ def routes():
     items = []
     modules = {f.stem: (f, ast.parse(f.read_text())) for f in sorted((ROOT / "apps/api/jarvis").glob("*.py"))}
     api_tree = modules["api"][1]
+    # Context routes are mounted on the external bot router (external_routes.py) and carry its prefix.
+    context_routes = {
+        "context.routes." + f.stem: (f, ast.parse(f.read_text()))
+        for f in sorted((ROOT / "apps/api/jarvis/context/routes").glob("*.py"))
+    }
     aliases = {}
     for node in api_tree.body:
         if isinstance(node, ast.ImportFrom) and node.module:
@@ -184,6 +195,18 @@ def routes():
                 "",
             )
             mounted[aliases.get(node.args[0].id, "")] = prefix
+    # Routers included into owner_router are session routes under /api/v1/context; the rest ride on external.
+    # Keyed by (module, router variable), since one module may hold both a session router and a bot-key twin.
+    owner_routers = {
+        ("context.routes." + node.args[0].value.id, node.args[0].attr)
+        for node in ast.walk(ast.parse((ROOT / "apps/api/jarvis/context/routes/__init__.py").read_text()))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "include_router" and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "owner_router" and node.args and isinstance(node.args[0], ast.Attribute)
+        and isinstance(node.args[0].value, ast.Name)
+    }
+    mounted.update({m: "/api/v1/external" for m in context_routes})
+    modules.update(context_routes)
     for module, (file, tree) in modules.items():
         prefixes = {"app": ""}
         # Module-level string constants, so @router.websocket(PATH) is seen like a literal path.
@@ -213,7 +236,8 @@ def routes():
                 )
                 for target in node.targets:
                     if isinstance(target, ast.Name):
-                        prefixes[target.id] = mounted.get(module, "") + prefix
+                        base = "/api/v1/context" if (module, target.id) in owner_routers else mounted.get(module, "")
+                        prefixes[target.id] = base + prefix
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue

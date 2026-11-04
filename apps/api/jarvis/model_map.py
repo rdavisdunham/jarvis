@@ -102,6 +102,12 @@ JOBS = {
         Job("note_tasks", "note_tasks", "notes.suggest_tasks", "extraction", "Tasks extracted from notes"),
         Job("swarm_plan", "agent_control", "swarm.ask", "extraction",
             "Swarm plans: which of a project's tasks run in parallel"),
+        Job("context_extraction", "context_extraction", "context.native.extract", "extraction",
+            "Meeting context extraction"),
+        Job("context_reconciliation", "context_reconciliation", "context.native.reconcile", "extraction",
+            "Meeting context contradiction checks"),
+        Job("context_synthesis", "context_synthesis", "context.native.synthesize", "extraction",
+            "Meeting briefs"),
         Job("eri_chat", "assistant", "conversation", "agent", "Dani chat turns (tool selection)"),
     )
 }

@@ -76,9 +76,13 @@ class ProjectUpdate(ProjectCreate):
     archived: bool = False
 
 
+ALLOW_DUPLICATE = "Keep this name although another active actor has it; name lookups then need an actor ID."
+
+
 class ActorCreate(Args):
     name: str = Field(min_length=1, max_length=100)
     kind: Literal["person", "agent"] = "person"
+    allow_duplicate: bool = Field(default=False, description=ALLOW_DUPLICATE)
 
 
 class ActorUpdate(Args):
@@ -86,6 +90,7 @@ class ActorUpdate(Args):
     expected_revision: int = Field(ge=1)
     name: str | None = Field(default=None, min_length=1, max_length=100)
     archived: bool | None = None
+    allow_duplicate: bool = Field(default=False, description=ALLOW_DUPLICATE)
 
 
 PRODUCTIVITY_COMMANDS = {

@@ -1,0 +1,541 @@
+{
+  "history": "gamma",
+  "label_version": 1,
+  "owner_actor": "gamma-robin",
+  "note": "Synthetic expected outcomes. Every label stays verified=false until a human adjudicates it; only verified labels count toward release scoring.",
+  "speakers": {
+    "gamma-02": {
+      "Speaker 1": "gamma-robin",
+      "Speaker 2": "gamma-jordan-ashgrove",
+      "Speaker 3": "gamma-nadia"
+    },
+    "gamma-04": {
+      "Speaker 1": "gamma-robin",
+      "Speaker 2": "gamma-wes",
+      "Speaker 3": "gamma-jordan-quillmark"
+    }
+  },
+  "assertions": [
+    {
+      "id": "g01-fact-price",
+      "kind": "fact",
+      "statement": "Quillmark's list price is 64 dollars per seat per month.",
+      "meeting": "gamma-01",
+      "evidence": [
+        {
+          "meeting": "gamma-01",
+          "quote": "List price is 64 dollars per seat per month"
+        }
+      ],
+      "numbers": [
+        {
+          "value": 64,
+          "unit": "USD per seat per month"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g01-fact-seats",
+      "kind": "fact",
+      "statement": "Ashgrove needs 120 seats.",
+      "meeting": "gamma-01",
+      "evidence": [
+        {
+          "meeting": "gamma-01",
+          "quote": "you mentioned 120 seats"
+        }
+      ],
+      "numbers": [
+        {
+          "value": 120,
+          "unit": "seats"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-questionnaire",
+      "kind": "commitment",
+      "statement": "Wes sends the security questionnaire answers.",
+      "meeting": "gamma-01",
+      "evidence": [
+        {
+          "meeting": "gamma-01",
+          "quote": "I'll send the security questionnaire answers in two weeks."
+        }
+      ],
+      "responsible": [
+        "gamma-wes"
+      ],
+      "due": "2026-07-21",
+      "due_expression": "in two weeks",
+      "fulfilled": {
+        "meeting": "gamma-03",
+        "quote": "I sent the questionnaire answers on Friday.",
+        "at": "2026-07-17"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g01-fact-term",
+      "kind": "fact",
+      "statement": "Jordan Ellis (Quillmark) pushed for a three-year term.",
+      "meeting": "gamma-01",
+      "evidence": [
+        {
+          "meeting": "gamma-01",
+          "quote": "Jordan pushed hard on a three-year term."
+        }
+      ],
+      "segment_kind": "private_note",
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-finance-check",
+      "kind": "commitment",
+      "statement": "Robin checks with finance whether a three-year term is acceptable.",
+      "meeting": "gamma-01",
+      "evidence": [
+        {
+          "meeting": "gamma-01",
+          "quote": "I'll check with finance whether a three-year term is acceptable."
+        }
+      ],
+      "responsible": [
+        "gamma-robin"
+      ],
+      "due": null,
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "gamma-02",
+        "quote": "I asked finance to join so we can settle the term question.",
+        "at": "2026-07-14"
+      },
+      "segment_kind": "private_note",
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g02-rat-one-year",
+      "kind": "rationale",
+      "statement": "A three-year term would lock Ashgrove in while volumes are uncertain.",
+      "meeting": "gamma-02",
+      "evidence": [
+        {
+          "meeting": "gamma-02",
+          "quote": "A three-year term locks us in while our volumes are still uncertain."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g02-dec-one-year",
+      "kind": "decision",
+      "statement": "Accept only a one-year term with a renewal cap.",
+      "meeting": "gamma-02",
+      "evidence": [
+        {
+          "meeting": "gamma-02",
+          "quote": "Decision: we only accept a one-year term with a renewal cap."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-cost-model",
+      "kind": "commitment",
+      "statement": "Jordan Ellis (Ashgrove finance) models the three-year cost.",
+      "meeting": "gamma-02",
+      "evidence": [
+        {
+          "meeting": "gamma-02",
+          "quote": "I'll model the three-year cost by 2026-07-20 anyway, so we have the numbers."
+        }
+      ],
+      "responsible": [
+        "gamma-jordan-ashgrove"
+      ],
+      "due": "2026-07-20",
+      "due_expression": null,
+      "fulfilled": null,
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g03-risk-backups",
+      "kind": "risk",
+      "statement": "Quillmark stores backups in a single region.",
+      "meeting": "gamma-03",
+      "evidence": [
+        {
+          "meeting": "gamma-03",
+          "quote": "Quillmark stores backups in a single region"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-legal-review",
+      "kind": "commitment",
+      "statement": "Nadia gets legal review of the data processing addendum.",
+      "meeting": "gamma-03",
+      "evidence": [
+        {
+          "meeting": "gamma-03",
+          "quote": "Action: Nadia to get legal review of the data processing addendum by 2026-07-31."
+        }
+      ],
+      "responsible": [
+        "gamma-nadia"
+      ],
+      "due": "2026-07-31",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "gamma-05",
+        "quote": "Legal finished the addendum review",
+        "at": "2026-08-11"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g04-fact-offer",
+      "kind": "fact",
+      "statement": "Quillmark offered 52 dollars per seat on a two-year term.",
+      "meeting": "gamma-04",
+      "evidence": [
+        {
+          "meeting": "gamma-04",
+          "quote": "We can do 52 dollars per seat on a two-year term."
+        }
+      ],
+      "numbers": [
+        {
+          "value": 52,
+          "unit": "USD per seat per month"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g04-dec-two-year",
+      "kind": "decision",
+      "statement": "Accept a two-year term at 52 dollars per seat.",
+      "meeting": "gamma-04",
+      "evidence": [
+        {
+          "meeting": "gamma-04",
+          "quote": "Decision: we accept a two-year term at 52 dollars per seat"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g04-rat-two-year",
+      "kind": "rationale",
+      "statement": "The price drop outweighs the lock-in of a two-year term.",
+      "meeting": "gamma-04",
+      "evidence": [
+        {
+          "meeting": "gamma-04",
+          "quote": "because the price drop outweighs the lock-in"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-order-form",
+      "kind": "commitment",
+      "statement": "Wes drafts the revised order form.",
+      "meeting": "gamma-04",
+      "evidence": [
+        {
+          "meeting": "gamma-04",
+          "quote": "I'll draft the revised order form by 2026-08-07."
+        }
+      ],
+      "responsible": [
+        "gamma-wes"
+      ],
+      "due": "2026-08-07",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "gamma-07",
+        "quote": "The revised order form went out on the 6th.",
+        "at": "2026-08-06"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g05-fact-clauses",
+      "kind": "fact",
+      "statement": "Legal found two clauses in the addendum that need changes.",
+      "meeting": "gamma-05",
+      "evidence": [
+        {
+          "meeting": "gamma-05",
+          "quote": "two clauses need changes"
+        }
+      ],
+      "numbers": [
+        {
+          "value": 2,
+          "unit": "clauses"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-redlines",
+      "kind": "commitment",
+      "statement": "Nadia sends Ashgrove's redlines to Quillmark.",
+      "meeting": "gamma-05",
+      "evidence": [
+        {
+          "meeting": "gamma-05",
+          "quote": "Action: Nadia to send our redlines to Quillmark by 2026-08-14."
+        }
+      ],
+      "responsible": [
+        "gamma-nadia"
+      ],
+      "due": "2026-08-14",
+      "due_expression": null,
+      "fulfilled": {
+        "meeting": "gamma-07",
+        "quote": "Nadia sent our redlines on the 13th and Quillmark accepted them.",
+        "at": "2026-08-13"
+      },
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "g05-q-protection",
+      "kind": "open_question",
+      "statement": "Does the two-year term include price protection on renewal?",
+      "meeting": "gamma-05",
+      "evidence": [
+        {
+          "meeting": "gamma-05",
+          "quote": "Does the two-year term include price protection on renewal?"
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-reference-call",
+      "kind": "commitment",
+      "statement": "Robin books a reference call with another Quillmark customer.",
+      "meeting": "gamma-06",
+      "evidence": [
+        {
+          "meeting": "gamma-06",
+          "quote": "Action: Robin to book a reference call with another Quillmark customer by 2026-08-21."
+        }
+      ],
+      "responsible": [
+        "gamma-robin"
+      ],
+      "due": "2026-08-21",
+      "due_expression": null,
+      "fulfilled": null,
+      "from_deleted_source": true,
+      "verified": false
+    },
+    {
+      "id": "g06-fact-dashboards",
+      "kind": "fact",
+      "statement": "The reporting module supports 30 custom dashboards.",
+      "meeting": "gamma-06",
+      "evidence": [
+        {
+          "meeting": "gamma-06",
+          "quote": "The reporting module supports 30 custom dashboards."
+        }
+      ],
+      "from_deleted_source": true,
+      "numbers": [
+        {
+          "value": 30,
+          "unit": "dashboards"
+        }
+      ],
+      "verified": false
+    },
+    {
+      "id": "g07-dec-sign",
+      "kind": "decision",
+      "statement": "Ashgrove signs the two-year order form on 2026-08-31.",
+      "meeting": "gamma-07",
+      "evidence": [
+        {
+          "meeting": "gamma-07",
+          "quote": "Decision: Ashgrove signs the two-year order form on 2026-08-31."
+        }
+      ],
+      "from_deleted_source": false,
+      "verified": false
+    },
+    {
+      "id": "c-countersign",
+      "kind": "commitment",
+      "statement": "Jordan Ellis (Quillmark) sends the countersigned contract.",
+      "meeting": "gamma-07",
+      "evidence": [
+        {
+          "meeting": "gamma-07",
+          "quote": "I'll send the countersigned contract within a day of receiving yours."
+        }
+      ],
+      "responsible": [
+        "gamma-jordan-quillmark"
+      ],
+      "due": null,
+      "due_expression": null,
+      "fulfilled": null,
+      "note": "due depends on an unknown event, so it stays unknown",
+      "from_deleted_source": false,
+      "verified": false
+    }
+  ],
+  "changes": [
+    {
+      "id": "x-gamma-term",
+      "from": "g02-dec-one-year",
+      "to": "g04-dec-two-year",
+      "key": "decision",
+      "effective_at": "2026-08-04T11:00:00-07:00",
+      "verified": false
+    }
+  ],
+  "must_not": [
+    {
+      "id": "n-gamma-fee",
+      "kind": "commitment",
+      "meeting": "gamma-01",
+      "quote": "If you sign before the end of the quarter, we could waive the onboarding fee.",
+      "reason": "hypothetical",
+      "verified": false
+    },
+    {
+      "id": "n-gamma-sign",
+      "kind": "commitment",
+      "meeting": "gamma-02",
+      "quote": "I won't sign anything until legal has reviewed the data processing addendum.",
+      "reason": "negated",
+      "verified": false
+    },
+    {
+      "id": "n-gamma-support",
+      "kind": "commitment",
+      "meeting": "gamma-04",
+      "quote": "I'll throw in premium support if procurement closes this week.",
+      "reason": "hypothetical",
+      "verified": false
+    },
+    {
+      "id": "n-gamma-addon",
+      "kind": "commitment",
+      "meeting": "gamma-07",
+      "quote": "I'm not committing to the analytics add-on this year.",
+      "reason": "negated",
+      "verified": false
+    }
+  ],
+  "open_loops": [
+    {
+      "id": "l-gamma-jul16",
+      "as_of": "2026-07-16T12:00:00-07:00",
+      "expected": [
+        "c-questionnaire",
+        "c-cost-model"
+      ],
+      "verified": false
+    },
+    {
+      "id": "l-gamma-aug05",
+      "as_of": "2026-08-05T12:00:00-07:00",
+      "expected": [
+        "c-cost-model",
+        "c-legal-review",
+        "c-order-form"
+      ],
+      "verified": false
+    },
+    {
+      "id": "l-gamma-aug26",
+      "as_of": "2026-08-26T12:00:00-07:00",
+      "expected": [
+        "c-cost-model",
+        "c-countersign"
+      ],
+      "verified": false
+    }
+  ],
+  "as_of": [
+    {
+      "id": "q-gamma-term-jul",
+      "question": "What contract term do we accept?",
+      "valid_at": "2026-07-25T12:00:00-07:00",
+      "kinds": [
+        "decision"
+      ],
+      "family": [
+        "g02-dec-one-year",
+        "g04-dec-two-year"
+      ],
+      "expected": "g02-dec-one-year",
+      "verified": false
+    },
+    {
+      "id": "q-gamma-term-aug",
+      "question": "What contract term do we accept?",
+      "valid_at": "2026-08-12T12:00:00-07:00",
+      "kinds": [
+        "decision"
+      ],
+      "family": [
+        "g02-dec-one-year",
+        "g04-dec-two-year"
+      ],
+      "expected": "g04-dec-two-year",
+      "verified": false
+    }
+  ],
+  "scenarios": {
+    "decision_change": "x-gamma-term",
+    "fulfilled_commitment": "c-questionnaire",
+    "shared_display_name": [
+      "gamma-jordan-quillmark",
+      "gamma-jordan-ashgrove"
+    ],
+    "reused_speaker_label": {
+      "label": "Speaker 2",
+      "meetings": [
+        "gamma-02",
+        "gamma-04"
+      ]
+    },
+    "late_arrival": "gamma-04",
+    "deleted_source": "gamma-06",
+    "private_note": "c-finance-check",
+    "number": "g01-fact-price",
+    "relative_date": "c-questionnaire",
+    "hypothetical": "n-gamma-fee",
+    "negated": "n-gamma-sign"
+  }
+}

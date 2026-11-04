@@ -1,0 +1,58 @@
+{
+  "envelope_version": 1,
+  "connector": "api",
+  "external_id": "beta-08",
+  "title": "Post-release review",
+  "occurred_at": "2026-10-27T10:00:00+00:00",
+  "ended_at": "2026-10-27T10:30:00+00:00",
+  "timezone": "Europe/London",
+  "participants": [
+    {
+      "name": "Robin Hale",
+      "email": "robin.hale@fernhill.example",
+      "role": "organizer",
+      "speaker_label": "Robin Hale"
+    },
+    {
+      "name": "Sam Patel",
+      "email": "sam.patel@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Sam Patel"
+    },
+    {
+      "name": "Mei Lin",
+      "email": "mei.lin@fernhill.example",
+      "role": "attendee",
+      "speaker_label": "Mei Lin"
+    }
+  ],
+  "segments": [
+    {
+      "seq": 0,
+      "speaker_label": "Sam Patel",
+      "text": "The 4.0 release went out on 2026-10-21 with 99.3 percent crash-free sessions.",
+      "start_ms": 0,
+      "end_ms": 6000,
+      "attribution": "other"
+    },
+    {
+      "seq": 1,
+      "speaker_label": "Robin Hale",
+      "text": "I sent the release announcement to support last Tuesday.",
+      "start_ms": 7500,
+      "end_ms": 11500,
+      "attribution": "owner"
+    },
+    {
+      "seq": 2,
+      "speaker_label": "Mei Lin",
+      "text": "I will not take on the tablet layout until the new year.",
+      "start_ms": 13000,
+      "end_ms": 17000,
+      "attribution": "other"
+    }
+  ],
+  "external_revision": "1",
+  "upstream_owner_email": "robin.hale@fernhill.example",
+  "upstream_owner_name": "Robin Hale"
+}

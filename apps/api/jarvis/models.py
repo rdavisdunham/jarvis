@@ -99,7 +99,8 @@ class Goal(Base):
 
 class Actor(Base):
     __tablename__ = "actors"
-    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_actor_owner_name"),)
+    # Display names may repeat (two people called Alex); resolve by ID, or by name only when unique.
+    __table_args__ = (Index("ix_actors_owner_name", "owner_id", "name"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     name: Mapped[str] = mapped_column(String(100))
@@ -721,6 +722,9 @@ from .search_models import SearchDocument, SearchIndexState, SearchPreference, S
 from .note_list_models import NoteList, NoteOrganization, NoteEntrySource  # noqa: E402,F401
 
 from .session_models import AgentSession, AgentSessionRule, AgentHost, AgentCommand, AgentTurn, AgentQuestion, AgentParity  # noqa: E402,F401
+
+# Context platform tables (jarvis/context/models.py); the module's only registration point here.
+from .context import models as context_models  # noqa: E402,F401
 
 
 class GoogleEventAnnotation(Base):
