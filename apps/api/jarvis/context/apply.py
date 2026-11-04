@@ -1,9 +1,13 @@
 """Persisting engine results into the canonical context tables, under conditional writes (plan sections 5 and 9).
 
 Engines propose; this module decides what lands. Every apply runs in one transaction after `guard` has taken
-the owner's `context:{owner}` lock and verified that the source revision is still current, the owner's processing
-epoch is the one the run started under, processing is not paused and (for model results) no decision was recorded
-since the run read its inputs. A failed guard returns the reason; the caller marks the run `stale`.
+the owner's `context:{owner}` lock and the owner-state row lock (`routes.admin.lock_state`, the row pause and
+resume write) and verified that the owner's processing epoch is the one the run started under, processing is not
+paused, the source revision is still current and (for model results) no decision was recorded since the run read
+its inputs. A failed guard returns the reason; the caller marks the run `stale`.
+
+Every assertion created or whose head version moves, and every link written, emits `context.changed` (entity ID,
+revision) in the same transaction, for `views.changes`.
 
 - `apply_extraction` admits candidates through `temporal.create` (durable negatives retract a repeated Wrong
   interpretation at once) and `evidence.attach` (exact quotes only). A candidate the same source already produced,
@@ -11,6 +15,9 @@ since the run read its inputs. A failed guard returns the reason; the caller mar
   re-extracting a meeting never re-admits a superseded or retracted statement. Replaying a run adds nothing.
 - `apply_speakers` writes `native.link.resolve_speakers` results onto segments; `apply_links` writes mention links
   for assertions. Neither overwrites a human decision (confirmed or rejected rows, or rows with a decision).
+- `retire_old_revisions`, once a newer revision of a meeting is completely extracted: what only the earlier
+  revisions said loses that support and is retracted unless another source (or a human Changed) still supports
+  it (`evidence.supersede_revisions`).
 - `replace_chunks` swaps receipt's provisional chunks for the extraction chunker's.
 """
 
@@ -19,7 +26,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import delete, exists, select
 
-from ..domain import advisory
+from ..domain import advisory, emit
 from ..models import now
 from . import decisions, evidence, temporal
 from .models import (
@@ -36,6 +43,7 @@ from .models import (
 from .schema import Chunk, ExtractionResult, LinkProposal, Segment
 
 DECIDED = ("confirmed", "rejected")
+CHANGED = "context.changed"
 
 
 def lock(db, owner: str) -> None:
@@ -50,13 +58,15 @@ def owner_state(db, owner: str) -> tuple[int, bool]:
 
 def guard(db, owner: str, run: ContextRun, *, source_id: str | None = None, revision_id: str | None = None,
           watermark: bool = False) -> str | None:
-    """Take the owner lock and check the run may still apply. Returns None, or why it is stale: `paused`, `epoch`,
+    """Take the owner locks and check the run may still apply. Returns None, or why it is stale: `paused`, `epoch`,
     `deleted` (source gone), `revision` (a newer revision is current) or `decisions` (the watermark moved)."""
+    from .routes.admin import lock_state
+
     lock(db, owner)
-    epoch, paused = owner_state(db, owner)
-    if paused:
+    state = lock_state(db, owner)  # SELECT ... FOR UPDATE: a pause cannot commit between this check and the write
+    if state.paused:
         return "paused"
-    if epoch != run.epoch:
+    if state.epoch != run.epoch:
         return "epoch"
     if source_id:
         source = db.get(ContextSource, source_id, populate_existing=True)
@@ -71,6 +81,29 @@ def guard(db, owner: str, run: ContextRun, *, source_id: str | None = None, revi
     if watermark and decisions.watermark(db, owner) != run.decision_watermark:
         return "decisions"
     return None
+
+
+# ---------------------------------------------------------------- change events
+
+
+def versions(db, owner: str, ids: Iterable[str | None]) -> dict[str, int]:
+    """Head versions of these assertions."""
+    ids = [i for i in dict.fromkeys(ids) if i]
+    if not ids:
+        return {}
+    a = ContextAssertion
+    return dict(db.execute(select(a.id, a.current_version).where(a.owner_id == owner, a.id.in_(ids))).all())
+
+
+def emit_assertions(db, owner: str, ids: Iterable[str | None], before: dict[str, int] | None = None) -> int:
+    """Emit `context.changed` (assertion ID, head version) for each assertion that is new or whose head version
+    differs from `before`. Returns how many were emitted."""
+    db.flush()
+    before = before or {}
+    changed = [(i, v) for i, v in sorted(versions(db, owner, ids).items()) if before.get(i) != v]
+    for assertion_id, version in changed:
+        emit(db, owner, CHANGED, assertion_id, version)
+    return len(changed)
 
 
 # ---------------------------------------------------------------- segments and chunks
@@ -192,7 +225,21 @@ def apply_extraction(db, owner: str, run: ContextRun, source: ContextSource, rev
         out.assertion_ids.append(row.id)
     out.attached = list(dict.fromkeys(out.attached))
     temporal.stale_briefs(db, owner, out.attached)
+    emit_assertions(db, owner, out.admitted)  # attaching evidence leaves the head version as it is
     return out
+
+
+def retire_old_revisions(db, owner: str, source_id: str, revision_id: str) -> dict:
+    """See `evidence.supersede_revisions`; emits `context.changed` for each assertion it retracts or rechains."""
+    e = ContextEvidence
+    ids = list(db.scalars(select(e.assertion_id).where(e.owner_id == owner, e.source_id == source_id,
+                                                       e.revision_id != revision_id).distinct()))
+    if not ids:
+        return {"retracted": [], "kept": [], "revalidate": [], "rechained": []}
+    before = versions(db, owner, ids)
+    result = evidence.supersede_revisions(db, owner, source_id, revision_id)
+    emit_assertions(db, owner, [*ids, *result["rechained"]], before)
+    return result
 
 
 # ---------------------------------------------------------------- entity links
@@ -209,6 +256,7 @@ def apply_links(db, owner: str, links: Iterable[RoleLink], run_id: str) -> dict:
     """Upsert one link per (assertion, role, mention). Rows a human decided stay as they are."""
     counts = {"created": 0, "updated": 0, "kept": 0}
     stamp = now()
+    written: list[ContextEntityLink] = []
     for item in links:
         p = item.proposal
         mention = p.mention[:500]
@@ -221,9 +269,11 @@ def apply_links(db, owner: str, links: Iterable[RoleLink], run_id: str) -> dict:
                   "target_id": p.candidate.entity_id, "status": p.status, "score": p.score, "margin": p.margin,
                   "evidence": [e.model_dump(mode="json") for e in p.evidence]}
         if row is None:
-            db.add(ContextEntityLink(owner_id=owner, assertion_id=item.assertion_id, subject_type="assertion",
-                                     subject_id=item.assertion_id, mention=mention, run_id=run_id, created_at=stamp,
-                                     updated_at=stamp, **values))
+            row = ContextEntityLink(owner_id=owner, assertion_id=item.assertion_id, subject_type="assertion",
+                                    subject_id=item.assertion_id, mention=mention, run_id=run_id, created_at=stamp,
+                                    updated_at=stamp, **values)
+            db.add(row)
+            written.append(row)
             counts["created"] += 1
         elif row.decision_id or row.status in DECIDED or all(getattr(row, k) == v for k, v in values.items()):
             counts["kept"] += 1
@@ -231,6 +281,9 @@ def apply_links(db, owner: str, links: Iterable[RoleLink], run_id: str) -> dict:
             for key, value in values.items():
                 setattr(row, key, value)
             row.run_id, row.revision, row.updated_at = run_id, row.revision + 1, stamp
+            written.append(row)
             counts["updated"] += 1
     db.flush()
+    for row in dict.fromkeys(written):
+        emit(db, owner, CHANGED, row.id, row.revision)
     return counts

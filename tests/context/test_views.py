@@ -106,8 +106,9 @@ def test_meeting_prep_finds_the_next_event_with_a_person_and_resolves_attendees(
         made = pilot(w)
         identity.add_identity(db, OWNER, w.priya, "email", "priya@example.com")
         cal = calendar(db)
+        start = soon(3)  # computed once: a second boundary between two calls would make the test flaky
         event(db, cal, "lunch", "Lunch", soon(1))  # no guests
-        nxt = event(db, cal, "sync", "Pilot sync", soon(3) - timedelta(days=7), recurrence=["RRULE:FREQ=DAILY"],
+        nxt = event(db, cal, "sync", "Pilot sync", start - timedelta(days=7), recurrence=["RRULE:FREQ=DAILY"],
                     guests=[("me", "davin@example.com"), ("Priya", "priya@example.com"),
                             ("Dana", "dana@example.com")])
         source = db.scalar(select(ContextSource).join(ContextEvidence, ContextEvidence.source_id == ContextSource.id)
@@ -119,7 +120,7 @@ def test_meeting_prep_finds_the_next_event_with_a_person_and_resolves_attendees(
 
         prep = views.meeting_prep(db, OWNER, entity=("actor", w.priya))
         assert prep["event"]["event_id"] == nxt.id and prep["event"]["title"] == "Pilot sync"
-        assert prep["event"]["start"] == soon(3).isoformat()
+        assert prep["event"]["start"] == start.isoformat()
         attendees = {a["name"]: (a["actor_id"], a["status"]) for a in prep["event"]["attendees"]}
         assert attendees == {"me": (w.me, "exact"), "Priya": (w.priya, "exact"), "Dana": (None, "unresolved")}
         assert [i["assertion_id"] for i in prep["open_loops"]] == [made["budget"].id]
