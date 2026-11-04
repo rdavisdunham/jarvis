@@ -219,8 +219,6 @@ def test_dropped_action_is_superseded():
     assert marco["disposition"] == "superseded" and marco["revision"] == 2
 
 
-@pytest.mark.xfail(strict=True, reason="B6: a statement that returns in a later revision gets fresh support on its "
-                   "revision-retracted assertion but the assertion stays retracted, so there is nothing to propose")
 def test_dropped_action_comes_back_as_a_new_revision():
     got = process(meeting())
     process(meeting(LINES[:2], rev="r2"))
