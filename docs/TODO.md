@@ -698,6 +698,39 @@ Verification entry points: [CI](CI.md), [on-demand eval guide](../evals/app/READ
 [findings and Sol evidence](../evals/app/FINDINGS.md), [latency checks](ERI_LATENCY_PLAN.md#8-verification-and-implementation-order).
 A checked implementation task never replaces connected-provider or physical-device evidence.
 
+## Meeting context platform — built behind `context_enabled`
+
+Built 2026-11-04 by a staged agent swarm on `feat/context-platform` (stages A-F; spec: `plan_final.md`
+revision 3, outside the repository). Eridani ingests the owner's completed meeting transcripts, keeps
+source-backed, temporally versioned context about people and projects, prepares task proposals for review and
+serves cited context to agents over MCP. Off by default; personal workspace only.
+[Architecture and operations](CONTEXT_PLATFORM.md) · [pilot switch-on](CONTEXT_PILOT_RELEASE_NOTE.md) ·
+[agent contract](EXTERNAL_AGENTS.md#meeting-context).
+
+- [x] Foundations: contracts and engine protocols with deterministic doubles; migrations 0047 (actor names may
+  repeat) and 0048-0050 (`context_*` tables with pgvector `vector(512)`); flags, queue, cost labels, scopes;
+  canonical export/import equal to the fixture format; three synthetic fixture histories and the runner.
+- [x] Sources and interpretation: connector-agnostic `SourceEnvelope` ingestion (file import, `PUT
+  /api/v1/external/sources/...`, `scripts/bridge_submit.py`, optional Granola REST poller, Zoom stub); chunked
+  native extraction with deterministic validation; identity and entity linking; temporal model, reconciliation,
+  Wrong/Changed/undo decisions; evidence survival and deletion propagation; the `context_*` job pipeline.
+- [x] Retrieval and agent contract: RRF over tsvector and exact pgvector legs with the scope inside the query;
+  eight `context_*` MCP tools and REST twins; briefs, open loops, meeting prep, changes feed; corpus benchmark
+  (p95 530 ms at plan scale, HNSW not needed).
+- [x] Review and publication: persistent proposals with own-action preselection, revision-bound human approval,
+  idempotent publication to Eridani tasks and Linear; Meetings view, Sources settings, person pages.
+- [x] Delivery and maintenance: meeting-ready and consolidated backfill notices, 17:00 owner-local digest,
+  weekly lint, pause/resume/epoch and rollback drill, export CLI, account export includes context.
+- [x] Hardening and docs: shadow comparison and gates harness, performance pass, `meeting_context` eval
+  feature (31 scenarios, unbound), this documentation.
+- [ ] Take an encrypted database export, then switch the pilot on for the owner (release note steps 0-3).
+- [ ] Owner adjudication: verify labels on two real meeting series (6-10 hours) so the plan section 11 quality
+  gates can be scored with sample counts; run the shadow comparison on them.
+- [ ] End-to-end meeting-to-task run on the live feed; record cost per meeting and per query.
+- [ ] PR the integration branch to `main` with `context_enabled` still false (merging deploys migrations
+  0047-0050; needs the owner's explicit go).
+- [ ] Bind `meeting_context` scenarios to `tests/context/` assertions in `evals/app/bindings.json`.
+
 ## Explicitly deferred, not forgotten
 
 - **Chat about it — guided task-space design.** Promoted into the
@@ -709,6 +742,19 @@ A checked implementation task never replaces connected-provider or physical-devi
   alerts remain deferred under the recorded owner decision. Revisit before broader
   multi-user/public release; preserve current recovery facilities and verification limits.
   [Prepared backup guide](R2_BACKUPS.md).
+- Meeting context, deferred from the pilot (see [CONTEXT_PLATFORM.md §11](CONTEXT_PLATFORM.md#11-deliberately-not-built)):
+  Granola webhooks; shared folders, colleagues' notes and org-level knowledge with its own sharing model;
+  Windows/Mac recorder clients and the Zoom cloud-recording adapter; challenger engines and legacy memory
+  unification; HNSW for context embeddings (measured unnecessary at plan scale; revisit when the exact leg nears
+  the 2 s budget); scheduled encrypted backups for the pgvector database (Railway PITR is unavailable on that
+  image; `scripts/backup.py` is the first candidate); a UI for pause/resume and per-owner settings.
+  Follow-ups from the build: measure the false-rejection rate of the word-matching validation guards (for
+  example "don't" inside a commitment quote) on real transcripts; calibrate link thresholds (AUTO 0.85, MARGIN
+  0.15, FLOOR 0.5) on adjudicated meetings; verify Granola `updated_after` granularity with a live key (the scan
+  starts a day early meanwhile); add a semantic similarity floor once real embeddings exist; give the fixture
+  runner a database-backed mode and scoring for speakers, entity links and fulfilment; include a project's
+  unlinked planner tasks in briefs and match meeting-prep attendees beyond email and self; keep the entity-scoped
+  raw search under the gate at 4x corpus scale.
 - pgvector/index scaling after measured need; advanced memory/entity/alias
   reconciliation, linked-fact correction and retrieval/context feedback.
   Roadmap task `6f3b9693` (open): after daily-use recovery, device checks and the

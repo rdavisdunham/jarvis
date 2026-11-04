@@ -439,6 +439,22 @@ recorded charges.
 - Implementation: [budget.py](../apps/api/jarvis/budget.py), [voice.py](../apps/api/jarvis/voice.py).
 - Existing regression evidence: [test_budget_guard.py](../tests/test_budget_guard.py), [test_budget_controls.py](../tests/test_budget_controls.py), [test_budget_reconciliation.py](../tests/test_budget_reconciliation.py), [test_action_limits.py](../tests/test_action_limits.py).
 
+### 41. Meeting context
+
+Completed meeting transcripts (file import, the submission endpoint, the bridge script, or the optional Granola
+poller) become source-backed context: decisions, rationale, facts, risks, questions and commitments with exact
+quotes, linked to people and projects, with effective and recorded history. After each meeting the owner gets a
+review in Meetings with preselected own actions and publishes only approved tasks (Eridani or Linear); Wrong,
+Changed, Later and person-page identity corrections are human decisions. Agents read cited context over MCP and
+`/api/v1/external/context/*` with `context:*` scopes and can only suggest corrections. Off by default
+(`context_enabled`); personal workspace only. Architecture and operations: [CONTEXT_PLATFORM.md](CONTEXT_PLATFORM.md);
+switching on the pilot: [CONTEXT_PILOT_RELEASE_NOTE.md](CONTEXT_PILOT_RELEASE_NOTE.md).
+
+- Acceptance set: [31 cases](../evals/app/features/meeting_context.json) (none bound yet); engine quality,
+  retrieval benchmark and pilot gates in [evals/context](../evals/context/README.md).
+- Implementation: [context/](../apps/api/jarvis/context/) ([sources.py](../apps/api/jarvis/context/sources.py), [pipeline.py](../apps/api/jarvis/context/pipeline.py), [service.py](../apps/api/jarvis/context/service.py), [mcp.py](../apps/api/jarvis/context/mcp.py), [notices.py](../apps/api/jarvis/context/notices.py)), [web](../apps/web/src/context/).
+- Existing regression evidence: [tests/context/](../tests/context/) (one module per context module, including [test_end_to_end.py](../tests/context/test_end_to_end.py)).
+
 ## Bug reports (Report a bug)
 
 A round red bug button floats bottom-left on every signed-in page (shortcut Alt+Shift+B). It takes a
