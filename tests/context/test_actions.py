@@ -288,6 +288,38 @@ def test_action_titles_ground_identifiers_as_tokens_against_the_whole_meeting():
     assert ungrounded_tokens("Ship v2 by the 6th", "ship v2", [date(2026, 11, 6)]) == []
 
 
+@pytest.mark.parametrize("written", ["1-to-5", "1-5", "1/5", "1 \u2013 5", "1 to 5"])
+def test_joined_ranges_are_their_numbers(written):
+    said = "Honestly it should be a 1 to 5 scale, same as the others."
+    assert ungrounded_tokens(f"Move the rubric to a {written} scale", said, []) == []
+    assert ungrounded_tokens(f"Move the rubric to a {written} scale", "a 1 to 4 scale", []) == ["5"]
+
+
+def test_digit_tokens_ground_verbatim_or_by_their_number():
+    assert ungrounded_tokens("Pull 5k calls", "we need 5k calls", []) == []
+    assert ungrounded_tokens("Pull 5k calls", "about five thousand calls", []) == []
+    assert ungrounded_tokens("Pull 5k calls", "about fifty calls", []) == ["5k"]
+    assert ungrounded_tokens("Make it 3x faster", "three times faster, so 3x", []) == []
+
+
+def test_an_ungrounded_description_sentence_is_dropped_not_the_action():
+    from jarvis.context.native.prompts import ActionList
+
+    meeting = regression_meeting()
+    listed = ActionList.model_validate({"items": [
+        {**item([(6, REGRESSION[6][1])], "Update the C2 rubric", "Jules Park"),
+         "description": "Move C2 to the new scale. Backfill 300 old scores first."},
+        {**item([(6, REGRESSION[6][1])], "Update the C3 rubric", "Jules Park"),
+         "description": "Backfill 300 old scores."},
+        item([(6, REGRESSION[6][1])], "Update the C7 rubric", "Jules Park")]})
+    kept = [actions.check(i, meeting, lambda *_: True) for i in listed.items]
+    c2, c3, c7 = kept
+    assert (c2.description, c2.signals["description_ungrounded"]) == ("Move C2 to the new scale.", ["300"])
+    assert (c3.description, c3.signals["description_ungrounded"]) == ("", ["300"])
+    assert c7 == {"code": "ungrounded_number", "reason": "title: C7", "title": "Update the C7 rubric",
+                  "segments": [6]}  # only the title rejects
+
+
 def test_a_completed_pass_round_trips_for_resumable_callers(wire, monkeypatch):
     wire()
     request = meeting_request()

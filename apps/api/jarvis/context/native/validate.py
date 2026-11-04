@@ -272,7 +272,16 @@ def numbers(text: str) -> set[Decimal]:
     return {v.normalize() for v in found}
 
 
-IDENTIFIER = re.compile(r"(?<![\w'])[A-Za-z]+[-_]?\d+[A-Za-z\d]*(?![\w])")
+# An identifier is a letter prefix immediately followed by digits (C2, Q1, P0, v2): one token, never a number.
+IDENTIFIER = re.compile(r"(?<![\w'])[A-Za-z]+\d+[A-Za-z\d]*(?![\w])")
+# Digits immediately followed by letters (5k, 3x, 6th): grounded verbatim, else by the number they carry.
+DIGIT_TOKEN = re.compile(r"(?<![\w'.,])\d+[A-Za-z]+(?![\w])")
+JOINED = re.compile(r"(?<=\w)\s*[-/\u2010-\u2014]\s*(?=\w)")
+
+
+def split_joined(text: str) -> str:
+    """Hyphen-, dash- and slash-joined forms as separate words: "1-to-5", "1-5" and "1/5" are 1, to, 5."""
+    return JOINED.sub(" ", text.translate(QUOTE_CHARS))
 
 
 def strip_identifiers(statement: str, quotes: str) -> str:
@@ -283,10 +292,12 @@ def strip_identifiers(statement: str, quotes: str) -> str:
 
 
 def ungrounded_tokens(statement: str, text: str, derived: Sequence[date | datetime]) -> list[str]:
-    """For action items, grounded against the whole meeting: alphanumeric identifiers (C2, Q1, P0, v2) are whole
-    tokens that must occur in `text`, never bare numbers; every other number must occur in `text` outside its
-    identifiers (or be part of a derived date). Returns what is missing."""
-    folded = text.translate(QUOTE_CHARS).casefold()
+    """For action items, grounded against the whole meeting: identifiers (C2, Q1, P0, v2) are whole tokens that
+    must occur in `text`, never bare numbers; joined forms ("1-to-5", "1-5", "1/5") are their component words;
+    digit tokens (5k, 3x) occur verbatim or carry a number `text` has; every other number must occur in `text`
+    outside its identifiers (or be part of a derived date). Returns what is missing."""
+    statement, text = split_joined(statement), split_joined(text)
+    folded = text.casefold()
     missing = sorted({m.group() for m in IDENTIFIER.finditer(statement)
                       if not _word_in(m.group().casefold(), folded)}, key=str.casefold)
     allowed = numbers(IDENTIFIER.sub(" ", text))
@@ -294,7 +305,14 @@ def ungrounded_tokens(statement: str, text: str, derived: Sequence[date | dateti
         allowed |= {Decimal(value.year), Decimal(value.month), Decimal(value.day)}
         if isinstance(value, datetime):
             allowed |= {Decimal(value.hour), Decimal(value.minute), Decimal(value.hour % 12 or 12)}
-    return missing + [format(n, "f") for n in sorted(numbers(IDENTIFIER.sub(" ", statement)) - allowed)]
+    rest = IDENTIFIER.sub(" ", statement)
+    for m in DIGIT_TOKEN.finditer(rest):  # "5k": verbatim, or any number it carries ("5,000", "five thousand")
+        if _word_in(m.group().casefold(), folded) or numbers(m.group()) & allowed:
+            rest = rest.replace(m.group(), " ", 1)
+        else:
+            missing.append(m.group())
+            rest = rest.replace(m.group(), " ", 1)
+    return missing + [format(n, "f") for n in sorted(numbers(rest) - allowed)]
 
 
 def ungrounded_numbers(statement: str, quotes: str, derived: Sequence[date | datetime]) -> set[Decimal]:

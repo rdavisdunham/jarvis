@@ -12,8 +12,9 @@ Deterministic checks per item (`check`):
   quotes or the private notes, or, for implied items, is someone in the meeting (`attribution_mismatch`
   otherwise). Owners the lines cannot show stay unassigned instead: "Unknown speaker", a guess on lines without
   a speaker, and items cited only from shorthand notes (an explicit to-do note is the recorder's);
-- numbers: every number and identifier in the title and description occurs somewhere in the meeting (lines and
-  private notes); an identifier like `C2` is one token, never the number 2 (`ungrounded_number`);
+- numbers: every number and identifier in the title occurs somewhere in the meeting (lines and private notes);
+  an identifier like `C2` is one token, never the number 2, and "1-to-5" is 1 and 5 (`ungrounded_number`). A
+  description sentence with an ungrounded number is dropped (signal `description_ungrounded`), never the item;
 - due: resolved as in the chunked passes; an expression not in the quotes or a wrong derivation drops the due
   date (recorded), never the item;
 - modality: hypothetical cues or explicit declines in the owner's quotes, with no clean quote beside them, reject
@@ -418,19 +419,26 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
         due = bound
     derived = [due.at.astimezone(meeting.ctx.zone)] if due else []
     everything = " ".join(s.text for s in meeting.request.segments)  # transcript and private notes
-    description = " ".join(item.description.split())[:5000]
-    for field_name, text in (("title", title), ("description", description)):
-        if missing := ungrounded_tokens(text, everything, derived):
-            return rejection("ungrounded_number", f"{field_name}: " + ", ".join(missing), title, seqs)
+    if missing := ungrounded_tokens(title, everything, derived):
+        return rejection("ungrounded_number", "title: " + ", ".join(missing), title, seqs)
+    # The description never rejects the item: sentences with numbers found nowhere in the meeting are dropped.
+    description, unfounded = [], []
+    for sentence in re.split(r"(?<=[.!?])\s+", " ".join(item.description.split())[:5000]):
+        if missing := ungrounded_tokens(sentence, everything, derived):
+            unfounded += missing
+        elif sentence:
+            description.append(sentence)
     if normalized(title) in meeting.ctx.blocked:
         return rejection("prior_decision", "dismissed or marked wrong before", title, seqs)
 
     basis, signals = _basis(item, owner_quotes, evidence, meeting) if owner else ("implied_by_discussion", {})
     signals.update(unassigned)
+    if unfounded:
+        signals["description_ungrounded"] = list(dict.fromkeys(unfounded))
     if dropped:
         signals["dropped_quotes"] = dropped
     responsible = [r for r in (resolve(owner, meeting),) if r]
-    draft = ActionDraft(kind=item.kind, title=title, description=description, owner=owner, basis=basis,
+    draft = ActionDraft(kind=item.kind, title=title, description=" ".join(description), owner=owner, basis=basis,
                         model_basis=item.owner_basis, recipient=(item.recipient or "").strip()[:300] or None,
                         evidence=evidence, responsible=responsible, due=due,
                         confidence=max(0.0, min(1.0, item.confidence)), derivations=derivations, signals=signals)
