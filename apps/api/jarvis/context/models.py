@@ -10,6 +10,7 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Computed,
     DateTime,
@@ -69,7 +70,7 @@ class ContextSource(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     connection_id: Mapped[str | None] = mapped_column(ForeignKey("context_connections.id"), index=True)
     connector: Mapped[str] = mapped_column(String(20))
-    external_id: Mapped[str] = mapped_column(String(300))
+    external_id: Mapped[str] = mapped_column(String(500))
     kind: Mapped[str] = mapped_column(String(30), default="meeting", server_default="meeting")
     title: Mapped[str] = mapped_column(String(500), default="", server_default="")
     upstream_owner_email: Mapped[str | None] = mapped_column(String(320))
@@ -115,6 +116,7 @@ class ContextSegment(Base):
     seq: Mapped[int] = mapped_column(Integer)
     kind: Mapped[str] = mapped_column(String(20), default="transcript", server_default="transcript")
     speaker_label: Mapped[str | None] = mapped_column(String(200))
+    speaker_attribution: Mapped[str | None] = mapped_column(String(10))  # owner | other, when the connector knows
     speaker_actor_id: Mapped[str | None] = mapped_column(String(36))
     speaker_link_status: Mapped[str] = mapped_column(String(20), default="unresolved", server_default="unresolved")
     speaker_provenance: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
@@ -159,13 +161,13 @@ class ContextRun(Base):
     job_id: Mapped[str | None] = mapped_column(String(36))
     source_id: Mapped[str | None] = mapped_column(ForeignKey("context_sources.id"), index=True)
     revision_id: Mapped[str | None] = mapped_column(ForeignKey("context_source_revisions.id"))
-    entity_type: Mapped[str | None] = mapped_column(String(40))
+    entity_type: Mapped[str | None] = mapped_column(String(50))
     entity_id: Mapped[str | None] = mapped_column(String(100))
     engine: Mapped[str] = mapped_column(String(60), default="native", server_default="native")
     model: Mapped[str | None] = mapped_column(String(100))
     prompt_version: Mapped[str | None] = mapped_column(String(60))
     config_version: Mapped[str | None] = mapped_column(String(60))
-    decision_watermark: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_watermark: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     epoch: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     coverage: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
     stage_results: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
@@ -197,12 +199,18 @@ class ContextCursor(Base):
 
 
 class ContextDecision(Base):
-    """Append-only human, agent or system decision. Undo is a new row with `undoes_id`."""
+    """Append-only human, agent or system decision. Undo is a new row with `undoes_id`. `seq` is monotonic per
+    owner, allocated from ContextOwnerState.decision_seq under that row's lock; runs record the highest seq they
+    saw as `decision_watermark`."""
     __tablename__ = "context_decisions"
-    __table_args__ = (Index("ix_context_decisions_target", "owner_id", "target_type", "target_id"),)
+    __table_args__ = (
+        UniqueConstraint("owner_id", "seq", name="uq_context_decisions_seq"),
+        Index("ix_context_decisions_target", "owner_id", "target_type", "target_id"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
-    target_type: Mapped[str] = mapped_column(String(40))
+    seq: Mapped[int] = mapped_column(BigInteger)
+    target_type: Mapped[str] = mapped_column(String(50))
     target_id: Mapped[str] = mapped_column(String(100))
     expected_revision: Mapped[int | None] = mapped_column(Integer)
     operation: Mapped[str] = mapped_column(String(20))
@@ -232,9 +240,9 @@ class ContextAssertion(Base):
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     kind: Mapped[str] = mapped_column(String(20))
     statement: Mapped[str] = mapped_column(Text)
-    subject_type: Mapped[str] = mapped_column(String(40))
+    subject_type: Mapped[str] = mapped_column(String(50))
     subject_id: Mapped[str] = mapped_column(String(100))
-    object_type: Mapped[str | None] = mapped_column(String(40))
+    object_type: Mapped[str | None] = mapped_column(String(50))
     object_id: Mapped[str | None] = mapped_column(String(100))
     predicate: Mapped[str] = mapped_column(String(100))
     key: Mapped[str | None] = mapped_column(String(300))
@@ -312,12 +320,12 @@ class ContextEntityLink(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     assertion_id: Mapped[str | None] = mapped_column(ForeignKey("context_assertions.id"), index=True)
-    subject_type: Mapped[str] = mapped_column(String(40))
+    subject_type: Mapped[str] = mapped_column(String(50))
     subject_id: Mapped[str] = mapped_column(String(100))
-    target_type: Mapped[str | None] = mapped_column(String(40))
+    target_type: Mapped[str | None] = mapped_column(String(50))
     target_id: Mapped[str | None] = mapped_column(String(100))
     mention: Mapped[str] = mapped_column(String(500), default="", server_default="")
-    role: Mapped[str] = mapped_column(String(40))
+    role: Mapped[str] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(20), default="unresolved", server_default="unresolved")
     score: Mapped[float | None] = mapped_column(Float)
     margin: Mapped[float | None] = mapped_column(Float)
@@ -344,7 +352,7 @@ class ContextActorIdentity(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     actor_id: Mapped[str] = mapped_column(String(36), index=True)
-    namespace: Mapped[str] = mapped_column(String(40))
+    namespace: Mapped[str] = mapped_column(String(50))
     value: Mapped[str] = mapped_column(String(500))
     normalized: Mapped[str] = mapped_column(String(500))
     source_scope: Mapped[str | None] = mapped_column(String(100))
@@ -427,7 +435,7 @@ class ContextBrief(Base):
     __table_args__ = (UniqueConstraint("owner_id", "entity_type", "entity_id", "version", name="uq_context_briefs_version"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
-    entity_type: Mapped[str] = mapped_column(String(40))
+    entity_type: Mapped[str] = mapped_column(String(50))
     entity_id: Mapped[str] = mapped_column(String(100))
     sections: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     dependencies: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
@@ -441,10 +449,12 @@ class ContextBrief(Base):
 
 
 class ContextOwnerState(Base):
-    """Per-owner processing control. Bumping `epoch` invalidates in-flight runs started under an older one."""
+    """Per-owner processing control. Bumping `epoch` invalidates in-flight runs started under an older one;
+    `decision_seq` is the last ContextDecision.seq handed out (increment it under SELECT ... FOR UPDATE)."""
     __tablename__ = "context_owner_state"
     owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
     epoch: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    decision_seq: Mapped[int] = mapped_column(BigInteger, default=0, server_default="0")
     paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     settings: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")

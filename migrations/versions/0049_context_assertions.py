@@ -38,7 +38,8 @@ def owner_index(table):
 def upgrade():
     op.create_table(
         "context_decisions", *ident(),
-        sa.Column("target_type", sa.String(40), nullable=False),
+        sa.Column("seq", sa.BigInteger(), nullable=False),
+        sa.Column("target_type", sa.String(50), nullable=False),
         sa.Column("target_id", sa.String(100), nullable=False),
         sa.Column("expected_revision", sa.Integer(), nullable=True),
         sa.Column("operation", sa.String(20), nullable=False),
@@ -53,6 +54,7 @@ def upgrade():
         sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
         ref("undoes_id", "context_decisions"),
         *stamps(updated=False),
+        sa.UniqueConstraint("owner_id", "seq", name="uq_context_decisions_seq"),
     )
     owner_index("context_decisions")
     op.create_index("ix_context_decisions_command_id", "context_decisions", ["command_id"])
@@ -61,9 +63,9 @@ def upgrade():
         "context_assertions", *ident(),
         sa.Column("kind", sa.String(20), nullable=False),
         sa.Column("statement", sa.Text(), nullable=False),
-        sa.Column("subject_type", sa.String(40), nullable=False),
+        sa.Column("subject_type", sa.String(50), nullable=False),
         sa.Column("subject_id", sa.String(100), nullable=False),
-        sa.Column("object_type", sa.String(40), nullable=True),
+        sa.Column("object_type", sa.String(50), nullable=True),
         sa.Column("object_id", sa.String(100), nullable=True),
         sa.Column("predicate", sa.String(100), nullable=False),
         sa.Column("key", sa.String(300), nullable=True),
@@ -131,12 +133,12 @@ def upgrade():
     op.create_table(
         "context_entity_links", *ident(),
         ref("assertion_id", "context_assertions"),
-        sa.Column("subject_type", sa.String(40), nullable=False),
+        sa.Column("subject_type", sa.String(50), nullable=False),
         sa.Column("subject_id", sa.String(100), nullable=False),
-        sa.Column("target_type", sa.String(40), nullable=True),
+        sa.Column("target_type", sa.String(50), nullable=True),
         sa.Column("target_id", sa.String(100), nullable=True),
         sa.Column("mention", sa.String(500), nullable=False, server_default=""),
-        sa.Column("role", sa.String(40), nullable=False),
+        sa.Column("role", sa.String(50), nullable=False),
         sa.Column("status", sa.String(20), nullable=False, server_default="unresolved"),
         sa.Column("score", sa.Float(), nullable=True),
         sa.Column("margin", sa.Float(), nullable=True),
@@ -153,7 +155,7 @@ def upgrade():
     op.create_table(
         "context_actor_identities", *ident(),
         sa.Column("actor_id", sa.String(36), nullable=False),
-        sa.Column("namespace", sa.String(40), nullable=False),
+        sa.Column("namespace", sa.String(50), nullable=False),
         sa.Column("value", sa.String(500), nullable=False),
         sa.Column("normalized", sa.String(500), nullable=False),
         sa.Column("source_scope", sa.String(100), nullable=True),

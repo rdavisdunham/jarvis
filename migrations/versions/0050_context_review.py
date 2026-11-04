@@ -72,7 +72,7 @@ def upgrade():
     op.create_index("ix_context_publications_proposal_id", "context_publications", ["proposal_id"])
     op.create_table(
         "context_briefs", *ident(),
-        sa.Column("entity_type", sa.String(40), nullable=False),
+        sa.Column("entity_type", sa.String(50), nullable=False),
         sa.Column("entity_id", sa.String(100), nullable=False),
         jsonb("sections", "[]"),
         jsonb("dependencies"),
@@ -89,6 +89,7 @@ def upgrade():
         "context_owner_state",
         sa.Column("owner_id", sa.String(100), primary_key=True),
         sa.Column("epoch", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("decision_seq", sa.BigInteger(), nullable=False, server_default="0"),
         sa.Column("paused", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("paused_at", sa.DateTime(timezone=True), nullable=True),
         jsonb("settings"),

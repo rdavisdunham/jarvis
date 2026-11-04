@@ -1,7 +1,5 @@
 """Context tables (jarvis/context/models.py) and their registration points: worker queue, scopes, cost labels."""
 
-from datetime import timedelta
-
 import pytest
 from jarvis import worker
 from jarvis.context import models as m
@@ -43,8 +41,8 @@ def source_graph(db):
     db.add_all([chunk, run, m.ContextCursor(owner_id=OWNER, connection_id=connection.id, name="notes",
                                             value={"updated_after": "2026-11-04"})])
     db.flush()
-    decision = m.ContextDecision(owner_id=OWNER, target_type="assertion", target_id="pending", operation="confirm",
-                                 origin="human", principal="davin")
+    decision = m.ContextDecision(owner_id=OWNER, seq=1, target_type="assertion", target_id="pending",
+                                 operation="confirm", origin="human", principal="davin")
     assertion = m.ContextAssertion(owner_id=OWNER, kind="decision", statement="Raise the enterprise price next quarter.",
                                    subject_type="project", subject_id="project-1", predicate="selected_option",
                                    valid_precision="quarter", run_id=run.id)
@@ -74,7 +72,7 @@ def source_graph(db):
                              principal="davin", operation_id="op-" + proposal.id),
         m.ContextBrief(owner_id=OWNER, entity_type="project", entity_id="project-1", fingerprint="b" * 64,
                        sections=[{"kind": "current_state", "claims": [assertion.id]}], run_id=run.id),
-        m.ContextOwnerState(owner_id=OWNER),
+        m.ContextOwnerState(owner_id=OWNER, decision_seq=1),
     ])
     db.flush()
     return {"connection": connection, "source": source, "revision": revision, "segments": segments, "chunk": chunk,
@@ -99,7 +97,7 @@ def test_every_context_table_is_registered_and_takes_a_row():
         assert (assertion.lifecycle, assertion.modality, assertion.explicit, assertion.responsible) == (
             "current", "asserted", True, [])
         state = db.get(m.ContextOwnerState, OWNER)
-        assert (state.epoch, state.paused, state.settings) == (0, False, {})
+        assert (state.epoch, state.decision_seq, state.paused, state.settings) == (0, 1, False, {})
 
 
 def test_server_defaults_cover_rows_written_without_the_orm():
@@ -124,7 +122,10 @@ def test_server_defaults_cover_rows_written_without_the_orm():
     lambda r: m.ContextBrief(owner_id=OWNER, entity_type="project", entity_id="project-1", fingerprint="c" * 64),
     lambda r: m.ContextActorIdentity(owner_id=OWNER, actor_id="actor-other", namespace="email", value="sam@example.test",
                                      normalized="sam@example.test"),
-], ids=["source", "revision", "segment", "chunk", "cursor", "proposal", "brief-version", "strong-identity"])
+    lambda r: m.ContextDecision(owner_id=OWNER, seq=1, target_type="link", target_id="x", operation="reject_link",
+                                origin="human", principal="davin"),
+], ids=["source", "revision", "segment", "chunk", "cursor", "proposal", "brief-version", "strong-identity",
+        "decision-seq"])
 def test_uniqueness_holds(make):
     with session_scope() as db:
         rows = source_graph(db)
@@ -240,6 +241,15 @@ def test_cost_labels_exist_for_every_context_stage():
         feature(name)
 
 
+def test_write_scopes_imply_only_read_twins_that_exist():
+    from jarvis.bot_access import SCOPES, normalize
+
+    assert normalize(["sources:write"]) == ["sources:write"]
+    assert normalize(["context:write", "sources:write"]) == ["context:read", "context:write", "sources:write"]
+    assert normalize(["tasks:write"]) == ["tasks:read", "tasks:write"]
+    assert all(scope in SCOPES for every in set(SCOPES) - {"work:run"} for scope in normalize([every]))
+
+
 def test_context_scopes_are_personal_only_and_sources_write_implies_no_read(client):
     from test_accounts import client_for, shared
 
@@ -261,7 +271,8 @@ def test_runs_record_epoch_and_watermark_for_staleness():
     with session_scope() as db:
         rows = source_graph(db)
         run = rows["run"]
-        run.decision_watermark, run.status, run.finished_at = now() - timedelta(minutes=1), "stale", now()
+        assert run.decision_watermark == 0
+        run.decision_watermark, run.status, run.finished_at = 1, "stale", now()
         db.get(m.ContextOwnerState, OWNER).epoch = 1
         db.flush()
         stale = db.scalars(select(m.ContextRun.id).join(m.ContextOwnerState, m.ContextOwnerState.owner_id == m.ContextRun.owner_id)
