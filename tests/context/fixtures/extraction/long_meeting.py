@@ -57,11 +57,16 @@ def _speaker(i: int) -> str:
     return "Unknown speaker" if i % 69 == 30 else SPEAKERS[(i * 7 + i // 5) % len(SPEAKERS)]
 
 
+def follow_ups(lines: int = LINES) -> set[tuple[str, str]]:
+    """(speaker, task) of each planted promise. The same person repeating the same promise is one follow-up."""
+    return {(_speaker(i), TASKS[0] if i == LONG_AT else TASKS[i % len(TASKS)])
+            for i in range(lines) if i % COMMIT_EVERY == 7 or i == LONG_AT}
+
+
 def expected_counts(lines: int = LINES) -> tuple[int, int]:
-    """(commitments, decisions) planted in the transcript. The same person repeating the same promise is one
-    follow-up."""
-    commitments = len({(_speaker(i), TASKS[0] if i == LONG_AT else TASKS[i % len(TASKS)])
-                       for i in range(lines) if i % COMMIT_EVERY == 7 or i == LONG_AT})
+    """(commitments, decisions) planted in the transcript. A promise on a line without a speaker is an unassigned
+    follow-up, not a commitment."""
+    commitments = sum(1 for who, _ in follow_ups(lines) if who != "Unknown speaker")
     decisions = sum(1 for i in range(lines) if i % DECIDE_EVERY == 11 and i % COMMIT_EVERY != 7 and i != LONG_AT)
     return commitments, decisions
 

@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..schema import EntityType, Modality, TimePrecision
 from .chunking import TextChunk
 
-PROMPT_VERSION = "context-extract-2026-11-04.2"
+PROMPT_VERSION = "context-extract-2026-11-04.3"
 
 NoteKind = Literal["fact", "preference", "decision", "rationale", "risk", "open_question", "procedure",
                    "relationship"]
@@ -213,6 +213,11 @@ line id) and PRIVATE NOTES (`[N1] text`), which RECORDED_BY typed during the mee
 signal of follow-ups RECORDED_BY intends: work in them usually belongs on the list, owned by RECORDED_BY unless the
 note names someone else. CONTEXT lines, when present, are for understanding only and may not be cited.
 
+Speakers may not be separated: in a group call recorded on one device, lines can read `Unknown speaker`. Never
+assume such a line was said by RECORDED_BY. Take the owner only from the content: a person addressed by name
+("Davis, can you send it?" ... "Sure, I'll do it"), someone naming themselves ("this is Aarish, I'll take that"),
+or a private note. Cite the line that names them. When nothing shows who it is, the owner is null.
+
 Capture:
 - Every concrete piece of work anyone in the meeting will do afterwards, not only RECORDED_BY's.
 - Promises ("I'll send it Friday"); requests that someone accepted, even when the acceptance comes many lines
@@ -239,7 +244,7 @@ Fields:
   C2 rubric to a 1-5 scale and re-import it". No owner name and no date. Use only details from the meeting.
 - description: one to three plain sentences: what exactly, why, the folded sub-steps, and who it is for.
 - owner: who will do it, written as in PEOPLE (a name or speaker label). "we" only when the group explicitly
-  shares it; "Unknown speaker" when it was promised on a line without a speaker; null when nobody owns it.
+  shares it; null when nobody owns it or nothing shows who promised it.
 - owner_basis: stated_promise (the owner said they will do it), accepted_request (someone asked and the owner
   agreed), self_assigned_intent (the owner said they want, need or plan to do it, without a firm promise),
   assigned_by_other (someone else gave it to the owner and nobody objected), implied_by_discussion (nobody said
@@ -261,8 +266,9 @@ For each item (by its index) return a verdict:
   hypothetical, was ruled out or declined, was already done during the meeting, is only discussion or opinion,
   or the lines do not support it.
 - owner_correct: true when the named owner is the person who will do the work (for an implied item, the person
-  it naturally falls to), or the owner is null and nobody took it on. False when the lines show someone else
-  takes it on.
+  it naturally falls to), or the owner is null and nobody took it on or the lines don't show who did. False
+  when the lines show someone else takes it on, or the owner was guessed for an `Unknown speaker` line that
+  nothing in the quotes or notes ties to them.
 - reason: a few words explaining a false verdict."""
 
 

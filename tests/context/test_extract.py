@@ -134,11 +134,14 @@ def test_long_meeting_full_coverage_and_cost_per_meeting(provider):
     assert (kinds.count("commitment"), kinds.count("decision")) == (commitments, decisions)
     assert {a.due.at.date() for a in result.assertions if a.kind == "commitment"} == {date(2026, 11, 6)}
     assert any(a.evidence[0].segment_seq == long_meeting.LONG_AT for a in result.assertions)
-    unknown = [a for a in result.assertions if a.responsible and a.responsible[0].mention == "Unknown speaker"]
-    assert unknown and all(request.segments[a.evidence[0].segment_seq].speaker_label is None for a in unknown)
+    # Promises on lines without a speaker stay unassigned follow-ups (unclear owner), never a commitment.
+    unknown = [a for a in result.actions if not a.responsible]
+    assert unknown and not any(a.assertion_indexes for a in unknown)
+    assert all(request.segments[e.segment_seq].speaker_label is None for a in unknown for e in a.evidence)
+    assert len(result.actions) == len(long_meeting.follow_ups())
     planted = sum(1 for i in range(long_meeting.LINES) if i % long_meeting.COMMIT_EVERY == 7 or i == long_meeting.LONG_AT)
     # Repeats of the same person's promise fold into one follow-up.
-    assert result.diagnostics["rejection_counts"] == {"duplicate": planted - commitments}
+    assert result.diagnostics["rejection_counts"] == {"duplicate": planted - len(long_meeting.follow_ups())}
 
     chunks = result.diagnostics["chunks"]
     cost = result.diagnostics["cost_usd"]

@@ -16,6 +16,7 @@ from jarvis.context.native.extract import NativeExtractor
 from jarvis.context.native.prompts import ACTIONS_PROMPT, ACTIONS_VERIFY_PROMPT, PROMPT_VERSION
 from jarvis.context.native.validate import SourceContext, ungrounded_numbers
 from jarvis.context.schema import (
+    Decision,
     EntityCandidate,
     EntityRef,
     ExtractRequest,
@@ -284,12 +285,23 @@ def test_a_completed_pass_round_trips_for_resumable_callers(wire, monkeypatch):
     key = actions.cache_key(meeting)
     saved = json.loads(json.dumps(out.dump(key)))
     restored = actions.ActionRun()
-    restored.restore(saved)
+    restored.restore(saved, meeting)
     assert saved["key"] == key and restored.cost == out.cost > 0 and restored.calls == out.calls == 2
     assert restored.diagnostics(meeting) == out.diagnostics(meeting)
     assert [d.assertion for d in restored.drafts] == [d.assertion for d in out.drafts]
     # anything the pass reads changes the key: the lines, the prompt's model, the candidates
     assert actions.cache_key(actions.Meeting.of(request.model_copy(update={"title": "Other"}), ctx)) != key
+    # a dismissal since the save rejects that item again; decisions alone don't change the key
+    title = out.drafts[0].title
+    dismissed = request.model_copy(update={"decisions": [Decision(
+        id="dec-1", seq=1, operation="dismiss", origin="human", target_type="proposal", target_id="p-1",
+        statement=title, recorded_at=request.occurred_at)]})
+    later = actions.Meeting.of(dismissed, SourceContext.from_request(dismissed))
+    assert actions.cache_key(later) == key
+    again = actions.ActionRun()
+    again.restore(saved, later)
+    assert [d.title for d in again.drafts] == [d.title for d in out.drafts[1:]]
+    assert again.rejected[-1]["code"] == "prior_decision"
     use(monkeypatch, "terra")
     assert actions.cache_key(meeting) != key
 
@@ -297,3 +309,78 @@ def test_a_completed_pass_round_trips_for_resumable_callers(wire, monkeypatch):
 def extract_spend():
     from jarvis.context.native.extract import Spend
     return Spend(cap=5.0)
+
+
+# ---------------------------------------------------------------- unseparated speakers (one audio source)
+
+UNSEPARATED = [
+    "Davis, can you send the pilot deck to the board?",
+    "Sure, I'll send it tomorrow.",
+    "I'll take the vendor call, this is Aarish.",
+    "I'll update the tracker after this.",
+    "I'll book the room for Thursday.",
+    "I can draft the agenda.",
+]
+
+
+def unseparated_request() -> ExtractRequest:
+    segments = [Segment(seq=i, text=t) for i, t in enumerate(UNSEPARATED)]  # no speaker, attribution unknown
+    segments.append(Segment(seq=len(UNSEPARATED), kind="private_note", attribution="owner",
+                            text="Rowan: draft the agenda"))
+    people = [("Uttam Rao", "organizer"), ("Davis Dunham", "attendee"), ("Rowan Vale", "attendee"),
+              ("Aarish Khan", "attendee")]
+    return ExtractRequest(
+        owner_id="davin", source_revision_id="srcrev_group", occurred_at="2026-11-03T15:00:00+00:00",
+        timezone="America/New_York", title="Group sync", segments=segments,
+        participants=[Participant(name=n, role=r) for n, r in people],
+        candidates=[EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_me"), name="owner",
+                                    aliases=["Davis Dunham"]),
+                    EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_rowan"), name="Rowan Vale"),
+                    EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_aarish"), name="Aarish Khan")])
+
+
+def item(lines, title, owner, basis="stated_promise") -> dict:
+    return {"evidence": [{"line": str(i) if isinstance(i, int) else i, "quote": q} for i, q in lines],
+            "title": title, "description": "", "owner": owner, "owner_basis": basis, "recipient": None,
+            "due": None, "status": "open", "kind": "action", "confidence": 0.8}
+
+
+def test_unseparated_speakers_take_the_owner_from_content_or_leave_it_unclear():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    request = unseparated_request()
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [
+        item([(0, UNSEPARATED[0]), (1, UNSEPARATED[1])], "Send the pilot deck to the board", "Davis Dunham",
+             "accepted_request"),
+        item([(2, UNSEPARATED[2])], "Take the vendor call", "Aarish Khan"),
+        item([(3, UNSEPARATED[3])], "Update the tracker", "Uttam Rao"),  # guessed as the recorder
+        item([(4, UNSEPARATED[4])], "Book the room for Thursday", "Unknown speaker"),
+        item([(5, UNSEPARATED[5])], "Draft the agenda", "Rowan Vale", "self_assigned_intent"),
+    ]})
+
+    def call(name, user):
+        if name == "context_actions":
+            assert "Unknown speaker: Sure, I'll send it tomorrow." in user["lines"]
+            return listed
+        return ActionVerification.model_validate({"verdicts": [
+            {"item": i["item"], "real_follow_up": True, "owner_correct": True, "reason": ""} for i in user["items"]]})
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    assert out.rejected == []
+    got = {d.title: (d.owner, [r.entity_id for r in d.responsible], d.basis, bool(d.assertion)) for d in out.drafts}
+    assert got == {
+        # addressed by name, accepted on an unattributed line: Davis's, a commitment
+        "Send the pilot deck to the board": ("Davis Dunham", ["act_me"], "accepted_request", True),
+        # self-identified on the line
+        "Take the vendor call": ("Aarish Khan", ["act_aarish"], "stated_promise", True),
+        # nothing ties the line to anyone: unassigned, never the recorder, never dropped
+        "Update the tracker": (None, [], "implied_by_discussion", False),
+        "Book the room for Thursday": (None, [], "implied_by_discussion", False),
+        # the recorder's private note names the owner
+        "Draft the agenda": ("Rowan Vale", ["act_rowan"], "self_assigned_intent", False)}
+    signals = {d.title: d.signals for d in out.drafts}
+    assert signals["Update the tracker"] == {"owner_unverified": "Uttam Rao"}
+    assert signals["Book the room for Thursday"] == {"owner_unknown": True}
+    assert signals["Send the pilot deck to the board"]["owner_from_content"] is True
