@@ -130,7 +130,7 @@ class ScriptedModel:
             for seq, who, text in self._lines(user) for m in COMMIT.finditer(text)]}
 
     def actions_verify(self, user: dict) -> dict:
-        return {"verdicts": [{"item": it["item"], "real_follow_up": True, "owner_correct": True, "reason": ""}
+        return {"verdicts": [{"item": it["item"], "progress_report": False, "real_follow_up": True, "owner_correct": True, "reason": ""}
                              for it in user["items"]]}
 
     def enrich(self, user: dict) -> dict:

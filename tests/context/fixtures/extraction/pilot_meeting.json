@@ -294,12 +294,14 @@
   "verdicts": [
    {
     "item": 0,
+    "progress_report": false,
     "real_follow_up": true,
     "owner_correct": true,
     "reason": ""
    },
    {
     "item": 1,
+    "progress_report": false,
     "real_follow_up": true,
     "owner_correct": true,
     "reason": ""

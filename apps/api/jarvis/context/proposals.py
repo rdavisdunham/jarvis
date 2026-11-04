@@ -21,9 +21,9 @@ Matching existing work (similarity never authorizes mutation):
 Recommendation (plan section 7 table): a clear unfinished action of the user's own with no match is a checked
 `create`, unless the action pass marked it `implied_by_discussion` ("Implied by the discussion", unchecked) or its
 checker did not confirm it (unchecked; basis and `verified` come from the extract run's
-`diagnostics["actions"]["items"]` by action index); someone else's work an
-unchecked "Waiting on <name>" `create`; unclear ownership an unchecked `create` with its reason; covered work a
-`link`;
+`diagnostics["actions"]["items"]` by action index); someone else's work an unchecked "Waiting on <name>"
+`create`; an owner the action pass inferred but could not prove (`inferred`) an unchecked "Likely yours" /
+"Likely <name>" `create`; unclear ownership an unchecked `create` with its reason; covered work a `link`;
 changed existing work (due date or assignee differ from the task) an unchecked `update` with `before` and `after`;
 an engine `suggestion` stays a separate unchecked suggestion and is never recorded as a promise. Hypothetical,
 proposed, negated and question commitments, completed work and retracted interpretations stay context only.
@@ -340,6 +340,7 @@ MINE = {
 }
 IMPLIED = "Implied by the discussion. Check it if it is yours to do."
 UNCONFIRMED = "The checker did not confirm this one. Check it if it is yours."
+INFERRED_MINE = "Likely yours, inferred from the discussion. Check it if so."
 
 
 def _name(db, owner: str, draft: Draft) -> str:
@@ -378,6 +379,9 @@ def _recommend(db, owner: str, draft: Draft, me: str | None) -> Draft:
     unclear = not (draft.responsible or draft.mention) or (draft.mention or "").casefold().strip() in UNCLEAR
     if draft.collective or (unclear and not draft.responsible):
         draft.reason = "Who owns this is unclear."
+    elif draft.basis == "inferred":  # a likely owner the lines can't prove (unseparated speakers): never checked
+        draft.reason = INFERRED_MINE if draft.responsible and draft.responsible == me else \
+            f"Likely {_name(db, owner, draft)}, inferred from the discussion."
     elif draft.responsible and draft.responsible == me:
         # Action-pass items are checked only when the checker confirmed them; older runs carry no basis.
         unconfirmed = draft.basis is not None and draft.verified is not True
