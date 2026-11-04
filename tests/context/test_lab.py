@@ -84,7 +84,7 @@ def test_envelope_when_the_lab_user_recorded_the_meeting():
     assert people["kai@client.example"].speaker_label is None and len(envelope.participants) == 2
     assert envelope.upstream_owner_email == "robin@studio.example" and envelope.content_hash
     assert envelope.metadata["lab"] == {"recorder_is_lab_user": True, "speakers_separated": True,
-                                        "microphone_as": "recorder", "private_notes_status": "kept",
+                                        "speakers_decided_by": "lab", "microphone_as": "recorder", "private_notes_status": "kept",
                                         "private_notes_dropped": False}
     without = lab.to_envelope(meeting(), lab_email=ME["email"], private_notes=False)
     assert without.private_notes is None and without.metadata["lab"]["private_notes_status"] == \
@@ -574,10 +574,28 @@ def test_connector_path_applies_the_lab_rules_after_the_connector(lab_dir):
     mixed = raw_folder(lab_dir, "raw-mixed", raw_note(owner=recorder), MIXED)
     auto, _ = lab.build_envelope(mixed, ME)
     assert {(s.speaker_label, s.attribution) for s in auto.segments} == {(None, None)}
+    # The connector decided (more than two people, one audio source, no names): the lab defers to it.
+    assert auto.metadata["granola"]["speakers_separated"] is False
     assert auto.metadata["lab"]["speakers_separated"] is False
+    assert auto.metadata["lab"]["speakers_decided_by"] == "connector"
+    assert auto.metadata["lab"]["microphone_as"] == "unknown"
     assert not any(p.speaker_label for p in auto.participants)
     forced, _ = lab.build_envelope(mixed, ME, speakers="recorder")
     assert {(s.speaker_label, s.attribution) for s in forced.segments} == {("Uma Recorder", "other")}
+    assert forced.metadata["lab"]["microphone_as"] == "recorder"
+    assert {p.email: p.speaker_label for p in forced.participants}["uma@studio.example"] == "Uma Recorder"
+    # The lab user's own unseparated recording, forced to the recorder, is the owner speaking.
+    own, _ = lab.build_envelope(raw_folder(lab_dir, "raw-own-mixed", raw_note(), MIXED), ME, speakers="recorder")
+    assert {(s.speaker_label, s.attribution) for s in own.segments} == {("Robin Vale", "owner")}
+    # The connector's call stands when it finds the speakers separated, even with "me" lines only (two people).
+    pair = {**raw_note(owner=recorder), "attendees": [{"name": "Kai Moreno", "email": "kai@client.example"}]}
+    two, _ = lab.build_envelope(raw_folder(lab_dir, "raw-pair", pair, MIXED), ME)
+    assert two.metadata["lab"]["speakers_separated"] is True and two.metadata["lab"]["speakers_decided_by"] == \
+        "connector"
+    assert {(s.speaker_label, s.attribution) for s in two.segments} == {("Uma Recorder", "other")}
+    forced_unknown, _ = lab.build_envelope(colleague, ME, speakers="unknown")
+    assert [(s.speaker_label, s.attribution) for s in forced_unknown.segments] == \
+        [(None, None), ("Kai Moreno", "other"), (None, None)]
 
 
 def test_import_granola_saves_the_raw_responses(lab_dir):

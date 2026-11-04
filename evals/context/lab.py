@@ -182,20 +182,23 @@ def separated(envelope: SourceEnvelope) -> bool:
 
 
 def adjust_envelope(envelope: SourceEnvelope, *, lab_email: str, speakers: str = "auto",
-                    default_timezone: str | None = None, private_notes: bool = True) -> SourceEnvelope:
+                    default_timezone: str | None = None, private_notes: bool = True,
+                    speakers_separated: bool | None = None) -> SourceEnvelope:
     """Lab rules over a connector envelope (production's or `text_envelope`'s).
 
     Owner-attributed lines are the note's recorder. When the recorder is the lab user they stay the Eridani
     owner; when someone else recorded the note they become that person (attribution `other`, labelled with
     their name), because Eridani's `owner` attribution always means the account owner. `speakers`: `recorder`
     keeps that mapping; `unknown` leaves those lines unattributed (no label, no attribution); `auto` (default)
-    is `unknown` when the speakers are not separated (see `separated`). Private notes travel only when the lab
+    is `unknown` when the speakers are not separated: `speakers_separated` when the connector decided it,
+    else the lab's own `separated` (the text path). Private notes travel only when the lab
     user recorded the meeting and `private_notes` is on (the pipeline attributes them to the owner).
     `default_timezone` stands in when the envelope has none, so relative dues resolve to local dates."""
     if speakers not in SPEAKER_MODES:
         raise ValueError(f"speakers must be one of {', '.join(SPEAKER_MODES)}")
     recorder_is_user = _same(envelope.upstream_owner_email, lab_email)
-    split = separated(envelope)
+    decided_by = "lab" if speakers_separated is None else "connector"
+    split = separated(envelope) if speakers_separated is None else speakers_separated
     unknown = speakers == "unknown" or (speakers == "auto" and not split)
     recorder_labels = {s.speaker_label for s in envelope.segments or [] if s.attribution == "owner"}
     segments = []
@@ -219,6 +222,7 @@ def adjust_envelope(envelope: SourceEnvelope, *, lab_email: str, speakers: str =
         notes = "kept"
     private = envelope.private_notes if notes == "kept" else None
     lab_meta = {"recorder_is_lab_user": recorder_is_user, "speakers_separated": split,
+                "speakers_decided_by": decided_by,
                 "microphone_as": "unknown" if unknown else "recorder", "private_notes_status": notes,
                 "private_notes_dropped": notes.startswith("dropped")}
     return SourceEnvelope.model_validate({
@@ -239,6 +243,32 @@ def to_envelope(meeting: dict, *, lab_email: str, speakers: str = "auto", defaul
 RAW_NOTE, RAW_TRANSCRIPT = "granola-note.json", "granola-transcript.json"
 
 
+def recorder_speakers(envelope: SourceEnvelope, note: dict, transcript: list[dict]) -> SourceEnvelope:
+    """`--speakers recorder` over a transcript the connector found unseparated (and left unattributed): Granola's
+    own labels back, as the connector maps them for a separated transcript ("me" is the note owner)."""
+    from jarvis.context.connectors import granola
+
+    me = granola.owner_label(note)
+    mapped = []
+    for item in transcript:
+        if not isinstance(item.get("text"), str) or not item["text"].strip():
+            continue
+        speaker = item.get("speaker") if isinstance(item.get("speaker"), dict) else {}
+        if speaker.get("attribution") == "me":
+            mapped.append((me, "owner"))
+        else:
+            mapped.append(((speaker.get("name") or speaker.get("diarization_label") or None),
+                           "other" if speaker.get("attribution") == "them" else None))
+    segments = [s.model_copy(update={"speaker_label": label and label[:200], "attribution": attribution})
+                for s, (label, attribution) in zip(envelope.segments or [], mapped, strict=True)]
+    owner_email = (envelope.upstream_owner_email or "").casefold()
+    spoke = any(a == "owner" for _, a in mapped)
+    participants = [p.model_copy(update={"speaker_label": me[:200]})
+                    if spoke and owner_email and (p.email or "").casefold() == owner_email else p
+                    for p in envelope.participants]
+    return envelope.model_copy(update={"segments": segments, "participants": participants})
+
+
 def build_envelope(folder: Path, user: dict, *, speakers: str = "auto", private_notes: bool = True
                    ) -> tuple[SourceEnvelope, str]:
     """The folder's envelope and the path that built it: `connector` (the raw REST note and transcript through
@@ -247,9 +277,13 @@ def build_envelope(folder: Path, user: dict, *, speakers: str = "auto", private_
     if (folder / RAW_NOTE).exists() and (folder / RAW_TRANSCRIPT).exists():
         from jarvis.context.connectors import granola
 
-        raw = granola.to_envelope(read_json(folder / RAW_NOTE), read_json(folder / RAW_TRANSCRIPT))
+        note, transcript = read_json(folder / RAW_NOTE), read_json(folder / RAW_TRANSCRIPT)
+        raw = granola.to_envelope(note, transcript)
+        split = (raw.metadata.get("granola") or {}).get("speakers_separated", True)
+        if not split and speakers == "recorder":
+            raw = recorder_speakers(raw, note, transcript)
         return adjust_envelope(raw, lab_email=user["email"], speakers=speakers, default_timezone=zone,
-                               private_notes=private_notes), "connector"
+                               private_notes=private_notes, speakers_separated=split), "connector"
     return to_envelope(read_json(folder / "meeting.json"), lab_email=user["email"], speakers=speakers,
                        default_timezone=zone, private_notes=private_notes), "text"
 
