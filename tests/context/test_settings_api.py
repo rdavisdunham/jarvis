@@ -19,7 +19,7 @@ from sqlalchemy import func, select
 from .conftest import MEETING_AT
 
 BASE = "/api/v1/context/settings"
-KEY = "gk_live_0123456789secret"
+KEY = "test-granola-key"
 ACCOUNT = "davin@example.com"
 VTT = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n<v Davin>Kick-off.</v>\n\n00:00:04.000 --> 00:00:06.000\n<v Priya>Ready.</v>\n"
 
