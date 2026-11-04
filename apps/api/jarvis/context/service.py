@@ -937,7 +937,7 @@ def _rejections(items, detail: bool) -> dict:
 def _actions_diagnostics(data, detail: bool) -> dict | None:
     if not isinstance(data, dict):
         return None
-    out = {k: data.get(k) for k in ("model", "profile", "prompt_version", "calls", "cost_usd", "latency_ms")
+    out = {k: data.get(k) for k in ("status", "model", "profile", "prompt_version", "calls", "cost_usd", "latency_ms")
            if k in data}
     out["items"] = len(data.get("items") or [])
     return out | _rejections(data.get("rejected"), detail)
