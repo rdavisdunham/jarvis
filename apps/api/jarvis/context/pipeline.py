@@ -14,8 +14,10 @@ plus `context_delete` {source_id, through_revision} (B1's purge), `context_grano
 without a connection ID every enabled Granola connection of the owner), `context_brief` {entity_type, entity_id}
 (C3's briefs, enqueued by reconcile for the resolved entities its assertions touch: deterministic unless the
 owner's `synthesize_briefs` is on, then prepare, synthesize outside any transaction, commit), `context_lint`
-{budget_usd?} (E2's weekly pass, `lint.perform`, one transaction per unit) and `context_proposals`, which no-ops
-until its package lands.
+{budget_usd?} (E2's weekly pass, `lint.perform`, one transaction per unit), `context_proposals` {source_id,
+revision_id, extract_run_id} (D1's `proposals.perform`, enqueued by reconcile once per revision: task proposals
+from the extract run's actions and live commitments) and `context_publish` {publication_id} (D1's
+`publication.perform`: an approved proposal written through the task and Linear commands; it ignores the pause).
 
 Run rules. `perform_job` runs inside a DBOS step retried up to ten times, so every handler is idempotent and the
 job's status is set here. Each job has one `context_runs` row per stage; a replayed job whose run finished is a
@@ -53,7 +55,7 @@ from ..cost_features import feature
 from ..db import session_scope
 from ..domain import DomainError, enqueue_job
 from ..models import Actor, Job, Project, now
-from . import apply, calendar_link, decisions, identity, temporal
+from . import apply, calendar_link, decisions, identity, proposals, publication, temporal
 from . import settings as context_settings
 from .models import (
     ContextActorIdentity,
@@ -622,6 +624,9 @@ def reconcile(work: Work) -> dict:
         if complete:
             _source_status(db, source_id, "ready")
         enqueue_job(db, work.owner, "context_embed", {"source_id": source_id, "revision_id": revision_id})
+        if not _pending(db, work.owner, "context_proposals", revision_id=revision_id):
+            enqueue_job(db, work.owner, "context_proposals", {"source_id": source_id, "revision_id": revision_id,
+                                                              "extract_run_id": work.payload["extract_run_id"]})
         briefs = 0
         for entity_type, entity_id in sorted(_brief_targets(db, work.owner, ids + summary.get("changed", []))):
             if not _pending(db, work.owner, "context_brief", entity_type=entity_type, entity_id=entity_id):
@@ -673,7 +678,7 @@ def retry_embeddings(db, owner: str) -> str | None:
     return enqueue_job(db, owner, "context_embed", {}).id
 
 
-# ---------------------------------------------------------------- deletion, connectors, placeholders
+# ---------------------------------------------------------------- deletion, connectors, lint
 
 
 def delete(work: Work) -> dict:
@@ -789,11 +794,6 @@ def lint(work: Work) -> dict:
     return weekly.perform(work.owner, budget_usd=work.payload.get("budget_usd"))
 
 
-def placeholder(work: Work) -> dict:
-    log.info("%s is a placeholder until its package lands; nothing to do", work.kind)
-    return {"skipped": "not implemented yet"}
-
-
 HANDLERS: dict[str, Callable[[Work], dict]] = {
     "context_ingest": ingest,
     "context_extract": extract,
@@ -805,7 +805,8 @@ HANDLERS: dict[str, Callable[[Work], dict]] = {
     "context_granola_backfill": granola_backfill,
     "context_brief": brief,
     "context_lint": lint,
-    "context_proposals": placeholder,  # D1: proposals from extract runs' stage_results["actions"]
+    "context_proposals": proposals.perform,
+    "context_publish": publication.perform,
 }
 
 

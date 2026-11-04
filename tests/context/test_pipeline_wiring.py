@@ -108,7 +108,7 @@ def test_bridge_submission_through_the_real_route_feeds_the_pipeline(client, tmp
         assert db.scalar(select(Actor.id).where(Actor.name == "Priya")) is None
     kinds = drain()
     assert kinds.count("context_ingest") == 2 and kinds.count("context_reconcile") == 2
-    assert set(kinds) <= {*STAGES, "context_brief"}
+    assert set(kinds) <= {*STAGES, "context_proposals", "context_brief"}
     assert all(status == "succeeded" for _, status, *_ in jobs())
     with session_scope() as db:
         assert {r.status for r in db.scalars(select(m.ContextSource))} == {"ready"}
