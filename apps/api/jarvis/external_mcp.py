@@ -184,6 +184,10 @@ def definitions(scopes):
         "Check the status and saved action receipts of a request submitted by this bot key.",
         schema({"request_id": UUID_SCHEMA}, ["request_id"]),
     )
+    if "context:read" in scopes:
+        from .context import mcp as context_mcp
+
+        result.extend(context_mcp.definitions(scopes))
     if any(s.endswith(":write") for s in scopes):
         add(
             "action_revert",
@@ -234,6 +238,12 @@ def dispatch(name, arguments):
         if supplied and supplied != _run_binding.get():
             raise DomainError("RUN_CONTEXT_CONFLICT", "The supplied run token does not match this tool connection.", 409)
         arguments["run_token"] = _run_binding.get()
+    if name.startswith("context_"):
+        # Meeting context authorizes before assembly and again before returning, and embeds the query with no
+        # transaction open, so it manages its own sessions.
+        from .context import mcp as context_mcp
+
+        return context_mcp.dispatch(name, arguments)
     if name == "session_search":
         # Searching may call the embedding provider; hold no transaction meanwhile.
         with session_scope() as db:

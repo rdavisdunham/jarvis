@@ -10,6 +10,11 @@ An assertion the owner stated through a human Changed decision is supported by t
 Deleting a source (`propagate_source_deletion`) keeps assertions with surviving alternative support, retracts
 the ones left unsupported, reports partially supported conjunctive ones for revalidation, scrubs the source's
 quoted text from evidence (leaving a non-content tombstone) and marks dependent briefs stale.
+
+Revising a source (`supersede_revisions`, called once a newer revision is completely extracted) applies the same
+rule to what the meeting no longer says: evidence quoted from the source's earlier revisions stops counting
+(`derivation["superseded_by"]`, the quote kept as provenance). Statements the new revision repeats carry its own
+spans; the rest survive only on other sources or a human Changed decision, and are retracted otherwise.
 """
 
 from collections import defaultdict
@@ -82,7 +87,9 @@ def merge(db, owner: str, canonical: ContextAssertion, duplicate: ContextAsserti
 
 
 def _live(row: ContextEvidence, deleted: set[str]) -> bool:
-    return row.source_id not in deleted and not (row.derivation or {}).get("source_deleted")
+    derivation = row.derivation or {}
+    return row.source_id not in deleted and not derivation.get("source_deleted") and \
+        not derivation.get("superseded_by")
 
 
 def deleted_sources(db, owner: str, source_ids: Iterable[str]) -> set[str]:
@@ -128,20 +135,18 @@ def corroboration(db, owner: str, assertion_id: str) -> int:
     return len({r.source_id for r in rows if _live(r, deleted)})
 
 
-def propagate_source_deletion(db, owner: str, source_id: str) -> dict:
-    """Apply a source deletion to dependent assertions in the caller's transaction (B1's deletion job calls it).
-    Idempotent. Returns the assertion IDs `retracted`, `kept` and needing `revalidate`."""
-    e = ContextEvidence
-    ids = sorted(set(db.scalars(select(e.assertion_id).where(e.owner_id == owner, e.source_id == source_id))))
+def _retract_unsupported(db, owner: str, ids: Iterable[str], *, gone: Iterable[str] = ()) -> tuple[dict, set]:
+    """Retract the live assertions among `ids` left without support. Returns the outcome and the keyed chains
+    that lost a member (the caller rechains them after its other writes)."""
     result = {"retracted": [], "kept": [], "revalidate": []}
     chains = set()
     at = now()
     for row in db.scalars(select(ContextAssertion).where(ContextAssertion.owner_id == owner,
-                                                         ContextAssertion.id.in_(ids))
+                                                         ContextAssertion.id.in_(sorted(set(ids))))
                           .order_by(ContextAssertion.id).with_for_update()):
         if row.lifecycle == "retracted":
             continue
-        status = support_status(db, owner, row, gone={source_id})
+        status = support_status(db, owner, row, gone=gone)
         if status == "unsupported":
             record = temporal.record_version(db, row, at=at, lifecycle="retracted")
             if record and (identity := temporal.chain_identity(row)):
@@ -149,6 +154,38 @@ def propagate_source_deletion(db, owner: str, source_id: str) -> dict:
             result["retracted"].append(row.id)
         else:
             result["kept" if status == "supported" else "revalidate"].append(row.id)
+    return result, chains
+
+
+def supersede_revisions(db, owner: str, source_id: str, revision_id: str) -> dict:
+    """Support from the source's revisions other than `revision_id` (its newest, completely extracted) no longer
+    counts; assertions that lose all support are retracted. In the caller's transaction; idempotent. Returns the
+    assertion IDs `retracted`, `kept`, needing `revalidate`, and `rechained` (chain neighbours whose head
+    changed)."""
+    e = ContextEvidence
+    rows = [r for r in db.scalars(select(e).where(e.owner_id == owner, e.source_id == source_id,
+                                                 e.revision_id != revision_id).with_for_update())
+            if not (r.derivation or {}).get("superseded_by")]
+    for r in rows:
+        r.derivation = {**(r.derivation or {}), "superseded_by": revision_id}
+    db.flush()
+    ids = sorted({r.assertion_id for r in rows})
+    result, chains = _retract_unsupported(db, owner, ids)
+    db.flush()
+    rechained = set()
+    for identity in sorted(chains):
+        rechained.update(temporal.rechain(db, owner, identity, at=now()))
+    temporal.stale_briefs(db, owner, {*ids, *rechained})
+    return {**result, "rechained": sorted(rechained)}
+
+
+def propagate_source_deletion(db, owner: str, source_id: str) -> dict:
+    """Apply a source deletion to dependent assertions in the caller's transaction (B1's deletion job calls it).
+    Idempotent. Returns the assertion IDs `retracted`, `kept` and needing `revalidate`."""
+    e = ContextEvidence
+    ids = sorted(set(db.scalars(select(e.assertion_id).where(e.owner_id == owner, e.source_id == source_id))))
+    result, chains = _retract_unsupported(db, owner, ids, gone={source_id})
+    at = now()
     for r in db.scalars(select(e).where(e.owner_id == owner, e.source_id == source_id)):
         r.quote, r.char_start, r.char_end, r.segment_id = "", None, None, None
         r.derivation = {k: v for k, v in (r.derivation or {}).items() if k == "all_of"} | {"source_deleted": True}

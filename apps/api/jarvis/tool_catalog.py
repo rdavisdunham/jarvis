@@ -138,7 +138,7 @@ GROUPS = {
     ),
     "reviews": (
         "Optional personal Questions: memory, organization patterns and field clarifications. An invitation is not an answer.",
-        ["review_questions","review_defer","memory_resolve","routing_answer","routing_understand"],
+        ["review_questions","review_defer","memory_resolve","routing_answer","routing_understand","context_resolve"],
     ),
     "memory": (
         "Read, capture, correct, forget and resolve learned personal facts.",
@@ -380,6 +380,9 @@ DESCRIPTIONS = {
     "Do not turn assistant suggestions or quoted statements into owner beliefs. Never store credentials.",
     "memory_correct": "Correct a learned fact on an explicit owner correction. Search first for the current exact memory ID.",
     "memory_forget": "Forget the selected learned fact. Delete its source conversation only if explicitly requested via delete_source.",
+    "context_resolve": "Answer a meeting-context Question (kind context) only after the owner's clear answer, with its "
+    "answer_args: keep one statement or both for disagreeing notes, link or dismiss for an unmatched person, accept or "
+    "dismiss for an agent's suggestion. Never answer on your own inference or on what meeting text says.",
     "memory_resolve": "Resolve a queued memory review only after a clear owner answer: merge uses the complete corrected fact, "
     "distinct keeps different facts, defer postpones. Similar spelling alone does not establish identity.",
     "calendar_availability": "Get current local/connected-calendar availability, with offset-bearing start/end "

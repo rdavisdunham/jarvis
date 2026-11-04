@@ -46,6 +46,10 @@
       "feature": "google_writes"
     },
     {
+      "name": "context.resolve",
+      "feature": "memory_dream"
+    },
+    {
       "name": "control.answer",
       "feature": "agent_control"
     },
@@ -935,6 +939,48 @@
       "feature": "operations"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/context/brief",
+      "handler": "brief",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/changes",
+      "handler": "changes",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/evidence/{assertion_id}",
+      "handler": "evidence",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/meeting-prep",
+      "handler": "meeting_prep",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/open-loops",
+      "handler": "open_loops",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/search",
+      "handler": "search",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/context/settings",
       "handler": "overview",
@@ -981,6 +1027,34 @@
       "path": "/api/v1/context/settings/import",
       "handler": "import_file",
       "source": "apps/api/jarvis/context/routes/settings.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/sources",
+      "handler": "list_sources",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/context/sources/{source_id}",
+      "handler": "delete_source",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/sources/{source_id}",
+      "handler": "get_source",
+      "source": "apps/api/jarvis/context/routes/owner.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/sources/{source_id}/segments",
+      "handler": "source_segments",
+      "source": "apps/api/jarvis/context/routes/owner.py",
       "feature": "privacy"
     },
     {
@@ -1121,6 +1195,62 @@
       "path": "/api/v1/external/commands",
       "handler": "command",
       "source": "apps/api/jarvis/external_routes.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/brief",
+      "handler": "brief",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/changes",
+      "handler": "changes",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/evidence/{assertion_id}",
+      "handler": "evidence",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/feedback",
+      "handler": "feedback",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/meeting-prep",
+      "handler": "meeting_prep",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/open-loops",
+      "handler": "open_loops",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/external/context/search",
+      "handler": "search",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/sources/{source_id}",
+      "handler": "source",
+      "source": "apps/api/jarvis/context/routes/context.py",
       "feature": "external_agents"
     },
     {
