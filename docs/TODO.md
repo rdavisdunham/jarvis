@@ -721,11 +721,14 @@ serves cited context to agents over MCP. Off by default; personal workspace only
   idempotent publication to Eridani tasks and Linear; Meetings view, Sources settings, person pages.
 - [x] Delivery and maintenance: meeting-ready and consolidated backfill notices, 17:00 owner-local digest,
   weekly lint, pause/resume/epoch and rollback drill, export CLI, account export includes context.
-- [x] Hardening and docs: shadow comparison and gates harness, performance pass, `meeting_context` eval
-  feature (31 scenarios, unbound), this documentation.
+- [x] Evaluation harness: database-mode runner, raw vs structured vs combined comparison on 111 questions,
+  release report grading every section 11 gate (NOT GRADEABLE until labels are verified), labelling worksheet.
+- [x] Docs and app eval registry: `meeting_context` feature (31 scenarios, unbound), this documentation.
+- [ ] Performance pass (F2): pilot-scale latency and cost report, `evals/context/reports/pilot-perf.md`.
 - [ ] Take an encrypted database export, then switch the pilot on for the owner (release note steps 0-3).
-- [ ] Owner adjudication: verify labels on two real meeting series (6-10 hours) so the plan section 11 quality
-  gates can be scored with sample counts; run the shadow comparison on them.
+- [ ] Owner adjudication: verify labels on two real meeting series (6-10 hours; `evals/context/worksheet.py`
+  export, fill, import) so the plan section 11 quality gates can be scored with sample counts; then run
+  `evals.context.report --series` and the shadow comparison (`evals.context.compare`) on them.
 - [ ] End-to-end meeting-to-task run on the live feed; record cost per meeting and per query.
 - [ ] PR the integration branch to `main` with `context_enabled` still false (merging deploys migrations
   0047-0050; needs the owner's explicit go).

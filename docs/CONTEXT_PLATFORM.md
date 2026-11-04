@@ -171,6 +171,9 @@ dedupe.
 - Deleting a source keeps assertions with alternative support, retracts unsupported ones, reports partially
   supported conjunctive ones for revalidation, scrubs quotes (non-content tombstone) and marks dependent briefs
   stale. A fully extracted newer revision does the same for what only earlier revisions said.
+- Retraction for lost support is not final: when live support returns (a later revision says it again, or a
+  deleted source comes back with new content), `evidence.revive` restores the earlier lifecycle with a new
+  version. A human Wrong, a matching durable negative or a retraction by decision or merge keeps it retracted.
 
 ## 5. Identity
 
@@ -321,10 +324,24 @@ export and a `scripts/context_export.py` history export before enabling or chang
 **Rollback** pauses processing and leaves canonical data readable. Turning `context_enabled` off hides every
 route and tool (`CONTEXT_DISABLED`) and stops the tick; tables are never dropped.
 
-**Evaluation.** `evals/context/` holds the fixture-history runner (doubles or recorded responses), the corpus
-generator and retrieval benchmark, and the stage F gates and shadow comparison (raw-history vs native vs
-combined) that need the owner's verified labels. The app eval catalog has the `meeting_context` feature
-(`evals/app/features/meeting_context.json`); the owner's admin routes belong to `operations`.
+**Evaluation** ([evals/context/README.md](../evals/context/README.md)). Nothing there calls a model unless
+asked with an explicit budget.
+- `runner`: scores the engines on three synthetic fixture histories (precision and recall per kind, due dates,
+  attribution, `must_not` violations, deletion leaks, stale as-of answers, supersessions, order stability, no change
+  on repeat), in memory or `--mode db` through the real pipeline in a throwaway database (adds speakers, entity
+  links, fulfilment, preselected-proposal precision and ten unchanged lint rounds).
+- `compare`: raw-history vs structured vs combined retrieval on 111 questions (nDCG@5, recall@10, stale-answer
+  rate, citation validity, leaks, latency, paired bootstrap intervals). `--live` needs `--budget-usd` and has not
+  been run.
+- `report` and `gates`: every plan section 11 gate. Quality gates read only verified labels, so the report says
+  NOT GRADEABLE until the owner adjudicates a real series; mechanical gates are graded from a `pytest --junitxml`
+  file.
+- `worksheet`: exports an ingested meeting series as a labelling worksheet, imports the filled sheet as verified
+  labels and scores it for `report --series`.
+- `corpus` and `bench`: the 500-source corpus and the retrieval benchmark (section 6).
+
+The app eval catalog has the `meeting_context` feature (`evals/app/features/meeting_context.json`, 31 scenarios,
+not yet bound); the owner's admin routes belong to `operations`.
 
 ## 10. Module boundary and extraction
 
