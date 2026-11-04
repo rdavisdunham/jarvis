@@ -954,6 +954,20 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/context/context/reviews",
+      "handler": "list_reviews_bot",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/context/context/reviews/{source_id}",
+      "handler": "get_review_bot",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/context/evidence/{assertion_id}",
       "handler": "evidence",
       "source": "apps/api/jarvis/context/routes/owner.py",
@@ -971,27 +985,6 @@
       "path": "/api/v1/context/open-loops",
       "handler": "open_loops",
       "source": "apps/api/jarvis/context/routes/owner.py",
-      "feature": "privacy"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/context/search",
-      "handler": "search",
-      "source": "apps/api/jarvis/context/routes/owner.py",
-      "feature": "privacy"
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/context/context/reviews",
-      "handler": "list_reviews_bot",
-      "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
-    },
-    {
-      "method": "GET",
-      "path": "/api/v1/context/context/reviews/{source_id}",
-      "handler": "get_review_bot",
-      "source": "apps/api/jarvis/context/routes/review.py",
       "feature": "privacy"
     },
     {
@@ -1031,15 +1024,8 @@
     },
     {
       "method": "POST",
-      "path": "/api/v1/context/reviews/{source_id}/assertions/{assertion_id}/changed",
+      "path": "/api/v1/context/reviews/{source_id}/changed",
       "handler": "changed",
-      "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/context/reviews/{source_id}/assertions/{assertion_id}/wrong",
-      "handler": "wrong",
       "source": "apps/api/jarvis/context/routes/review.py",
       "feature": "privacy"
     },
@@ -1052,9 +1038,37 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/done",
+      "handler": "done",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/later",
       "handler": "later",
       "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/speakers",
+      "handler": "speakers",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/wrong",
+      "handler": "wrong",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "privacy"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/context/search",
+      "handler": "search",
+      "source": "apps/api/jarvis/context/routes/owner.py",
       "feature": "privacy"
     },
     {

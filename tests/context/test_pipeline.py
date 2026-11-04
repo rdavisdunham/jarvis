@@ -212,14 +212,11 @@ def test_seeding_runs_as_the_owner_even_under_a_bot_credential(envelope, vectors
         assert set(db.scalars(select(Actor.name).where(Actor.owner_id == OWNER))) >= {"owner", "Davin", "Priya"}
 
 
-def test_unknown_and_placeholder_kinds(vectors):
+def test_unknown_kind_fails(vectors):
     with session_scope() as db:
-        lint = enqueue_job(db, OWNER, "context_proposals", {}).id
         odd = enqueue_job(db, OWNER, "context_nonsense", {}).id
-    pipeline.perform(lint)
     pipeline.perform(odd)
     with session_scope() as db:
-        assert (db.get(Job, lint).status, db.get(Job, lint).result) == ("succeeded", {"skipped": "not implemented yet"})
         assert db.get(Job, odd).status == "failed"
 
 

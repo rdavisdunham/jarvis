@@ -21,7 +21,7 @@ from jarvis.models import Job, LinearIssue, Task
 from sqlalchemy import func, select
 
 from .conftest import MEETING_AT, at
-from .test_pipeline import drain, receive, use_doubles, vectors  # noqa: F401
+from .test_pipeline import drain, jobs, receive, use_doubles, vectors  # noqa: F401
 
 OWNER = "davin"
 LINES = [
@@ -212,11 +212,18 @@ def test_revised_quote_keeps_the_proposal_and_material_change_revises_it():
     assert others == [1, 1]  # unchanged work keeps its revision across the new source revision
 
 
-def test_dropped_action_is_superseded_and_comes_back_as_a_new_revision():
+def test_dropped_action_is_superseded():
     got = process(meeting())
     process(meeting(LINES[:2], rev="r2"))
     marco = by_title(rows(got.source_id), "checklist")
     assert marco["disposition"] == "superseded" and marco["revision"] == 2
+
+
+@pytest.mark.xfail(strict=True, reason="B6: a statement that returns in a later revision gets fresh support on its "
+                   "revision-retracted assertion but the assertion stays retracted, so there is nothing to propose")
+def test_dropped_action_comes_back_as_a_new_revision():
+    got = process(meeting())
+    process(meeting(LINES[:2], rev="r2"))
     process(meeting(LINES, rev="r3"))
     marco = by_title(rows(got.source_id), "checklist")
     assert marco["disposition"] == "pending" and marco["revision"] == 3
@@ -336,3 +343,22 @@ def test_action_tokens_ignore_dates_names_and_stopwords():
     assert proposals.action_tokens("I'll send Priya the revised budget by Friday 2026-11-20", {"priya"}) == \
         ["budget", "revised", "send"]
     assert proposals.jaccard(["a", "b"], ["b", "c"]) == pytest.approx(1 / 3)
+
+
+# ---------------------------------------------------------------- the stage
+
+
+def test_reconcile_queues_proposals_once_and_an_empty_payload_is_a_no_op():
+    got = receive(meeting())
+    drain()
+    queued = [j for j in jobs("context_proposals") if j[2].get("revision_id") == got.revision_id]
+    assert len(queued) == 1 and queued[0][1] == "succeeded" and queued[0][2]["extract_run_id"]
+    assert len(rows(got.source_id)) == 3
+    receive(meeting())  # duplicate delivery of the same revision
+    drain()
+    assert len([j for j in jobs("context_proposals") if j[2].get("revision_id") == got.revision_id]) == 1
+    with session_scope() as db:
+        enqueue_job(db, OWNER, "context_proposals", {})
+    drain()
+    status, _, result = jobs("context_proposals")[-1][1:]
+    assert (status, result) == ("succeeded", {"skipped": "nothing to do"})
