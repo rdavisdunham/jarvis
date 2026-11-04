@@ -3,7 +3,7 @@ import { ArrowLeft, BellRing, Check, RefreshCw } from "lucide-react";
 import * as context from "./context-api";
 import {
   chosen, DESTINATION_LABELS, effectiveAt, groupItems, meetingDate, meetingStatus, nextSelection, proposalGroup, PUBLICATION_LABELS,
-  SECTION_LABELS, selectable, timecode,
+  RETRYABLE, SECTION_LABELS, selectable, timecode,
   type ContextItem, type Destination, type Evidence, type Proposal, type ProposalGroup, type Review, type SourcePage, type Speaker,
   type TranscriptSegment,
 } from "./context-model";
@@ -129,7 +129,8 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
             return !!rows.length && <div className="proposal-group" key={group.id} role="group" aria-label={group.title}>
               <h4>{group.title}</h4><p className="meetings-hint">{group.hint}</p>
               {rows.map(p => <ProposalCard key={p.id} proposal={p} checked={selected.has(p.id)} disabled={busy || stale}
-                onToggle={on => toggle(p.id, on)} onCite={seq => void reveal(seq)} zone={zone}/>)}
+                onToggle={on => toggle(p.id, on)} onCite={seq => void reveal(seq)} zone={zone}
+                onRetry={id => void act(() => context.retry(id), `Sending “${p.title}” again.`)}/>)}
             </div>;
           })}
           {!!review.proposals.length && <div className="proposal-footer">
@@ -177,8 +178,9 @@ function BriefPanel({ review, onCite }: { review: Review; onCite: (seq: number, 
   </section>;
 }
 
-function ProposalCard({ proposal: p, checked, disabled, onToggle, onCite, zone }: {
-  proposal: Proposal; checked: boolean; disabled: boolean; onToggle: (on: boolean) => void; onCite: (seq: number) => void; zone?: string;
+function ProposalCard({ proposal: p, checked, disabled, onToggle, onCite, onRetry, zone }: {
+  proposal: Proposal; checked: boolean; disabled: boolean; onToggle: (on: boolean) => void; onCite: (seq: number) => void;
+  onRetry: (publicationId: string) => void; zone?: string;
 }) {
   const open = selectable(p), verb = p.kind === "update" ? "Apply" : p.kind === "link" ? "Link" : "Add";
   return <article className={"proposal-card" + (open ? "" : " is-settled")}>
@@ -198,6 +200,9 @@ function ProposalCard({ proposal: p, checked, disabled, onToggle, onCite, zone }
     </div>
     {p.reason && <p className="proposal-reason">{p.reason}</p>}
     {p.publication?.error && <p className="proposal-reason" role="note">{p.publication.error}</p>}
+    {p.publication && RETRYABLE.includes(p.publication.status) && <div>
+      <button className="btn btn-sm" disabled={disabled} onClick={() => onRetry(p.publication!.id)}
+        aria-label={`Retry: ${p.title}`}><RefreshCw size={14}/>Retry</button></div>}
     {p.kind === "update" && p.before && p.after && <dl className="proposal-diff" aria-label="Before and after">
       {Object.keys({ ...p.before, ...p.after }).map(key => <div key={key}><dt>{key.replaceAll("_", " ")}</dt>
         <dd><del>{String(p.before?.[key] ?? "none")}</del> → <ins>{String(p.after?.[key] ?? "none")}</ins></dd></div>)}

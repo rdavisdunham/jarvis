@@ -71,6 +71,7 @@ async function write(path: string, body: Record<string, unknown>): Promise<Write
   }
 }
 const review = (sourceId: string, action: string) => `${BASE}/reviews/${id(sourceId)}/${action}`;
+const publicationRetry = (publicationId: string) => `${BASE}/reviews/publications/${id(publicationId)}/retry`;
 
 export const approve = (sourceId: string, destination: Destination, items: Selection) => write(review(sourceId, "approve"), { destination, items });
 export const applyUpdates = (sourceId: string, items: Selection) => write(review(sourceId, "apply-updates"), { items });
@@ -82,6 +83,8 @@ export const wrong = (sourceId: string, assertionId: string, expectedRevision: n
   write(review(sourceId, "wrong"), { assertion_id: assertionId, expected_revision: expectedRevision, reason });
 export const changed = (sourceId: string, assertionId: string, expectedRevision: number, statement: string, effective: string) =>
   write(review(sourceId, "changed"), { assertion_id: assertionId, expected_revision: expectedRevision, statement, effective_at: effective });
+/** Send a failed, conflicting or unconfirmed publication again under its original identity (human only). */
+export const retry = (publicationId: string) => write(publicationRetry(publicationId), {});
 export const speaker = (sourceId: string, linkId: string, expectedRevision: number, action: "confirm" | "reject" | "undo", decisionId?: string | null) =>
   write(review(sourceId, "speakers"), { link_id: linkId, expected_revision: expectedRevision, action, ...(decisionId ? { decision_id: decisionId } : {}) });
 

@@ -71,8 +71,8 @@ describe("MeetingReview", () => {
     const select = host.querySelector<HTMLSelectElement>("select[aria-label=Destination]")!;
     await act(async () => { select.value = "linear"; select.dispatchEvent(new Event("change", { bubbles: true })); });
     queued[`POST ${R}/approve`] = [[200, { review: review({ revision: 5, destination: "linear", proposals: [
-      proposal({ revision: 2, disposition: "approved", publication: { status: "queued", task_id: null } }),
-      proposal({ id: "p-other", title: "Kim drafts the FAQ", revision: 2, disposition: "approved", preselected: false, publication: { status: "queued", task_id: null } }),
+      proposal({ revision: 2, disposition: "approved", publication: { id: "pub-q", status: "queued", task_id: null } }),
+      proposal({ id: "p-other", title: "Kim drafts the FAQ", revision: 2, disposition: "approved", preselected: false, publication: { id: "pub-q", status: "queued", task_id: null } }),
       review().proposals[2]] }) }]];
     await click(button("Add selected tasks (2)"));
     const [approve] = posts("approve");
@@ -182,5 +182,27 @@ describe("MeetingReview", () => {
       expect(host.querySelector(".meeting-updated")).toBeNull();
       expect(box("Kim drafts the FAQ").checked).toBe(true);
     } finally { vi.useRealTimers(); }
+  });
+
+  it("retries failed, conflicting and unconfirmed publications, not finished ones", async () => {
+    const sent = (id: string, status: "failed" | "conflict" | "unconfirmed" | "published", error: string | null = null) =>
+      proposal({ id: "p-" + id, title: "Task " + id, disposition: "approved", publication: { id: "pub-" + id, status, task_id: null, error } });
+    current = review({ proposals: [sent("f", "failed", "Linear timed out."), sent("c", "conflict"), sent("u", "unconfirmed"), sent("ok", "published")] });
+    await render();
+    const retries = [...host.querySelectorAll<HTMLButtonElement>("button[aria-label^='Retry:']")].map(b => b.getAttribute("aria-label"));
+    expect(retries).toEqual(["Retry: Task f", "Retry: Task c", "Retry: Task u"]);
+    expect(text()).toContain("Linear timed out.");
+    queued["POST /api/v1/context/reviews/publications/pub-c/retry"] = [[409, { error: { code: "PUBLICATION_CONFLICT", message: "The task changed since you approved this. Review it there." } }]];
+    await click(host.querySelector<HTMLButtonElement>("button[aria-label='Retry: Task c']")!);
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("The task changed since you approved this");
+    expect(host.querySelector(".meeting-stale")).toBeNull();
+    const path = "/api/v1/context/reviews/publications/pub-f/retry";
+    queued[`POST ${path}`] = [[200, { publication: { id: "pub-f", status: "retrying" }, review: review({ proposals: [
+      proposal({ id: "p-f", title: "Task f", disposition: "approved", publication: { id: "pub-f", status: "retrying", task_id: null } })] }) }]];
+    await click(host.querySelector<HTMLButtonElement>("button[aria-label='Retry: Task f']")!);
+    const [call] = calls.filter(c => c.method === "POST" && c.url === path);
+    expect(Object.keys(call.body)).toEqual(["command_id"]);
+    expect(text()).toContain("Retrying");
+    expect(host.querySelector("button[aria-label^='Retry:']")).toBeNull();
   });
 });
