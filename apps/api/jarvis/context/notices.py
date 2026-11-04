@@ -15,7 +15,8 @@ calls `sync` from the worker's housekeeping.
   are folded into one consolidated notice per owner-local day, extended while it is still undelivered.
 - `context_digest`: during the 17:00 hour in the owner's timezone, one push (dedup key
   `context:digest:{owner}:{local date}`) when anything is pending: unreviewed meetings, proposals the owner set
-  to Later, and context Questions the owner deferred whose deferral has elapsed. Only items that arrived by
+  to Later, and context Questions (`service.question_items`: contested context, link ambiguity and agent
+  suggestions) the owner deferred whose deferral has elapsed. Only items that arrived by
   17:00 count (a meeting when its ready notice was written, a Later proposal when it was deferred or its
   `until`, a Question when its deferral ends); later arrivals wait for the next day. Entries are keyed by stable
   identity (source, proposal task link or fingerprint, question key), so proposal updates, publication retries
@@ -200,7 +201,7 @@ def _later_until(db, owner: str, ids: list[str]) -> dict[str, datetime]:
 
 def items(db, owner: str, cutoff: datetime) -> dict:
     """Pending digest entries that arrived by `cutoff`."""
-    from .decisions import question_items
+    from .service import question_items
 
     arrived = ready_at(db, owner, cutoff + RECENT)
     sources = sorted(s for s in unreviewed(db, owner) if s in arrived and arrived[s] <= cutoff)

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from jarvis import notices as core
-from jarvis.context import decisions, notices
+from jarvis.context import notices, service
 from jarvis.context.models import ContextDecision, ContextProposal, ContextSource, ContextSourceRevision
 from jarvis.db import session_scope
 from jarvis.models import Job, Notification, OwnerSettings
@@ -206,7 +206,7 @@ def test_digest_empty_day_sends_nothing():
 
 
 def test_digest_dedupes_across_retries_proposal_updates_and_same_work(monkeypatch):
-    monkeypatch.setattr(decisions, "question_items", lambda db, owner: [])
+    monkeypatch.setattr(service, "question_items", lambda db, owner: [])
     with session_scope() as db:
         a, b = meeting(db, "Monday sync"), meeting(db, "Tuesday sync")
         later = proposal(db, a, "Send the budget", disposition="later", task_id="task-1")
@@ -228,7 +228,7 @@ def test_later_with_until_and_deferred_questions_follow_their_time(monkeypatch):
     questions = [{"key": "context:q1", "deferred_until": at - timedelta(hours=2)},
                  {"key": "context:q2", "deferred_until": at + timedelta(hours=20)},
                  {"key": "context:q3", "deferred_until": None}]
-    monkeypatch.setattr(decisions, "question_items", lambda db, owner: questions)
+    monkeypatch.setattr(service, "question_items", lambda db, owner: questions)
     with session_scope() as db:
         tomorrow = proposal(db, None, "Lint follow-up", disposition="later")
         db.add(ContextDecision(owner_id=OWNER, seq=1, target_type="proposal", target_id=tomorrow.id,
@@ -242,7 +242,7 @@ def test_later_with_until_and_deferred_questions_follow_their_time(monkeypatch):
 
 
 def test_digest_resolves_on_review_publication_or_dismissal_before_it_is_pushed(monkeypatch):
-    monkeypatch.setattr(decisions, "question_items", lambda db, owner: [])
+    monkeypatch.setattr(service, "question_items", lambda db, owner: [])
     with session_scope() as db:
         source = meeting(db)
         pending = proposal(db, source)
@@ -286,3 +286,29 @@ def test_notification_url_targets_for_context_categories():
     for target, url in (({"view": "meetings", "source_id": "s1"}, "/?view=meetings&source=s1"),
                         ({"view": "meetings", "source_ids": ["s1", "s2"]}, "/?view=meetings")):
         assert notification_url(SimpleNamespace(task_id=None, target=target)) == url
+
+
+@pytest.fixture
+def context_on(monkeypatch):
+    from jarvis.config import get_settings
+
+    monkeypatch.setenv("JARVIS_CONTEXT_ENABLED", "true")
+    get_settings.cache_clear()
+    yield
+    monkeypatch.delenv("JARVIS_CONTEXT_ENABLED")
+    get_settings.cache_clear()
+
+
+def test_deferred_agent_suggestion_reaches_the_digest_once_its_deferral_ends(client, context_on):
+    """Unmocked: an agent suggestion (C2 `service.question_items`) deferred with Remind me later."""
+    from .test_service import bot, mint, seed, suggestion
+
+    ids = seed()
+    writer, _ = mint(client, "context:write")
+    with bot(writer):
+        receipt = service.feedback(suggestion(ids))
+    with session_scope() as db:
+        service.defer_question(db, OWNER, receipt["question_key"], 1, timedelta(hours=3), command_id="cmd-defer")
+        start = datetime.now(UTC)
+        assert notices.items(db, OWNER, start)["question_keys"] == []
+        assert notices.items(db, OWNER, start + timedelta(hours=4))["question_keys"] == [receipt["question_key"]]
