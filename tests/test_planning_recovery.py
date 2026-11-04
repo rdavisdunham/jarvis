@@ -124,3 +124,24 @@ def test_mcp_header_binding_is_request_local(monkeypatch):
     asyncio.run(both())
     assert sorted(observations) == [('first-run','first-run'),('second-run','second-run')]
     assert external_mcp._run_binding.get() is None
+
+
+def test_real_mcp_transport_binds_the_run_and_saves_its_interview(durable, client):
+    from test_external_agents import key, rpc
+    rid = new_run(durable)
+    with session_scope() as db:
+        bound_token = coordinator.run_token(failed(db, rid))
+    _, headers = key(client, scopes=['agents:session'])
+    headers = {**headers, 'X-Eridani-Run-Token': bound_token}
+    response = rpc(client, headers, 'tools/call', {'name':'task_plan','arguments':{}})
+    assert response.status_code == 200
+    result = response.json()['result']
+    assert not result.get('isError'), result
+    assert result['structuredContent']['actor']['verified'] is True
+    assert result['structuredContent']['run']['id'] == rid
+    response = rpc(client, headers, 'tools/call', {'name':'task_interview','arguments':{
+        'questions':[{'id':'existing-question','question':'Which scope?','free_text':True}]}})
+    result = response.json()['result']
+    assert not result.get('isError'), result
+    assert result['structuredContent']['status'] == 'open'
+    assert external_mcp._run_binding.get() is None

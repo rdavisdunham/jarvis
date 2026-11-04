@@ -136,6 +136,7 @@ REASONS = {
     "turn_cap": "The run reached its turn cap.",
     "question_timed_out": "The question timed out here; answer it in the terminal.",
     "no_plan": "The agent ended its planning turn without asking questions or submitting a plan.",
+    "planning_retry": "Retrying the rejected planning handoff in the existing conversation.",
     "plan_review": "The agent proposes changes to your success criteria; accept or keep each one to start the work.",
     "plan_approval": "The plan is final; approve it to start the work, or send it back with a note.",
     "host_busy": "The host is at its run limit, so the next session could not start; free a run or raise limits.maxRuns, then message the agent.",

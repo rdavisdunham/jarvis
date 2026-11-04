@@ -57,6 +57,20 @@ Code: [`agent_link.py`](../apps/api/jarvis/agent_link.py) (socket, ingestion, pa
 [`Remotea.tsx`](../apps/web/src/Remotea.tsx), [`RunPanel.tsx`](../apps/web/src/RunPanel.tsx) and
 [`remotea-model.ts`](../apps/web/src/remotea-model.ts).
 
+### Planning handoff recovery
+
+A run's MCP connection supplies its existing run token in `X-Eridani-Run-Token`. Codex reads it
+from the run environment; Claude uses its private per-run MCP configuration. Explicit tokens remain
+supported and must match a bound connection. The API still checks owner, role, expiry and retirement.
+
+A confirmed rejected initial planning call that saved nothing can receive one automatic retry until
+a handoff is confirmed saved. Its retry budget survives reconnects and service restarts. Uncertain delivery, operator
+pauses, automation holds and pending decisions block automatic recovery. The drawer shows a recovery
+card even with chat hidden, with **Retry planning** and **Show conversation**. Retry preserves the
+conversation and worktree; it never approves a plan or answers questions. A verified initial planner
+may finish a rejected handoff while the run is awaiting a missing plan, provided the operator has not
+paused it or held automation.
+
 ### Run progress, chat, and automation hold
 
 The drawer has one stage/model status and one plan card. During approved execution, the card shows steps
