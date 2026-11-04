@@ -19,7 +19,14 @@ from . import run_coordinator as coordinator
 from .agent_actor import Actor, acting
 from .domain import PLAN_ID, DomainError, advisory, emit, encode, execute, owned
 from .models import Note, Task, now
-from .session_models import AgentHost, AgentInterview, AgentPlanReview, AgentRunPlan, ExecutionTarget
+from .session_models import (
+    AgentHost,
+    AgentInterview,
+    AgentPlanReview,
+    AgentRunPlan,
+    AgentSession,
+    ExecutionTarget,
+)
 
 
 class Input(BaseModel):
@@ -297,7 +304,12 @@ def run_scoped(db, bot, body, states):
         raise DomainError("RUN_NOT_BOUND", "This run works on a different task.", 409, data={"task_id": run.task_id})
     run = coordinator.load(db, run.owner_id, run.id)
     coordinator.ensure_eridani_control(run)
-    if run.state == "needs_you" and run.state_reason == "no_plan" and not run.plan_revision and not run.plan_pending:
+    session = db.get(AgentSession, run.session_pk) if run.session_pk else None
+    resumed_initial = (run.state_reason == "exited" and session is not None
+                       and session.state in ("working", "idle", "needs_you")
+                       and session.host_id == run.host_id and session.surf == run.surf
+                       and session.incarnation == run.incarnation)
+    if run.state == "needs_you" and (run.state_reason == "no_plan" or resumed_initial) and not run.plan_revision and not run.plan_pending:
         # A verified planning session may finish its rejected handoff; no operator decision is bypassed.
         from . import agent_automation
         if not run.paused and not agent_automation.held(run) and not coordinator.open_questions(db, run):
