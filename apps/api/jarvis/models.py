@@ -99,7 +99,8 @@ class Goal(Base):
 
 class Actor(Base):
     __tablename__ = "actors"
-    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_actor_owner_name"),)
+    # Display names may repeat (two people called Alex); resolve by ID, or by name only when unique.
+    __table_args__ = (Index("ix_actors_owner_name", "owner_id", "name"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
     name: Mapped[str] = mapped_column(String(100))

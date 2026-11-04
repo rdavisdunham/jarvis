@@ -14,7 +14,7 @@
 name: jarvis-next
 services:
   postgres:
-    image: postgres:16.15-bookworm
+    image: pgvector/pgvector:0.8.6-pg16-bookworm
     environment:
       POSTGRES_USER: jarvis
       POSTGRES_PASSWORD: ${JARVIS_POSTGRES_PASSWORD:?Run scripts/setup.py first}

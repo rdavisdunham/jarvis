@@ -25,6 +25,8 @@ def test_database():
                 raise ValueError("Missing synthetic eval marker")
         os.environ.update(JARVIS_COST_TRACKING_ENABLED="true", JARVIS_OWNER_TOKEN="test-owner-token", JARVIS_ORIGIN="http://testserver")
         get_settings.cache_clear()
+        with engine().begin() as connection:
+            connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
         Base.metadata.create_all(engine())
         # Match the original pytest fixture: model tables, not a migrated schema.
         # Migration/readiness tests deliberately expect no alembic_version.
@@ -46,6 +48,9 @@ def test_database():
     os.environ["JARVIS_ORIGIN"] = "http://testserver"
     get_settings.cache_clear()
     engine.cache_clear()
+    # Context tables use pgvector columns; production and CI images ship the extension.
+    with engine().begin() as connection:
+        connection.exec_driver_sql("CREATE EXTENSION IF NOT EXISTS vector")
     Base.metadata.create_all(engine())
     yield testing
     engine().dispose()
