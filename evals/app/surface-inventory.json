@@ -47,7 +47,7 @@
     },
     {
       "name": "context.resolve",
-      "feature": "memory_dream"
+      "feature": "meeting_context"
     },
     {
       "name": "control.answer",
@@ -1488,13 +1488,6 @@
       "method": "PUT",
       "path": "/api/v1/external/sources/{connector}/{external_id}",
       "handler": "submit_source",
-      "source": "apps/api/jarvis/context/routes/sources.py",
-      "feature": "meeting_context"
-    },
-    {
-      "method": "DELETE",
-      "path": "/api/v1/external/sources/{source_id}",
-      "handler": "delete_source",
       "source": "apps/api/jarvis/context/routes/sources.py",
       "feature": "meeting_context"
     },

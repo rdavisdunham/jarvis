@@ -1,6 +1,7 @@
-"""Source submission and reads for bot keys: PUT/GET/DELETE /api/v1/external/sources.
+"""Source submission and reads for bot keys: PUT/GET /api/v1/external/sources.
 
-Scopes: `sources:write` submits (and cannot read back), `context:read` lists and reads, `context:write` deletes.
+Scopes: `sources:write` submits (and cannot read back), `context:read` lists and reads. Deletion is the owner's alone
+(session route `DELETE /api/v1/context/sources/{id}`): `context:write` is for feedback only (plan section 5).
 Every route refuses when `context_enabled` is off (CONTEXT_DISABLED) and in shared workspaces
 (PERSONAL_WORKSPACE). Bodies are JSON envelopes (`{"version": 1, ...}`) or raw TXT, Markdown, WebVTT or SRT
 chosen by Content-Type; raw bodies take title, occurred_at, timezone and external_revision as query parameters.
@@ -107,10 +108,3 @@ def get_source(source_id: UUID, identity: Bot):
     with session_scope() as db:
         bot = authorize(db, "context:read")
         return sources.get_source(db, bot.owner_id, str(source_id))
-
-
-@router.delete("/sources/{source_id}")
-def delete_source(source_id: UUID, identity: Bot):
-    with session_scope() as db:
-        bot = authorize(db, "context:write", write=True)
-        return sources.delete_source(db, bot.owner_id, str(source_id))

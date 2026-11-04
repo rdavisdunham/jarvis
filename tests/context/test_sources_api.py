@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from jarvis.api import app
 from jarvis.config import get_settings
 from jarvis.context import models as m
+from jarvis.context import sources
 from jarvis.db import session_scope
 from jarvis.models import BotCredential, Job
 from sqlalchemy import func, select
@@ -142,18 +143,19 @@ def test_scopes_separate_submission_reading_and_deletion(client):
     http = TestClient(app)
     assert code(http.get(BASE, headers=writer)) == (403, "INSUFFICIENT_SCOPE")
     assert code(http.get(f"{BASE}/{source_id}", headers=writer)) == (403, "INSUFFICIENT_SCOPE")
-    assert code(http.delete(f"{BASE}/{source_id}", headers=writer)) == (403, "INSUFFICIENT_SCOPE")
     assert code(put(reader, payload=body())) == (403, "INSUFFICIENT_SCOPE")
-    assert code(http.delete(f"{BASE}/{source_id}", headers=reader)) == (403, "INSUFFICIENT_SCOPE")
     listing = http.get(BASE, headers=reader).json()
     assert listing["total"] == 1 and "segments" not in listing["items"][0]
     assert "We settle scope today." not in json.dumps(listing)
     detail = http.get(f"{BASE}/{source_id}", headers=reader).json()
     assert [s["kind"] for s in detail["segments"]] == ["transcript", "transcript", "private_note"]
     assert code(http.get(BASE, params={"status": "bogus"}, headers=reader)) == (400, "INVALID_ARGUMENT")
-    deleted = http.delete(f"{BASE}/{source_id}", headers=editor)
-    assert deleted.status_code == 200 and deleted.json()["status"] == "deleted"
-    assert code(http.get(f"{BASE}/{source_id}", headers=editor)) == (404, "NOT_FOUND")
+    for headers in (writer, reader, editor):  # bot keys never delete
+        assert http.delete(f"{BASE}/{source_id}", headers=headers).status_code == 405
+    with session_scope() as db:
+        owner = db.scalar(select(BotCredential.owner_id).limit(1))
+        assert sources.delete_source(db, owner, source_id)["status"] == "deleted"  # the owner's session route
+    assert code(http.get(f"{BASE}/{source_id}", headers=reader)) == (404, "NOT_FOUND")
     assert http.get(BASE, headers=reader).json()["items"] == []
     redelivered = put(writer, payload=body()).json()
     assert (redelivered["ingestion_status"], redelivered["processing_status"]) == ("deleted", "deleted")

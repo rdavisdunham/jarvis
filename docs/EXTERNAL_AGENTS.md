@@ -184,7 +184,7 @@ while meeting context is turned on; otherwise every route and tool answers `PERS
 Permissions:
 
 - `context:read`: search, briefs, evidence, sources, open loops, meeting preparation and changes.
-- `context:write`: everything in read, plus `context_feedback` (correction suggestions) and source deletion.
+- `context:write`: everything in read, plus `context_feedback` (correction suggestions). Bot keys never delete sources; the owner deletes from the Meetings view.
   It never approves task proposals, publishes tasks or confirms anything on the owner's behalf.
 - `sources:write`: submit transcripts; reading them back needs `context:read`.
 - Linked task state (in briefs and open loops) also needs `tasks:read`; without it, task details are withheld

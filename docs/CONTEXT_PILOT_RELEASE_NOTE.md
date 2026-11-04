@@ -56,7 +56,7 @@ shared workspaces.
 |---|---|---|
 | Transcript submitter | `sources:write` only | `scripts/bridge_submit.py`, the recorder, a Zoom export script. It cannot read context back. |
 | Agent reader | `context:read` (+ `tasks:read` if agents should see linked task state) | Claude Code or another MCP client asking about meetings |
-| Agent with suggestions (optional) | `context:read`, `context:write` | Same, plus correction suggestions and source deletion. Suggestions only reach your Questions. |
+| Agent with suggestions (optional) | `context:read`, `context:write` | Same, plus correction suggestions. Only you can delete a meeting. Suggestions only reach your Questions. |
 
 No key can approve proposals, publish tasks or merge people; those are yours in the web app.
 

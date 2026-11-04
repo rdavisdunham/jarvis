@@ -45,7 +45,7 @@ EXACT = {
     "note.file": "note_lists",
     "memory.capture": "memory_capture",
     "memory.resolve": "memory_dream",
-    "context.resolve": "memory_dream",  # answers a Questions item, like memory.resolve
+    "context.resolve": "meeting_context",  # answers a context Questions item
     "memory_review_list": "memory_dream",
     "routing.run": "routing_dream",
     "routing.answer": "routing_dream",
