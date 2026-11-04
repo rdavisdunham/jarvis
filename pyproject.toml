@@ -35,6 +35,8 @@ build-backend = "hatchling.build"
 packages = ["apps/api/jarvis"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repo root, so tests can import `evals` and `scripts` (namespace packages) under plain `pytest` as in CI.
+pythonpath = ["."]
 asyncio_mode = "auto"
 markers = [
   "e2e_protocol: the real remotea server against the real Eridani app (skips without node and a built remotea checkout)",
