@@ -1020,77 +1020,77 @@
       "path": "/api/v1/context/reviews",
       "handler": "list_reviews",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/publications/{publication_id}/retry",
       "handler": "retry",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "GET",
       "path": "/api/v1/context/reviews/{source_id}",
       "handler": "get_review",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/apply-updates",
       "handler": "apply_updates",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/approve",
       "handler": "approve",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/changed",
       "handler": "changed",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/dismiss",
       "handler": "dismiss",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/done",
       "handler": "done",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/later",
       "handler": "later",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/speakers",
       "handler": "speakers",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/wrong",
       "handler": "wrong",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "privacy"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",
@@ -1363,14 +1363,14 @@
       "path": "/api/v1/external/context/reviews",
       "handler": "list_reviews_bot",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "external_agents"
+      "feature": "meeting_context"
     },
     {
       "method": "GET",
       "path": "/api/v1/external/context/reviews/{source_id}",
       "handler": "get_review_bot",
       "source": "apps/api/jarvis/context/routes/review.py",
-      "feature": "external_agents"
+      "feature": "meeting_context"
     },
     {
       "method": "POST",

@@ -252,7 +252,7 @@ command or tool, so a key calling it gets `INSUFFICIENT_SCOPE`. Inside Eridani, 
 Eridani's own web app reads the same context through the signed-in session at `/api/v1/context/*` (`search`,
 `brief`, `evidence/{id}`, `open-loops`, `meeting-prep`, `changes`, `GET /sources`, `GET /sources/{id}`,
 `GET /sources/{id}/segments`, `DELETE /sources/{id}`), and adds the owner-only meeting review (`reviews/*`:
-approve, apply updates, dismiss, later, Wrong, Changed, publication retry), person pages (`people/*`: merge,
+approve, apply updates, dismiss, later, done, Wrong, Changed, speaker corrections, publication retry), person pages (`people/*`: merge,
 unmerge, not the same person, link corrections), the Meeting sources settings (`settings/*`) and processing
 controls (`admin/*`: status, pause, resume, rollback drill). Those routes are not for bots; they share the
 service, the checks and the response shapes above, with the owner's own task access. Architecture and

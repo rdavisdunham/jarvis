@@ -118,8 +118,8 @@ refreshed in place). New content: an immutable revision with segments and provis
 | `context_link` | source, revision, extract run | Mention links to actors, projects, clients, areas, goals, tasks, Linear issues; consequential ambiguity becomes a Question |
 | `context_reconcile` | source, revision, extract run | Bounded reconciliation; source becomes `ready`; queues `context_embed`, `context_brief` for touched entities and `context_proposals` |
 | `context_embed` | source, revision (or none: catch-up) | Chunk and assertion embeddings outside any transaction, written only where text is unchanged |
-| `context_proposals` | source, revision | Deterministic proposal generation (`proposals.perform`) |
-| `context_publish` | publication | Publishes one approved proposal revision (`publication.perform`) |
+| `context_proposals` | source, revision, extract run | Deterministic proposal generation (`proposals.perform`), once per revision |
+| `context_publish` | publication | Publishes one approved proposal revision (`publication.perform`); runs while paused, since approval already happened |
 | `context_brief` | entity | Deterministic brief, or synthesized when the owner's `synthesize_briefs` is on |
 | `context_lint` | budget (optional) | One weekly lint unit per transaction (`lint.perform`) |
 | `context_delete` | source, through revision | Purge of a deleted source's content |
@@ -246,7 +246,7 @@ The web app never reads `context_*` tables or the bot API; it calls session twin
 | Routes | Purpose |
 |---|---|
 | `POST search`, `brief`, `open-loops`, `meeting-prep`; `GET evidence/{id}`, `changes`, `sources`, `sources/{id}`, `sources/{id}/segments`; `DELETE sources/{id}` | Session twins of the agent contract |
-| `GET reviews`, `GET reviews/{source_id}`; `POST reviews/{source_id}/approve`, `apply-updates`, `dismiss`, `later`, `assertions/{id}/wrong`, `assertions/{id}/changed`; `POST reviews/publications/{id}/retry` | Meeting review (Meetings view) |
+| `GET reviews`, `GET reviews/{source_id}`; `POST reviews/{source_id}/approve`, `apply-updates`, `dismiss`, `later`, `done`, `wrong`, `changed`, `speakers`; `POST reviews/publications/{id}/retry` | Meeting review (Meetings view); every write answers the new review, a stale revision anywhere refuses the batch (409) |
 | `GET people`, `GET people/{actor_id}`; `POST people/{id}/merge`, `not-same`, `unmerge`, `links/{link_id}` | Person pages and identity corrections |
 | `GET settings`; `POST settings/import`; `POST settings/granola`, `granola/{id}/test`, `granola/{id}/sync`, `granola/{id}/backfill`; `DELETE settings/granola/{id}` | Sources panel |
 | `GET admin/status`; `POST admin/pause`, `admin/resume`, `admin/rollback-drill` | Operations (work even with the flag off) |
@@ -265,6 +265,9 @@ the task revision recorded at proposal time; a task edited since is a `conflict`
 in_progress, published, retrying, failed, conflict, unconfirmed. Approved and published proposals are never
 modified by regeneration; changed work becomes a follow-up `update` proposal. Linear matching covers the owner's
 synced Linear tasks; widen the sync (`linear.select`, `only_mine=false`) to match others' issues.
+Review state is derived, never stored: a meeting is reviewed when none of its proposals is pending (Done
+dismisses what is open; Later defers it to the digest). Speaker corrections on the review are link decisions on
+the meeting's speaker labels (confirm, reject as a source-scoped durable negative, undo).
 
 **Notices** (`notices.py`, written by `scheduler.tick` from worker housekeeping while the flag is on):
 `context_ready` once per meeting review revision (dedup `context:ready:{source}:{revision}`; a later revision
