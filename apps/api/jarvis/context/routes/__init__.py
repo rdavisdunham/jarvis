@@ -1,11 +1,19 @@
-"""Context REST routes, mounted on the external (bot-key) router in `external_routes.py` under /api/v1/external.
+"""Context REST routes.
 
-Each context package adds one `router.include_router(...)` line here.
+`router` is mounted on the external (bot-key) router in `external_routes.py` under /api/v1/external. Each context
+package adds one `router.include_router(...)` line here.
+
+`owner_router` holds routes for the signed-in owner's browser session under /api/v1/context. It must never be
+mounted under /api/v1/external, whose responses the security middleware re-authenticates as bot keys; `api.py`
+mounts it with `app.include_router(owner_router)`.
 """
 
 from fastapi import APIRouter
 
-from . import sources
+from . import settings, sources
 
 router = APIRouter()
 router.include_router(sources.router)
+
+owner_router = APIRouter(prefix="/api/v1/context")
+owner_router.include_router(settings.router)
