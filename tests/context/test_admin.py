@@ -22,6 +22,22 @@ from .test_export_roundtrip import graph
 BASE = "/api/v1/context/admin"
 
 
+@pytest.fixture(autouse=True, scope="module")
+def mounted():
+    """Mount routes.owner_router ahead of the SPA catch-all when api.py does not mount it yet (D3 adds the line)."""
+    from jarvis.api import app
+    from jarvis.context.routes import owner_router
+
+    routes = app.router.routes
+    if not any(getattr(r, "path", "").startswith(BASE) for r in routes):
+        start = len(routes)
+        app.include_router(owner_router)
+        added = routes[start:]
+        del routes[start:]
+        routes[0:0] = added
+    yield
+
+
 def owner() -> str:
     return get_settings().owner_id
 

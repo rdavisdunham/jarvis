@@ -1,9 +1,9 @@
 """Owner processing controls for meeting context: status, pause, resume and the rollback drill.
 
-Browser (session cookie) routes under /api/v1/context/admin, registered in `api.py` through
-`routes.session_router`, not on the bot router: these are the owner's rollback controls, never an agent's. Personal
-workspace only (PERSONAL_WORKSPACE). They work whatever `context_enabled` says, so processing can be paused before
-the flag is switched on or after it is switched off.
+Browser (session cookie) routes under /api/v1/context/admin, included in `routes.owner_router` (mounted in
+`api.py`), not on the bot router: these are the owner's rollback controls, never an agent's. Personal workspace
+only (PERSONAL_WORKSPACE). They work whatever `context_enabled` says, so processing can be paused before the flag
+is switched on or after it is switched off.
 
 Pause takes the owner-state row lock, increments `epoch` and sets `paused`. Every automatic run started under an
 older epoch fails the pipeline's apply check, and nothing automatic applies while `paused` is set. Sources, reads,
@@ -37,7 +37,7 @@ RECENT = 10
 ERROR_CHARS = 500
 
 User = Annotated[Identity, Depends(authenticate)]
-router = APIRouter(prefix="/api/v1/context/admin", tags=["Meeting context"])
+router = APIRouter(prefix="/admin", tags=["Meeting context"])
 
 
 # ---------------------------------------------------------------- state

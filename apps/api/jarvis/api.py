@@ -108,9 +108,6 @@ app.include_router(agent_link_router)
 from .remotea_routes import router as remotea_router
 
 app.include_router(remotea_router)
-from .context.routes import session_router as context_session_router
-
-app.include_router(context_session_router)
 from . import bug_reports
 from .bug_reports import router as bug_reports_router
 
