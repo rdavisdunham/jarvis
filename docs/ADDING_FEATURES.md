@@ -368,32 +368,38 @@ Notifications (`models.Notification`): `category` is a free string (no enum or c
       (`deadline`, `morning`, `question`, `failure`, and the push vehicles `bundle`/`digest`),
       `domain.py` (`reminder` occurrences), `run_coordinator.notify` (`agent_question`, `agent_done`,
       `agent_stuck`; capped at `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass`
-      makes questions urgent).
+      makes questions urgent), `context/notices.py` (`context_ready` per meeting review revision,
+      `context_backfill` once per owner-local day, `context_digest` at 17:00 owner-local; written by
+      `context/scheduler.tick` from `worker.housekeeping` when `context_enabled`).
 - [ ] State: change `read_at`/`dismissed_at`/`completed_at`/`snoozed_until`/`delivered_at` through
       `notices.apply` (the state machine; `notices.state` derives the one state the API returns as
       `state`). Snoozing bumps `generation` and clears read, delivered and `bundle_id`.
 - [ ] Delivery rules in `notices.eligible`: `work_result` is never pushed; nothing in shared
       workspaces; quiet hours via `quiet_until`; task-linked notices drop when the task is done.
       Then `notices.plan` (called by `worker.prepare_deliveries`) picks what pushes now: urgent,
-      `morning` and already-started notices alone; two or more interrupting notices due together
+      `notices.SUMMARIES` (`morning`, `context_digest`) and already-started notices alone; two or more interrupting notices due together
       as one `bundle`; notices below the owner's `notify_min_priority` in one `digest` per
       `digest_cadence` period; a second due notice for the same task rides with the first
-      (`bundle_id` points at its carrier). Bundles and digests (`notices.VEHICLES`) are left out of
+      (`bundle_id` points at its carrier). A scheduled summary re-checks its content in `eligible`
+      (`morning` recounts tasks; `context_*` notices go through `context.notices.current`, which drops
+      a review already done and recounts the digest). Bundles and digests (`notices.VEHICLES`) are left out of
       `GET /api/v1/notifications` and `notification_list`; reading or dismissing one covers what it
       carried, and a submitted push marks its carried notices delivered (`notices.delivered`).
 - [ ] Deep link: `worker.notification_url(notification)` maps `target` to a `/?…` URL (remotea →
-      `/?view=remotea&run=<id>`). `public/sw.js` opens only URLs starting with `/?`. The page must parse
+      `/?view=remotea&run=<id>`; meetings → `/?view=meetings[&source=<id>]`). `public/sw.js` opens only URLs starting with `/?`. The page must parse
       the parameter (section 1). The in-app Notifications page's "Open" (`notice-primary` in `App.tsx`)
       goes through `apps/web/src/notice-target.ts` `noticeDestination`, which mirrors
       `notification_url` in the same order. A new `target.view` needs a branch in both and a row in
       `apps/web/src/notice-targets.json` (notification, push URL, in-app destination); the drift guard
-      fails if a `target={"view": …}` in `notices.py` / `run_coordinator.py` has no row.
+      fails if a `target={"view": …}` in `notices.py` / `run_coordinator.py` / `context/notices.py`
+      has no row.
 - [ ] `detailed_notifications` (preference, default off) replaces title/body with a generic text in
       the push payload; write titles that still make sense in-app only.
 - [ ] Snooze words are parsed by `snooze_words.snooze_time` in the owner's zone; a quick choice added to
       `NoticeSnooze.tsx` `SNOOZE_CHOICES` must parse
       (`tests/test_snooze_words.py::test_every_snooze_choice_in_the_app_parses`).
 - [ ] Tests: `tests/test_smart_notifications.py`, `tests/test_notification_bundles.py`,
+      `tests/context/test_notices.py`, `tests/context/test_scheduler.py`,
       `tests/test_snooze_words.py`, `tests/test_push_registration.py`,
       `apps/web/src/push-subscription.test.ts`, `apps/web/src/notice-target.test.ts` and
       `tests/test_drift_guards.py::test_push_and_in_app_notifications_open_the_same_place` (both read
@@ -404,7 +410,8 @@ Change feed (SSE `GET /api/v1/events`):
 - [ ] Emit with `domain.emit(db, owner, "<thing>.changed", entity_id, revision)` inside the transaction.
 - [ ] Web `events.ts`: kinds that only one page cares about go in `LOAD_SKIP` (no workspace reload)
       and/or `REVISION_SKIP` (no dependent view refresh); page-specific kinds dispatch a window event
-      (`agent.changed`/`session.changed` → `eri-agents-changed`, `work.changed` → `eri-work-changed`).
+      (`agent.changed`/`session.changed` → `eri-agents-changed`, `work.changed` → `eri-work-changed`,
+      `context.changed` → `eri-context-changed`, skipped for load and revision).
       An unknown kind triggers a full reload, which is safe but costly for chatty events. Test:
       `apps/web/src/events.test.ts` (`signalScope`).
 - [ ] Bots see only an allowlist (`external_service.changes`: `<kind>.changed` for permitted record

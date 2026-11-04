@@ -6,6 +6,7 @@ import type { Notice } from "./types";
  * notification can carry a task too, but opens its run. */
 export type NoticeDestination =
   | { open: "run"; run: string | null }
+  | { open: "meetings"; source: string | null }
   | { open: "task"; task: string }
   | { open: "activity" }
   | { open: "today" }
@@ -14,6 +15,8 @@ export type NoticeDestination =
 export function noticeDestination(n: Pick<Notice, "task_id" | "target">): NoticeDestination {
   const target = n.target ?? {};
   if (target.view === "remotea") return { open: "run", run: target.run_id || null };
+  if (target.view === "meetings")
+    return { open: "meetings", source: (target as { source_id?: string }).source_id || null };
   if (n.task_id) return { open: "task", task: n.task_id };
   if (target.view === "activity") return { open: "activity" };
   if (target.view === "tasks") return { open: "today" };
