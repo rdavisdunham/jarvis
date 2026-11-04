@@ -360,27 +360,36 @@ def import_granola(note_id: str, slug: str, *, client=None, force: bool = False)
 # ---------------------------------------------------------------- running a meeting through the pipeline
 
 
-def check_model(model: str) -> str:
-    """The model_map profile for `model`; a clear error until the engine package adds it and context_actions."""
+def routable_profiles() -> list[str]:
+    """model_map profiles `memory_learning.profile_request` serves: priced, OpenAI Responses or Anthropic
+    Messages, Standard tier."""
     from jarvis import model_map
 
-    profile = MODELS.get(model)
-    if profile is None:
-        raise SystemExit(f"unknown model {model!r}; choose one of {', '.join(MODELS)}")
-    if profile not in model_map.PROFILES:
-        raise SystemExit(f"model_map has no {profile!r} profile yet (the engine package adds it); merge it first")
-    if "context_actions" not in model_map.JOBS:
-        raise SystemExit("model_map has no context_actions job yet (the engine package adds it); merge it first")
-    return profile
+    return [pid for pid, spec in model_map.PROFILES.items()
+            if spec.api in ("openai_responses", "anthropic_messages") and spec.service_tier == "default"
+            and model_map.costing(pid) is not None]
 
 
 def check_profile(name: str) -> str:
-    """A model_map profile ID from a lab model name or a profile ID (for the facts model)."""
+    """A profile ID from a lab short name (`sonnet` and the like) or any profile ID profile_request serves."""
     from jarvis import model_map
 
     profile = MODELS.get(name, name)
     if profile not in model_map.PROFILES:
-        raise SystemExit(f"model_map has no {profile!r} profile; choose one of {', '.join(model_map.PROFILES)}")
+        raise SystemExit(f"model_map has no {profile!r} profile; choose one of {', '.join(routable_profiles())}")
+    if profile not in routable_profiles():
+        raise SystemExit(f"profile {profile!r} is not served by profile_request (no price, or another API or "
+                         f"tier); choose one of {', '.join(routable_profiles())}")
+    return profile
+
+
+def check_model(model: str) -> str:
+    """The action-pass profile for `model` (`check_profile`); a clear error until the context_actions job exists."""
+    from jarvis import model_map
+
+    profile = check_profile(model)
+    if "context_actions" not in model_map.JOBS:
+        raise SystemExit("model_map has no context_actions job yet (the engine package adds it); merge it first")
     return profile
 
 
@@ -1276,7 +1285,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--force", action="store_true")
     p = sub.add_parser("run", help="deliver meetings through the pipeline in a throwaway database, real models")
     p.add_argument("slugs", nargs="+")
-    p.add_argument("--model", required=True, choices=sorted(MODELS))
+    p.add_argument("--model", required=True,
+                   help="action-pass profile: any model_map profile profile_request serves (e.g. terra-high, "
+                        f"sonnet-5.5-high) or a short name ({', '.join(MODELS)})")
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--budget-usd", type=float, default=DEFAULT_BUDGET_USD, help="per-meeting extraction budget")
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_S, help="model timeout in seconds")

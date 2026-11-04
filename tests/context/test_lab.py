@@ -393,15 +393,27 @@ def test_run_refuses_a_remote_database(lab_dir, monkeypatch):
 
 
 def test_check_model_explains_missing_engine_pieces(monkeypatch):
-    with pytest.raises(SystemExit, match="unknown model"):
+    with pytest.raises(SystemExit, match="no 'gpt-9' profile"):
         lab.check_model("gpt-9")
-    monkeypatch.setitem(model_map.PROFILES, "terra", model_map.PROFILES["luna"])
     monkeypatch.delitem(model_map.JOBS, "context_actions", raising=False)
     with pytest.raises(SystemExit, match="context_actions"):
-        lab.check_model("terra")
-    monkeypatch.delitem(model_map.PROFILES, "terra")
-    with pytest.raises(SystemExit, match="terra"):
-        lab.check_model("terra")
+        lab.check_model("luna")
+
+
+def test_model_accepts_any_profile_request_profile(monkeypatch):
+    served = lab.routable_profiles()
+    assert {"luna", "sonnet-5.5"} <= set(served) and "luna-fast" not in served  # Fast tier: not profile_request
+    for pid in served:
+        assert lab.check_model(pid) == pid
+    assert lab.check_model("sonnet") == "sonnet-5.5"
+    with pytest.raises(SystemExit, match="not served by profile_request"):
+        lab.check_model("deepseek")  # a placeholder without a price
+    high = next((p for p in ("sonnet-5.5-high", "terra-high") if p in served), None)
+    if high:
+        assert lab.model_label(lab.check_model(high), "luna") == f"{high}+luna"
+    seen = {}
+    monkeypatch.setattr(lab, "run_lab", lambda slugs, model, **kw: seen.update(model=model))
+    assert lab.main(["run", "a", "--model", "luna-none"]) == 0 and seen["model"] == "luna-none"
 
 
 def test_live_routes_jobs_fakes_embeddings_and_restores(monkeypatch):
