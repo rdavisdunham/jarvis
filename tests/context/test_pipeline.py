@@ -202,7 +202,7 @@ def test_seeding_runs_as_the_owner_even_under_a_bot_credential(envelope, vectors
 
 def test_unknown_and_placeholder_kinds(vectors):
     with session_scope() as db:
-        lint = enqueue_job(db, OWNER, "context_lint", {}).id
+        lint = enqueue_job(db, OWNER, "context_proposals", {}).id
         odd = enqueue_job(db, OWNER, "context_nonsense", {}).id
     pipeline.perform(lint)
     pipeline.perform(odd)
