@@ -114,8 +114,19 @@ describe("execution target picker", () => {
       candidates: [saved("old", "h", "projA"), saved("dup", "h", "projB"), saved("gone", "stale", "projC")],
       advertised: [{ host_id: "h", host_name: "desk", host_target: "jarvis", repo: "/r/jarvis", worktree_root: "" }] });
     expect(options.map(o => o.key)).toEqual(["saved:old", "saved:gone"]);
-    expect(options[0].detail).toBe("/r/jarvis");
-    expect(options[1].detail).toBe("/r/jarvis · not listed by its host");
+    expect(options[0].detail).toBe("/r/jarvis · desk");
+    expect(options[1].detail).toBe("/r/jarvis · host stale, not listed by its host");
+  });
+
+  it("names the host when two hosts offer a target and puts the connected one first", () => {
+    const advert = (host_id: string, host_name: string, host_connected: boolean, host_target = "jarvis") =>
+      ({ host_id, host_name, host_target, repo: "/r/" + host_target, worktree_root: "", host_connected });
+    const options = targetOptions({ task_id: "t1", records: [], candidates: [],
+      advertised: [advert("old", "DavisPC", false), advert("old", "DavisPC", false, "remotea"), advert("new", "DavisPC-2", true),
+        advert("new", "DavisPC-2", true, "remotea")] });
+    expect(options.map(o => [o.key, o.detail])).toEqual([
+      ["host:new:jarvis", "/r/jarvis · DavisPC-2"], ["host:new:remotea", "/r/remotea · DavisPC-2"],
+      ["host:old:jarvis", "/r/jarvis · DavisPC, host offline"], ["host:old:remotea", "/r/remotea · DavisPC, host offline"]]);
   });
 
   it("remembers the choice for the nearest record that is not a task, so sibling tasks share it", () => {

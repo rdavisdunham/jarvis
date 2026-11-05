@@ -325,6 +325,9 @@ def advertised(db, owner):
         for item in (host.caps or {}).get("targets") or []:
             if isinstance(item, dict) and isinstance(item.get("id"), str):
                 found.append({"host_id": host.id, "host_name": host.name, "host_target": item["id"][:64],
+                              # A host row is never retired: the picker tells a live host from a stale one.
+                              "host_connected": agent_link.connected(host),
+                              "hello_at": (host.caps or {}).get("hello_at"),
                               "repo": str(item.get("repo") or "")[:1000],
                               "worktree_root": str(item.get("worktree_root") or item.get("worktreeRoot") or "")[:1000],
                               "harnesses": target_harnesses(item),

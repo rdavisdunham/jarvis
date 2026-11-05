@@ -235,6 +235,9 @@ def test_target_resolution_order(host):
     assert missing.value.code == "NEEDS_TARGET" and missing.value.status == 409
     assert {c["host_target"] for c in missing.value.data["candidates"]} == {"jarvis", "acme"}
     assert missing.value.data["advertised"][0]["host_target"] == "jarvis"
+    # Host rows are never retired: each advert says whether its host is live, so the picker can rank and label it.
+    assert missing.value.data["advertised"][0]["host_connected"] is True
+    assert missing.value.data["advertised"][0]["hello_at"]
     assert [(r["title"], r["type_id"]) for r in missing.value.data["records"]] == [("Fix login", "task"), ("Acme", "project")]
     with session_scope() as db:  # A folder rule maps the client record to one repository.
         db.add(AgentSessionRule(owner_id=OWNER, path_prefix="/home/davin/acme", record_id=client_record["id"]))
