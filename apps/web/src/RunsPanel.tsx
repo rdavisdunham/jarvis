@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
-import { actorChip, ago, attentionGroups, rowFreshness, workflowStage, workflowAttention, type AttentionGroup, type Fact, type Run, type UnmergedWork } from "./remotea-model";
+import { actorChip, ago, attentionGroups, rowFreshness, stopLine, workflowStage, workflowAttention, type AttentionGroup, type Fact, type Run, type UnmergedWork } from "./remotea-model";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { PendingControls } from "./PendingControls";
 import "./runs.css";
@@ -34,7 +34,7 @@ export function RunRow({ run, onOpen, now = Date.now() }: { run: Run; onOpen: (i
     {workflowAttention(run) && <span className="run-attention">· {workflowAttention(run)}</span>}
     {actorChip(run) && <span className="run-actor">{actorChip(run)}</span>}
     <span className="remotea-run-title">{run.task?.title ?? "Task"}</span>
-    <small>{run.reason_text || ago(run.state_since, now)}</small>
+    <small className={run.attention_detail ? "run-stop-line" : undefined}>{stopLine(run) || ago(run.state_since, now)}</small>
     {!!run.summary && <span className="run-summary" title={run.summary_at ? "As of " + ago(run.summary_at, now) : undefined}>
       {run.summary}{run.summary_stale && <span className="run-summary-updating"> updating…</span>}</span>}
     <Facts facts={rowFreshness(run, null, now)} label="How current this is" className="run-row-fresh" inline/>

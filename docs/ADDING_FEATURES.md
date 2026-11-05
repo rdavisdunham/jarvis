@@ -369,7 +369,7 @@ Notifications (`models.Notification`): `category` is a free string (no enum or c
       task alerts use `notices.task_importance`) and a `target` dict. Existing creators: `notices.py`
       (`deadline`, `morning`, `question`, `failure`, and the push vehicles `bundle`/`digest`),
       `domain.py` (`reminder` occurrences), `run_coordinator.notify` (`agent_question`, `agent_done`,
-      `agent_stuck`; capped at `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass`
+      `agent_stuck`, `agent_verify_slow` once per verify attempt past its soft threshold; capped at `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass`
       makes questions urgent), `context/notices.py` (`context_ready` per meeting review revision,
       `context_backfill` once per owner-local day, `context_digest` at 17:00 owner-local; written by
       `context/scheduler.tick` from `worker.housekeeping` when `context_enabled`).

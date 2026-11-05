@@ -225,3 +225,15 @@
 .run-delivery { font-size: 12px; color: var(--ink-3); margin: 8px 0 0; }
 .run-attention { color: var(--ink-3); font-size: 12px; }
 .run-chip .run-attention { font-weight: 400; white-space: normal; }
+
+/* A parked run's stop reason, first in the drawer (RunStopCard) and on its row (stopLine). */
+.run-stop-card { margin-bottom: 10px; }
+.run-stop-headline, .run-stop-action { margin: 0; overflow-wrap: anywhere; }
+.run-stop-action { color: var(--ink-2); }
+.run-stop-output { margin: 0; padding: 8px 10px; max-height: 9em; overflow: auto; border-radius: var(--r-md);
+  background: var(--sunken); border: 1px solid var(--line); font-size: 12px; line-height: 1.45;
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-stop-form { display: grid; gap: 6px; }
+.run-stop-form p { margin: 0; }
+.run-stop-form textarea { width: 100%; box-sizing: border-box; }
+.run-stop-line { overflow-wrap: anywhere; }

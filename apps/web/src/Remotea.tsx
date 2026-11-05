@@ -21,6 +21,7 @@ import { chatByDefault, conversationEntries, drawerStatus, PlanProgress, useRunV
 import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { WorktreeMaintenance } from "./WorktreeMaintenance";
 import { SwarmList } from "./Swarm";
+import { RunStopCard } from "./RunStopCard";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
@@ -828,6 +829,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
         ? run.automation.recovery === "worker_starting" ? "Restoring the approved worker. Automation remains held; resume again after your message reaches the runtime." : run.automation.releasing ? "Reconciling before automation resumes. The hold remains until Remotea confirms release." : "Eridani automation is held. The worker can continue; automatic prompts, judging, reviews and handoffs wait. Explicit decision cards remain available."
         : "Message saved on this device. The automation hold is pending server confirmation."}</p>}
       {!run ? error ? <div><p role="alert" className="work-error">{error}</p><button className="btn btn-sm" onClick={refresh}>Retry loading run</button></div> : <p role="status">Loading run…</p> : <>
+        {bound && <RunStopCard run={run} disabled={off} onApprove={note => void act("approve", note ? { note } : {})}
+          onVerifyAgain={() => void act("judge")} onSendBack={note => void act("message", { text: note, mode: "queue" })}/>}
         {run.plan && bound && <PlanApproval key={"approval-" + run.plan_revision} run={run} compact={!chatByDefault(run)} onDone={refresh} onConflict={changed}/>}
         {bound && <section className="run-drawer-decisions" aria-label="Pending decisions">
           {!isSettled(run) && (run.state_reason === "no_plan" || run.coordination_failure) && !(run.interviews ?? []).some(i => i.status === "open") && !run.plan && <DecisionCard title={run.coordination_failure?.recovering ? "Retrying planning" : "Planning needs recovery"} reason={run.coordination_failure ? (run.coordination_failure.outcome === "uncertain" ? "The tool result is unconfirmed. Reconcile it before retrying." : "The planning submission was rejected; your interview was not saved.") : run.reason_text || "The planner stopped without saving questions or a plan."}>
