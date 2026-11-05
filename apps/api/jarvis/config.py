@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     context_granola_enabled: bool = False
     # model_map profile for the meeting action-item pass; empty keeps the model map's route (Luna by default).
     context_actions_model: str = ""
+    # "split": action pass + per-chunk detect/enrich/verify; "combined": one whole-meeting call for facts and
+    # follow-ups, then one verify call (an experiment; context/native/extract.py).
+    context_extraction_mode: Literal["split", "combined"] = "split"
 
     @property
     def secure_cookie(self):

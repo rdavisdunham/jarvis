@@ -123,6 +123,7 @@ class Meeting:
     notes: dict[str, Segment]  # "N1" -> private note segment
     recorder: str | None
     actors: dict[str, set[str]]  # lowercased name or alias -> actor IDs among the candidates
+    shared_firsts: set[str] = field(default_factory=set)  # first names more than one person goes by
 
     @classmethod
     def of(cls, request: ExtractRequest, ctx: SourceContext) -> "Meeting":
@@ -141,7 +142,7 @@ class Meeting:
                 names.append(recorder)  # the user's own meeting: the recorder is the user
             for name in names:
                 actors.setdefault(name.casefold().strip(), set()).add(c.ref.entity_id)
-        return cls(request, ctx, transcript, notes, recorder, actors)
+        return cls(request, ctx, transcript, notes, recorder, actors, _shared_firsts(request, actors))
 
     def ref(self, seq: int) -> str:
         return next((k for k, s in self.notes.items() if s.seq == seq), str(seq))
@@ -188,6 +189,33 @@ class Meeting:
             out.append((self.payload(chunk.text(), _spans(chunk.before), _spans(chunk.after)),
                         lambda seq, a, b, chunk=chunk: seq in notes or chunk.owns(seq, a, b)))
         return "chunked", out
+
+
+def _shared_firsts(request: ExtractRequest, actors: dict[str, set[str]]) -> set[str]:
+    """First names that more than one person goes by: candidate actors by their names and aliases (the user's
+    "Robert Davis Dunham" counts as a Robert), and participants no candidate name covers."""
+    people: dict[str, set[str]] = {}
+    for name, ids in actors.items():
+        if name.split():
+            people.setdefault(name.split()[0], set()).update(ids)
+    for p in request.participants:
+        labels = [" ".join(x.casefold().split()) for x in (p.name, p.speaker_label) if x and x.strip()]
+        if not labels:
+            continue
+        ids = set().union(*(_covering(label, actors) for label in labels)) or {f"participant:{labels[0]}"}
+        for label in labels:
+            people.setdefault(label.split()[0], set()).update(ids)
+    return {first for first, who in people.items() if len(who) > 1}
+
+
+def _covering(label: str, actors: dict[str, set[str]]) -> set[str]:
+    """The actors a participant's name is: an exact name or alias, or (for a name of two or more words) one whose
+    words it all appears in ("Davis Dunham" in "Robert Davis Dunham")."""
+    if label in actors:
+        return actors[label]
+    words = set(label.split())
+    return set().union(*(ids for name, ids in actors.items() if words <= set(name.split()))) if len(words) > 1 \
+        else set()
 
 
 def _spans(spans: tuple) -> str:
@@ -252,8 +280,10 @@ def _names(name: str, meeting: Meeting) -> set[str]:
     return {n for n in names if n}
 
 
-def _first(names: set[str]) -> set[str]:
-    return {n.split()[0] for n in names if n.split()}
+def _first(names: set[str], meeting: Meeting) -> set[str]:
+    """The first names of `names` that only one person in the meeting goes by ("Davis", never "Robert" when a
+    Robert Tseng is there too)."""
+    return {n.split()[0] for n in names if n.split()} - meeting.shared_firsts
 
 
 def resolve(name: str | None, meeting: Meeting) -> EntityRef | None:
@@ -268,7 +298,7 @@ def resolve(name: str | None, meeting: Meeting) -> EntityRef | None:
     names = _names(mention, meeting)
     ids = set().union(*(meeting.actors.get(n, set()) for n in names))
     if not ids:
-        firsts = _first(names)
+        firsts = _first(names, meeting)
         ids = set().union(*(owners for n, owners in meeting.actors.items() if n.split() and n.split()[0] in firsts))
     if len(ids) == 1:
         return EntityRef(entity_type="actor", entity_id=next(iter(ids)), mention=mention)
@@ -285,12 +315,12 @@ def _owner_evidence(owner: str | None, evidence: list[EvidenceRef], meeting: Mee
     if key in COLLECTIVE:
         return [e for e in evidence if COLLECTIVE_CUE.search(e.quote)]
     names = _names(owner, meeting)
-    firsts = _first(names)
+    firsts = _first(names, meeting)
     out = []
     for e in evidence:
         speaker = (meeting.speaker(e.segment_seq) or "").casefold()
         spoken = _names(speaker, meeting) if speaker else set()
-        if spoken & names or _first(spoken) & firsts:
+        if spoken & names or _first(spoken, meeting) & firsts:
             out.append(e)
     return out
 
@@ -315,7 +345,7 @@ def _someone_else_took_it(owner: str, evidence: list[EvidenceRef], meeting: Meet
         name = person.get("name") or person.get("speaker_label")
         if not name or _same_person(name, owner, meeting):
             continue
-        for n in _names(name, meeting) | _first(_names(name, meeting)):
+        for n in _names(name, meeting) | _first(_names(name, meeting), meeting):
             if not n:
                 continue
             claimed = re.search(NAMED_PROMISE.format(re.escape(n)), quotes, re.IGNORECASE) or re.search(
@@ -327,7 +357,7 @@ def _someone_else_took_it(owner: str, evidence: list[EvidenceRef], meeting: Meet
 
 def _same_person(a: str, b: str, meeting: Meeting) -> bool:
     x, y = _names(a, meeting), _names(b, meeting)
-    return bool(x & y or _first(x) & _first(y))
+    return bool(x & y or _first(x, meeting) & _first(y, meeting))
 
 
 def _taken_back(owned: list[EvidenceRef]) -> bool:
@@ -356,15 +386,16 @@ def _attributed(owner: str, basis: str, evidence: list[EvidenceRef], meeting: Me
     if _owner_quotes(owner, evidence, meeting):
         return True
     names = _names(owner, meeting)
-    if any(_word_in(n, quotes) for n in names | _first(names)):
+    if any(_word_in(n, quotes) for n in names | _first(names, meeting)):
         return True
     for note in meeting.notes.values():  # a recorder's note about this work that names the owner
         text = note.text.translate(QUOTE_CHARS).casefold()
-        if any(_word_in(n, text) for n in names | _first(names)) and _words(title) & _words(note.text):
+        if any(_word_in(n, text) for n in names | _first(names, meeting)) and _words(title) & _words(note.text):
             return True
     if basis == "implied_by_discussion":  # implied work falls to someone in the meeting
         present = {n for p in meeting.people() for n in (p.get("name"), p.get("speaker_label")) if n}
-        return any(_names(p, meeting) & names or _first(_names(p, meeting)) & _first(names) for p in present)
+        return any(_names(p, meeting) & names or _first(_names(p, meeting), meeting) & _first(names, meeting)
+                   for p in present)
     return False
 
 
@@ -372,13 +403,13 @@ def _basis(item: ActionItem, owner_quotes: list[str], evidence: list[EvidenceRef
            ) -> tuple[str, dict[str, Any]]:
     """The owner basis after the promise and tentative signals, and the signals themselves."""
     names = _names(item.owner, meeting) if item.owner else set()
-    named = [re.compile(NAMED_PROMISE.format(re.escape(n)), re.IGNORECASE) for n in names | _first(names) if n]
+    named = [re.compile(NAMED_PROMISE.format(re.escape(n)), re.IGNORECASE) for n in names | _first(names, meeting) if n]
     promising = [q for q in owner_quotes if PROMISE.search(q)]
     promising += [e.quote for e in evidence if any(p.search(e.quote.translate(QUOTE_CHARS)) for p in named)]
     signals: dict[str, Any] = {}
     unattributed = _unattributed(evidence, meeting)
     quotes = " ".join(e.quote for e in evidence).translate(QUOTE_CHARS).casefold()
-    if unattributed and not owner_quotes and any(_word_in(n, quotes) for n in names | _first(names)):
+    if unattributed and not owner_quotes and any(_word_in(n, quotes) for n in names | _first(names, meeting)):
         # Speakers not separated: "Davis, can you..." then "Sure, I'll do it" on an unattributed line.
         promising += [q for q in unattributed if PROMISE.search(q)]
         signals["owner_from_content"] = True
@@ -400,8 +431,8 @@ def check(item: ActionItem, meeting: Meeting, owns: Callable[[int, int, int], bo
         refs, code, _ = ground_evidence([(seq, quote)], meeting.ctx, owns) if seq is not None else ([], "unknown", "")
         if code:
             dropped.append(quote[:200])
-        elif refs[0] not in evidence:
-            evidence += refs
+        else:  # one span, or one per piece of a quote stitched with "..."
+            evidence += [r for r in refs if r not in evidence]
     known = [seq for seq, _ in cited if seq is not None]
     if not title:
         return rejection("invalid", "empty title", item.title, known)
@@ -558,16 +589,20 @@ def merge(drafts: list[ActionDraft]) -> tuple[list[ActionDraft], list[dict]]:
     return kept, rejected
 
 
-def review(drafts: list[ActionDraft], meeting: Meeting) -> dict[str, Any]:
-    """The verify call's input: the items with speakers, and the lines around their evidence."""
-    cited = {seq for d in drafts for seq in d.seqs}
+def context(cited: set[int], meeting: Meeting) -> str:
+    """The cited lines and their transcript neighbours, private notes as `[N1] Private note: text`."""
     near = sorted(cited | {s.seq for s in meeting.transcript
                            if any(abs(s.seq - seq) <= VERIFY_NEIGHBOURS for seq in cited)})
-    context = [f"[{meeting.ref(seq)}] Private note: {meeting.ctx.segments[seq].text}"
-               if meeting.ctx.segments[seq].kind == "private_note" else _line(meeting.ctx.segments[seq])
-               for seq in near]
+    return "\n".join(f"[{meeting.ref(seq)}] Private note: {meeting.ctx.segments[seq].text}"
+                     if meeting.ctx.segments[seq].kind == "private_note" else _line(meeting.ctx.segments[seq])
+                     for seq in near)
+
+
+def review(drafts: list[ActionDraft], meeting: Meeting) -> dict[str, Any]:
+    """The verify call's input: the items with speakers, and the lines around their evidence."""
     return {"title": meeting.request.title, "meeting_local_date": meeting.ctx.local_date.isoformat(),
-            "recorded_by": meeting.recorder or "unknown", "people": meeting.people(), "context": "\n".join(context),
+            "recorded_by": meeting.recorder or "unknown", "people": meeting.people(),
+            "context": context({seq for d in drafts for seq in d.seqs}, meeting),
             "items": [{"item": i, "title": d.title, "description": d.description, "owner": d.owner,
                        "owner_basis": d.basis, "kind": d.kind, "status": d.status,
                        "evidence": [{"line": meeting.ref(e.segment_seq), "speaker": meeting.speaker(e.segment_seq),

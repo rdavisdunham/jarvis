@@ -247,3 +247,23 @@ def test_rejected_speaker_links_stay_rejected():
         lines = segments(("Speaker 2", "other", "This is Marco."))
         assert by_label(link.resolve_speakers(db, OWNER, "meeting-1", lines, attendees)) == {
             "Speaker 2": ("unresolved", None)}
+
+
+def test_speaker_labels_use_every_alias_but_never_a_shared_first_name():
+    """The user goes by several names; another attendee shares the first name of one of them."""
+    with session_scope() as db:
+        me = identity.owner_actor(db, OWNER)
+        for name in ("Davis Dunham", "Davis", "Robert Dunham", "Robert Davis Dunham", "R. Davis Dunham"):
+            identity.add_identity(db, OWNER, me, "alias", name, status="exact", provenance={"origin": "profile"})
+        owner = identity.IdentityCandidate(actor_id=me, status="exact", name="Davis Dunham", is_owner=True)
+        [tseng] = identity.seed_candidates(db, OWNER, "meeting-r", [Participant(name="Robert Tseng")], [])
+        assert tseng.actor_id is None  # a name alone: unresolved
+        lines = segments(("Davis", "other", "Morning."), ("R. Davis Dunham", "other", "Hi."),
+                         ("Robert", "other", "Hello."), ("Robert Tseng", "other", "Yes."),
+                         ("Speaker 4", "other", "I'm Robert, from the vendor side."))
+        assert by_label(link.resolve_speakers(db, OWNER, "meeting-r", lines, [owner, tseng])) == {
+            "Davis": ("inferred", me), "R. Davis Dunham": ("inferred", me), "Robert": ("unresolved", None),
+            "Robert Tseng": ("unresolved", None), "Speaker 4": ("unresolved", None)}
+        # Without Robert Tseng in the meeting, "Robert" is only ever the user.
+        assert by_label(link.resolve_speakers(db, OWNER, "meeting-r", segments(("Robert", "other", "Hi.")),
+                                              [owner]))["Robert"] == ("inferred", me)

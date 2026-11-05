@@ -17,10 +17,25 @@ exceed what remains of the cap is not made: its chunk and every later chunk are 
 partial. A chunk whose call fails or returns unusable output is `failed`; later chunks still run. A failed or
 skipped action pass marks every segment failed or skipped, so the source stays partial and is retried, and no
 proposal is superseded on an incomplete list.
+
+Extraction modes (`extraction_mode()`): "split" (the default) is the flow above. "combined" replaces the action pass
+and the per-chunk passes with one whole-meeting call (`context_combined`, the action pass's chunk fallback above
+`actions.WHOLE_MEETING_TOKENS`) that returns both the assertions (the enrich fields, cited by line id) and the
+action items, then one verify call over both (`context_combined_verify`). Every deterministic step is the split
+mode's: `validate.check_item` and `validate.apply_verdicts` for assertions, `actions.check`, `merge` and
+`apply_verdicts` for action items, then the same dedupe, limits and coverage. Both calls route and price as the
+`context_actions` job and are accounted on the action run (`diagnostics["actions"]`);
+`diagnostics["extraction_mode"]` and `diagnostics["combined"]` record the mode, calls and cost. The pipeline
+caches the split mode's action pass and chunks; a combined run is not cached, so a retry calls the model again.
+
+Selecting the mode: the setting `context_extraction_mode` (env `JARVIS_CONTEXT_EXTRACTION_MODE`, "split" or
+"combined"), or in-process for the meeting lab, `extract.EXTRACTION_MODE = "combined"` (None defers to the setting),
+set before the extract job runs and restored afterwards.
 """
 
 import json
 import logging
+import time
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -35,7 +50,20 @@ from .. import settings as context_settings
 from ..schema import Coverage, ExtractionResult, ExtractRequest, ProposedAction
 from . import actions as action_pass
 from .chunking import TextChunk, chunk_segments
-from .prompts import ACTION_PASSES, PASSES, PROMPT_VERSION, meeting_block, payload
+from .prompts import (
+    ACTION_PASSES,
+    COMBINED_PASSES,
+    COMBINED_PROMPT_VERSION,
+    PASSES,
+    PROMPT_VERSION,
+    CombinedAssertion,
+    CombinedList,
+    CombinedVerification,
+    Enriched,
+    Quote,
+    meeting_block,
+    payload,
+)
 from .validate import Draft, Rejection, SourceContext, apply_verdicts, candidate_key, check_item, dedupe
 
 log = logging.getLogger(__name__)
@@ -44,6 +72,16 @@ FEATURE = "context_extraction"  # cost_features.LABELS entry added by package A2
 JOB = "context_extraction"  # model_map job of the chunk passes
 BUDGET_CODES = {"BUDGET_EXCEEDED", "BUDGET_DEFERRED"}
 ACTION_KINDS = ("commitment", "suggestion")  # the action pass owns these
+MODES = ("split", "combined")
+EXTRACTION_MODE: str | None = None  # in-process override (the meeting lab); None defers to the setting
+MAX_QUOTES, QUOTE_CHARS, STATEMENT_CHARS = 6, 1000, 2000  # Enriched's limits, applied to combined assertions
+
+
+def extraction_mode() -> str:
+    mode = EXTRACTION_MODE or context_settings.current().extraction_mode
+    if mode not in MODES:
+        raise ValueError(f"Unknown extraction mode {mode!r}; expected one of {MODES}")
+    return mode
 
 
 class BudgetStop(Exception):
@@ -103,6 +141,7 @@ class NativeExtractor:
         self.timeout_s, self.budget_usd = timeout_s, budget_usd
 
     def extract(self, request: ExtractRequest) -> ExtractionResult:
+        mode = extraction_mode()
         timeout, cap = limits()
         timeout = self.timeout_s or timeout
         spend = Spend(cap=cap if self.budget_usd is None else self.budget_usd)
@@ -118,6 +157,9 @@ class NativeExtractor:
         acts, found = action_pass.ActionRun(), action_pass.Meeting.of(request, ctx)
         token = current_feature.set(FEATURE)
         try:
+            if mode == "combined":
+                self._run_combined(request.owner_id, found, acts, runs, candidates, spend, timeout)
+                return assemble(request, runs, spend, acts, found, mode=mode)
             stop = None
             try:
                 self._actions(request.owner_id, found, acts, spend, timeout)
@@ -141,15 +183,68 @@ class NativeExtractor:
                     run.drafts.clear()
         finally:
             current_feature.reset(token)
-        return assemble(request, runs, spend, acts, found)
+        return assemble(request, runs, spend, acts, found, mode=mode)
+
+    # ------------------------------------------------------------ combined mode
+
+    def _run_combined(self, owner, meeting: action_pass.Meeting, acts: action_pass.ActionRun, runs: list[ChunkRun],
+                      candidates: list[dict], spend: Spend, timeout: float) -> None:
+        """Combined mode in place of the action pass and the chunk loop. Kept assertions go on the first chunk run
+        (assembly dedupes across runs and covers segments by citation); a stopped or failed call marks the action
+        run and every chunk run, as a failed action pass does in split mode."""
+        try:
+            drafts, rejected = self._combined(owner, meeting, acts, candidates, spend, timeout)
+        except (BudgetStop, ChunkFailed) as error:
+            status = "skipped" if isinstance(error, BudgetStop) else "failed"
+            reason = error.reason if isinstance(error, BudgetStop) else str(error)[:300]
+            acts.status, acts.reason, acts.drafts = status, reason, []
+            for run in runs:
+                run.status, run.reason = status, reason
+            return
+        if runs:
+            runs[0].drafts, runs[0].rejected = drafts, rejected
+
+    def _combined(self, owner, meeting: action_pass.Meeting, out: action_pass.ActionRun, candidates: list[dict],
+                  spend: Spend, timeout: float) -> tuple[list[Draft], list[Rejection]]:
+        """One call for both lists (chunked as the action pass is), the split mode's checks, one verify call.
+        Action items land in `out`; returns the kept assertions and the rejected ones."""
+        slow = _slow(timeout)
+        started = time.monotonic()
+        notes: list[Draft] = []
+        refused: list[Rejection] = []
+        try:
+            out.mode, calls = meeting.calls()
+            items = []
+            for user, owns in calls:
+                listed: CombinedList = self._call(
+                    owner, "context_combined", {**user, "entity_candidates": candidates}, spend, out, slow,
+                    passes=COMBINED_PASSES, job=action_pass.JOB)
+                for item in listed.actions:
+                    outcome = action_pass.check(item, meeting, owns)
+                    (items if isinstance(outcome, action_pass.ActionDraft) else out.rejected).append(outcome)
+                for index, assertion in enumerate(listed.assertions):
+                    outcome = enriched(assertion, index, meeting, owns)
+                    (notes if isinstance(outcome, Draft) else refused).append(outcome)
+            items, duplicates = action_pass.merge(items)
+            out.rejected += duplicates
+            if items or notes:
+                verification: CombinedVerification = self._call(
+                    owner, "context_combined_verify", combined_review(items, notes, meeting), spend, out, slow,
+                    passes=COMBINED_PASSES, job=action_pass.JOB)
+                items, rejected = action_pass.apply_verdicts(items, verification.action_verdicts)
+                out.rejected += rejected
+                notes, unverified = apply_verdicts(notes, verification.assertion_verdicts)
+                refused += unverified
+            out.drafts = items
+        finally:
+            out.latency_ms = int((time.monotonic() - started) * 1000)
+        return notes, refused
 
     # ------------------------------------------------------------ the action pass
 
     def _actions(self, owner, meeting: action_pass.Meeting, out: action_pass.ActionRun, spend, timeout) -> None:
         """The whole-meeting action pass. A seam for callers that cache it (the pipeline caches chunks only)."""
-        # One call reads the whole meeting and writes the whole list; high reasoning takes longer still.
-        effort = model_map.PROFILES[action_pass.route().profile].reasoning_effort
-        slow = max(2 * timeout, 600.0 if effort in ("high", "xhigh", "max") else 180.0)
+        slow = _slow(timeout)
         action_pass.run(meeting, lambda name, user: self._call(
             owner, name, user, spend, out, slow if name == "context_actions" else timeout,
             passes=ACTION_PASSES, job=action_pass.JOB), out)
@@ -233,13 +328,57 @@ class NativeExtractor:
         run.cost += amount
 
 
+def _slow(timeout: float) -> float:
+    """One call reads the whole meeting and writes the whole list; high reasoning takes longer still."""
+    effort = model_map.PROFILES[action_pass.route().profile].reasoning_effort
+    return max(2 * timeout, 600.0 if effort in ("high", "xhigh", "max") else 180.0)
+
+
+def enriched(item: CombinedAssertion, index: int, meeting: action_pass.Meeting, owns) -> Draft | Rejection:
+    """A combined-mode assertion as the enrich pass's item (line ids to segment numbers, clipped to Enriched's
+    limits), then the split mode's `check_item`."""
+    statement = item.statement.strip()[:STATEMENT_CHARS]
+    quotes = [(meeting.seq(q.line), q.quote[:QUOTE_CHARS]) for q in item.evidence if q.quote.strip()]
+    unknown = [q.line for q in item.evidence if meeting.seq(q.line) is None]
+    evidence = [Quote(segment_seq=seq, quote=quote) for seq, quote in quotes if seq is not None][:MAX_QUOTES]
+    if not evidence:
+        detail = f"line {', '.join(unknown)[:200]}" if unknown else "no quote"
+        return Rejection("unknown_segment" if unknown else "quote_not_found", statement, detail)
+    try:
+        candidate = Enriched(
+            candidate=index, kind=item.kind, statement=statement, subject=item.subject, object=item.object,
+            key=item.key, modality=item.modality, inferred=item.inferred, responsible=item.responsible,
+            responsibility=item.responsibility, recipient=item.recipient, due=None, valid_from=item.valid_from,
+            valid_to=item.valid_to, evidence=evidence, confidence=min(max(item.confidence, 0.0), 1.0))
+    except ValidationError as error:
+        return Rejection("invalid", statement, str(error.errors()[0].get("msg", ""))[:200],
+                         tuple(q.segment_seq for q in evidence))
+    return check_item(candidate, meeting.ctx, owns)
+
+
+def combined_review(items: list, notes: list[Draft], meeting: action_pass.Meeting) -> dict:
+    """The combined verify call's input: the action pass's review of the items beside the chunk verify pass's
+    review of the assertions (cited by line id), with the lines around all their evidence."""
+    out = action_pass.review(items, meeting)
+    cited = {seq for d in items for seq in d.seqs} | {seq for d in notes for seq in d.seqs}
+    out["context"] = action_pass.context(cited, meeting)
+    out["actions"] = out.pop("items")
+    out["assertions"] = [{"item": i, "kind": d.kind, "statement": d.statement,
+                          "modality": d.assertion.modality if d.assertion else "proposed",
+                          "responsible": [r.mention or r.entity_id for r in d.responsible],
+                          "evidence": [{"line": meeting.ref(e.segment_seq), "speaker": meeting.speaker(e.segment_seq),
+                                        "quote": e.quote} for e in d.evidence]}
+                         for i, d in enumerate(notes)]
+    return out
+
+
 # ---------------------------------------------------------------- assembly
 
 PRIORITY = {"failed": 3, "skipped": 2, "extracted": 1, "no_content": 0}
 
 
 def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend, acts: action_pass.ActionRun | None = None,
-             meeting: action_pass.Meeting | None = None) -> ExtractionResult:
+             meeting: action_pass.Meeting | None = None, *, mode: str = "split") -> ExtractionResult:
     acts = acts or action_pass.ActionRun(status="skipped", reason="not run")
     drafts, rejected = dedupe(d for run in runs for d in run.drafts)
     rejected = [r for run in runs for r in run.rejected] + rejected
@@ -283,7 +422,7 @@ def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend, acts: 
             if run.status != "ok":
                 reasons[run.status][str(seq)] = run.reason
     uncovered = sorted(seq for seq, status in coverage.items() if status in ("skipped", "failed"))
-    profile = model_map.PROFILES.get(model_map.route(JOB).profile)
+    profile = model_map.PROFILES.get(model_map.route(JOB).profile if mode == "split" else action_pass.route().profile)
     diagnostics = {
         "engine": "native", "prompt_version": PROMPT_VERSION,
         "model": profile.model if profile else memory_learning.EXTRACTION_MODEL,
@@ -298,7 +437,15 @@ def assemble(request: ExtractRequest, runs: list[ChunkRun], spend: Spend, acts: 
         "rejection_counts": dict(sorted(Counter(r.code for r in rejected).items())),
         "derivations": derivations, "notes": notes,
         "actions": acts.diagnostics(meeting or action_pass.Meeting.of(request, SourceContext.from_request(request))),
+        "extraction_mode": mode,
     }
+    if mode == "combined":
+        diagnostics["combined"] = {
+            "prompt_version": COMBINED_PROMPT_VERSION, "profile": acts.profile, "model": acts.model,
+            "status": acts.status, "calls": acts.calls, "cost_usd": round(acts.cost, 6),
+            "latency_ms": acts.latency_ms,
+            "assertions": len(assertions) - sum(1 for d in acts.drafts if d.assertion_index is not None),
+            "action_items": len(acts.drafts)}
     return ExtractionResult(assertions=assertions, links=list(links.values()), actions=actions, coverage=coverage,
                             diagnostics=json.loads(json.dumps(diagnostics, default=str)))
 
