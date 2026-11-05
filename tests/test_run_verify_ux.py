@@ -289,3 +289,19 @@ def test_parallel_verifications_on_one_host_are_named_not_queued(verifying_host)
         assert control.public_run(db, db.get(AgentRun, first))["verification"]["alongside"] == [second]
         coordinator.sweep(db, now() + timedelta(minutes=31))
     assert "1 other verification" in slow_notices(first)[0].body
+
+
+def test_run_ad1a1c02_eridani_gave_up_at_11_min_then_the_hosts_30_min_kill_is_kept(verifying_host):  # noqa: F811
+    """The incident: no advertised timeout reached Eridani, its sweep settled the attempt at ~11 min, and the host's
+    own kill at 1800 s arrived ~19 min later. Both stages read plainly, and the host's result is kept."""
+    run_id = swept_run(verifying_host)
+    with session_scope() as db:
+        before = control.public_run(db, db.get(AgentRun, run_id))["attention_detail"]["headline"]
+    assert before.startswith("Eridani stopped waiting for verification after 11 min")
+    result(verifying_host, run_id, attempts(run_id)[0].id, exit_code=143, timed_out=True, duration_ms=1_800_341,
+           tail=PROGRESS)
+    [attempt] = attempts(run_id)
+    assert attempt.status == "timed_out" and attempt.result["exit_code"] == 143 and attempt.result["swept"]["at"]
+    with session_scope() as db:
+        after = control.public_run(db, db.get(AgentRun, run_id))["attention_detail"]["headline"]
+    assert after == "The host stopped verification after 30 min at 94% of the suite, no failures."
