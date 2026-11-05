@@ -3030,7 +3030,7 @@ export default function App() {
                   onChanged={() => { void api<Bootstrap>("/bootstrap").then(setBoot); }}/>}
                 {settingsSection === "integrations" && !boot.workspace?.id && (
                   <>
-                    <LinearSettings revision={noteRevision} mutate={mutate} />
+                    <LinearSettings revision={noteRevision} mutate={mutate} onOpenTask={id => void openNoteTask(id)} />
                     <GoogleSettings
                       revision={noteRevision}
                       voiceActive={!!voiceState && !voiceState.closed}

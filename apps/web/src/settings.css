@@ -407,6 +407,43 @@
   color: var(--ink-3);
   font-size: 14px;
 }
+.linear-log,
+.linear-log-entry,
+.linear-log-details {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.linear-log-entry .settings-item-main {
+  grid-column: 1 / -1;
+}
+.linear-log summary {
+  cursor: pointer;
+}
+.linear-log-metadata {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.linear-log-metadata dt {
+  color: var(--ink-2);
+}
+.linear-log-metadata dd {
+  margin: 0;
+}
+.linear-log-json {
+  box-sizing: border-box;
+  max-width: 100%;
+  max-height: 28rem;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .settings-callout {
   display: flex;
   align-items: flex-start;

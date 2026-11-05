@@ -9,6 +9,18 @@ type Mutate = (
   args: unknown,
   message: string,
 ) => Promise<unknown>;
+type LinearChange = {
+  job_id: string;
+  status: string;
+  message: string;
+  created_at: string | null;
+  finished_at: string | null;
+  task_id: string | null;
+  issue_identifier: string | null;
+  issue_title: string | null;
+  payload: unknown;
+  result: unknown | null;
+};
 export type LinearStatus = {
   connected: boolean;
   workspace?: string;
@@ -23,15 +35,17 @@ export type LinearStatus = {
   states: { id: string; name: string; team: { id: string } }[];
   users: { id: string; name: string; active: boolean }[];
   projects: { id: string; name: string }[];
-  recent_changes: { job_id: string; status: string; message: string }[];
+  recent_changes: LinearChange[];
   structure?: MappingSummary;
 };
 export function LinearSettings({
   revision,
   mutate,
+  onOpenTask,
 }: {
   revision: number;
   mutate: Mutate;
+  onOpenTask: (taskId: string) => void;
 }) {
   const [data, setData] = useState<LinearStatus | null>(null);
   const [key, setKey] = useState(""),
@@ -203,15 +217,12 @@ export function LinearSettings({
             precise due times and work blocks remain in Eridani. Removing an
             issue remotely keeps its local record for review.
           </p>
-          <details className="settings-block">
+          <details className="settings-block linear-log">
             <summary>Recent Linear changes</summary>
             {data.recent_changes.length ? (
               <div className="settings-list">
                 {data.recent_changes.map((j) => (
-                  <div className="settings-item" key={j.job_id}>
-                    <span className="settings-item-main">{j.message}</span>
-                    <span className="chip">{humanize(j.status)}</span>
-                  </div>
+                  <LinearChangeEntry change={j} key={j.job_id} onOpenTask={onOpenTask} />
                 ))}
               </div>
             ) : (
@@ -252,6 +263,56 @@ export function LinearSettings({
         </>
       )}
     </SettingsGroup>
+  );
+}
+function LinearLogTime({ value }: { value: string | null }) {
+  const date = value ? new Date(value) : null;
+  if (!date || !Number.isFinite(date.getTime())) return <>Time unavailable</>;
+  return <time dateTime={value!}>{new Intl.DateTimeFormat(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short",
+  }).format(date)}</time>;
+}
+
+function LinearChangeEntry({ change: j, onOpenTask }: {
+  change: LinearChange;
+  onOpenTask: (taskId: string) => void;
+}) {
+  return (
+    <div className="settings-item linear-log-entry">
+      <div className="settings-item-main">
+        <strong className="settings-item-title">
+          {j.issue_identifier ?? "Issue identifier unavailable"} · {j.issue_title ?? "Issue title unavailable"}
+        </strong>
+        <span>{j.message || "No message recorded"}</span>
+        <span className="settings-item-meta">
+          <span className="chip">{humanize(j.status)}</span>
+          <span>Queued: <LinearLogTime value={j.created_at} /></span>
+        </span>
+      </div>
+      {j.task_id && <div className="settings-item-actions settings-item-extra">
+        <button type="button" className="btn" onClick={() => onOpenTask(j.task_id!)}>Open task</button>
+      </div>}
+      <details className="settings-item-extra linear-log-details">
+        <summary>Stored change details</summary>
+        <dl className="linear-log-metadata">
+          <dt>Job</dt><dd>{j.job_id}</dd>
+          <dt>Status</dt><dd>{humanize(j.status)}</dd>
+          <dt>Issue</dt><dd>{j.issue_identifier ?? "Issue identifier unavailable"}</dd>
+          <dt>Title</dt><dd>{j.issue_title ?? "Issue title unavailable"}</dd>
+          <dt>Local task</dt><dd>{j.task_id ?? "Local task unavailable"}</dd>
+          <dt>Queued</dt><dd><LinearLogTime value={j.created_at} /></dd>
+          <dt>Finished</dt><dd>{j.finished_at ? <LinearLogTime value={j.finished_at} /> : "No completion time recorded"}</dd>
+        </dl>
+        <p className="footnote">Stored job data: the requested change and saved outcome.</p>
+        <h4>Requested change</h4>
+        <pre className="linear-log-json"><code>{JSON.stringify(j.payload, null, 2)}</code></pre>
+        <h4>Saved outcome</h4>
+        {j.result === null ? <p>No outcome recorded yet</p> : (
+          <pre className="linear-log-json"><code>{JSON.stringify(j.result, null, 2)}</code></pre>
+        )}
+      </details>
+    </div>
   );
 }
 const humanize = (value: string) => { const text = value.replaceAll("_", " "); return text.charAt(0).toUpperCase() + text.slice(1); };

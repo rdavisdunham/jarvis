@@ -11,8 +11,8 @@
 #    test database. JARVIS_DATABASE_URL from the caller is used as given (the
 #    test session creates and drops its own `jarvis_test_<uuid>` database on
 #    that server, so a shared test server is fine); without it a throwaway
-#    postgres:16-alpine container is started on a free loopback port and
-#    removed on exit.
+#    pgvector/pgvector:0.8.6-pg16-bookworm container is started on a free
+#    loopback port and removed on exit.
 # 3. API: `uv sync --locked --group dev`, then the pytest suite (tests/) with the
 #    synced venv's python. Extra arguments go to pytest (e.g. -x, -k agent).
 # 4. Web (apps/web): `npm ci` when node_modules is missing, `npx tsc -b`,
@@ -117,7 +117,8 @@ if [ "$only" != web ]; then
   else
     command -v docker >/dev/null 2>&1 || [ "$dry" = 1 ] || die "no JARVIS_DATABASE_URL and no docker to start a throwaway Postgres (inside the remotea sandbox, set JARVIS_DATABASE_URL in the verify entry's env)"
     container="jarvis-verify-$$-${RANDOM}"
-    run docker run -d --rm --name "$container" -e POSTGRES_PASSWORD=verify -e POSTGRES_DB=jarvis -p 127.0.0.1::5432 postgres:16-alpine
+    # Keep aligned with CI and compose.upgrade.yml: test models require the vector extension.
+    run docker run -d --rm --name "$container" -e POSTGRES_PASSWORD=verify -e POSTGRES_DB=jarvis -p 127.0.0.1::5432 pgvector/pgvector:0.8.6-pg16-bookworm
     if [ "$dry" = 1 ]; then
       port="<port>"
     else
