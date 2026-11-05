@@ -58,14 +58,17 @@ ATTENTION = {
     "pr_unknown": ("The criteria are met, but Eridani has no current record of the pull request.",
                    "Check it, then approve or send the agent back to open it."),
     # GitHub CI as the final verification (run_ci.py). ci_timeout's headline is the specific wait (run_ci.timeout_text).
-    "ci_unavailable": ("The criteria are met on the quick check, but the host cannot report GitHub CI.",
+    "ci_unavailable": ("The criteria are met, but the host cannot report GitHub CI.",
                        "Update remotea to a build with ci.status, or check CI yourself and approve."),
+    # The ruleset's last rung (run_ci.py): no local check on the target and no CI on the pull request.
+    "verify_manual": ("Needs your verification: the target has no verify command and the pull request has no CI checks.",
+                      "Check the work yourself, then approve it as verified, or describe what is wrong and send the agent back."),
     "ci_timeout": ("GitHub CI did not finish on the pull request in time.",
                    "Check the pull request's checks, then approve, or send the agent back with a note."),
     "ci_failed_again": ("GitHub CI failed again on the same commit; the agent did not push a fix.",
                         "Read the failing log, then send the agent back with a note, or approve."),
 }
-CI_REASONS = ("ci_timeout", "ci_failed_again", "ci_unavailable")
+CI_REASONS = ("ci_timeout", "ci_failed_again", "ci_unavailable", "verify_manual")
 
 # Per infra category (run_coordinator.classify_verify): the headline for verify_infra.
 VERIFY_HEADLINES = {

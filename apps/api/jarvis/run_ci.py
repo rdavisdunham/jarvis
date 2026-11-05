@@ -1,11 +1,23 @@
 """GitHub CI as a run's final verification (docs/AGENT_CONTROL.md, "CI as the final verification").
 
-A plan whose verify entry is only a pre-push check (its id in `agent_ci_quick_verify_ids`, default `quick`:
-scripts/verify-quick.sh) is not finished by that check's pass. When the judge finds the criteria met, the run waits in
-`awaiting_ci` until the pull request head's checks are terminal: green completes it as before (approval or
-auto_complete), red sends the agent a gap with the failed jobs and the failing log's last lines, and nothing terminal
-within `agent_ci_wait_seconds` (default 90 min) needs you (`ci_timeout`). A pass of any other verify entry (the full
-`./scripts/verify.sh`) still counts on its own. Policy pr_merged is unchanged: a merge is the human's final word.
+The ruleset (Davis, 2026-11-05), per plan under completion policy code_ready or pr_open:
+
+- a quick local check and CI: the quick check runs after every turn, green CI on the pull request head finishes the run;
+- CI only (the plan names no verify entry): green CI finishes the run, nothing runs locally;
+- a local check only (the pull request has no checks): the local pass finishes the run, CI is not waited for;
+- neither: the run stops in `needs_you(verify_manual)`, "needs your verification": Davis checks the work and
+  approves it as verified (recorded as a manual verification) or describes what is wrong and sends the agent back.
+
+Nothing is added automatically: no quick check is written into a repository, no CI workflow. A plan whose verify
+entry is a full local suite (`full`: ./scripts/verify.sh) finishes on its local pass without consulting CI. Policy
+pr_merged is unchanged: a merge is the human's final word.
+
+Mechanics: a plan whose verify entry is only a pre-push check (its id in `agent_ci_quick_verify_ids`, default `quick`:
+scripts/verify-quick.sh), or that names no verify entry, is not finished by the judge's met verdict alone. The run
+waits in `awaiting_ci` until the pull request head's checks are terminal: green completes it (approval or
+auto_complete), red sends the agent a gap with the failed jobs and the failing log's last lines, a pull request with
+no checks on `ABSENT_POLLS` consecutive polls means "no CI" (the quick pass finishes the run, or no verification at all
+needs you), and nothing terminal within `agent_ci_wait_seconds` (default 90 min) needs you (`ci_timeout`).
 
 Eridani holds no GitHub credential. It asks the run's host with the read-only `ci.status` command (sent only to a host
 whose hello caps list `ci.status`); the host runs `gh` with its own login in the run's worktree and answers in the
@@ -33,12 +45,15 @@ LOG_LINES = 40
 LINE_CHARS = 300
 CHECKS = 50
 PUSH_PROMPTS = 2  # "Push and open the pull request" at most this often per run; then the wait runs out.
+# A pull request whose checks are absent on this many consecutive polls (~4 min) has no CI: workflows register their
+# checks within seconds of a push, so this is a repository without CI, not a slow start.
+ABSENT_POLLS = 2
 # Fail fast: a check that failed while others still run is a failure now. If the host has no log for it yet, wait at
 # most this many more polls for one before sending the gap without it.
 LOG_WAITS = 2
 # needs_you reasons a green CI run on the current head un-parks, as a late local pass does (verify_infra goes to the
 # judge, which counts green CI as the verification; the CI reasons were met already and go on to approval).
-UNPARK = ("verify_infra", "ci_timeout", "ci_unavailable")
+UNPARK = ("verify_infra", "ci_timeout", "ci_unavailable", "verify_manual")
 # Parked runs are asked less often after the first wait, and not at all after a day.
 PARKED_POLL = timedelta(minutes=10)
 PARKED_FOR = timedelta(hours=24)
@@ -62,11 +77,23 @@ def quick_ids():
 
 
 def required(plan):
-    """Whether a met verdict on this plan still needs green CI: its verify entry is a quick pre-push check and its
-    completion policy is code_ready or pr_open (pr_merged ends on the merge itself)."""
-    verify_id = ((plan.verify or {}).get("verify_id") if plan else None) or ""
-    policy = (plan.completion_policy if plan else None) or "code_ready"
-    return bool(verify_id) and verify_id in quick_ids() and policy in ("code_ready", "pr_open")
+    """Whether a met verdict on this plan consults GitHub CI before finishing: its verify entry is a quick pre-push
+    check or it names no verify entry at all, and its completion policy is code_ready or pr_open (pr_merged ends on
+    the merge itself). A full local entry finishes on its own pass."""
+    if plan is None:
+        return False
+    verify_id = (plan.verify or {}).get("verify_id") or ""
+    policy = plan.completion_policy or "code_ready"
+    return (not verify_id or verify_id in quick_ids()) and policy in ("code_ready", "pr_open")
+
+
+def local_pass(plan):
+    """The plan has a local verify entry (its pass is what brought the judge to a met verdict)."""
+    return bool(plan is not None and (plan.verify or {}).get("verify_id"))
+
+
+def tuple_key(run):
+    return f"{run.generation}:{run.turn_seq}:{run.plan_revision}"
 
 
 # ---------------------------------------------------------------- the host's answer (pure)
@@ -196,9 +223,13 @@ def save(run, **values):
 def gate(db, run, plan, actor):
     """Called by run_coordinator.judged_met before approval or auto_complete. None when CI is not needed or already
     green for this turn; else the run waits in awaiting_ci (or needs you when the host cannot report CI)."""
-    if not required(plan) or passed_now(db, run):
-        return None
+    if not required(plan) or passed_now(db, run) or ci_state(run).get("no_ci") == tuple_key(run):
+        return None  # Not consulted, already green, or this turn's pull request was found to have no CI.
     if not coordinator.host_cap(db, run.host_id, COMMAND):
+        if not local_pass(plan):
+            # An older host cannot report CI, and there is no local check either: nothing to wait for, so the judge's
+            # verdict stands (approval, or auto_complete) as it did before the ruleset. Updating remotea restores CI.
+            return None
         return coordinator.transition(db, run, "needs_you", actor=actor, reason="ci_unavailable",
                                       detail="The host does not report GitHub CI (no ci.status capability).")
     coordinator.transition(db, run, "awaiting_ci", actor=actor, reason="ci_pending")
@@ -260,7 +291,7 @@ def parked_poll_due(db, run, clock):
     if not coordinator.host_cap(db, run.host_id, COMMAND):
         return False
     plan = coordinator.frozen(db, run)
-    if plan is None or not (plan.verify or {}).get("verify_id") or not plan.criteria:
+    if plan is None or not plan.criteria or not (local_pass(plan) or required(plan)):
         return False
     parked = clock - (run.state_since or clock)
     if parked >= PARKED_FOR:
@@ -328,7 +359,32 @@ def on_outcome(db, run, row, state, detail="", result=None):
         return failed(db, run, attempt, facts)
     if facts["state"] in ("no_pr", "unpushed"):
         return push_prompt(db, run, facts)
+    if facts["state"] == "absent":
+        return absent(db, run, attempt, facts)
+    save(run, absent_polls=0)
     return attempt
+
+
+def absent(db, run, attempt, facts):
+    """The pull request has no checks. Once on ABSENT_POLLS consecutive polls that is a repository without CI: a quick
+    local pass finishes the run on its own (judged_met again, the gate now stands aside for this turn), and a plan with
+    no local check at all needs Davis's own verification (needs_you(verify_manual))."""
+    polls = (ci_state(run).get("absent_polls") or 0) + 1
+    if polls < ABSENT_POLLS:
+        save(run, absent_polls=polls)
+        return attempt
+    return no_ci(db, run, facts, f"no CI checks on the pull request {facts.get('pr_url') or ''}".rstrip())
+
+
+def no_ci(db, run, facts, why):
+    plan = coordinator.frozen(db, run)
+    actor = coordinator.judge_actor(run)
+    save(run, absent_polls=0, no_ci=tuple_key(run))
+    coordinator.note(run, "ci_absent", head_sha=facts.get("head_sha") or "", detail=why[:300])
+    if local_pass(plan):
+        return coordinator.judged_met(db, run, plan, actor)
+    return coordinator.transition(db, run, "needs_you", actor=actor, reason="verify_manual",
+                                  detail=f"The target has no verify command and there are {why}."[:300])
 
 
 def unpark(db, run, attempt, facts):
@@ -374,6 +430,9 @@ def push_prompt(db, run, facts):
     from . import agent_prompts as prompts
 
     ci = ci_state(run)
+    if (ci.get("push_prompts") or 0) >= PUSH_PROMPTS and not local_pass(coordinator.frozen(db, run)):
+        # Asked twice, still no pull request, and no local check either: there is nothing to wait for.
+        return no_ci(db, run, facts, "no pull request" if facts["state"] == "no_pr" else "no pushed commits on the pull request")
     if ci.get("prompted_turn") == run.turn_seq or (ci.get("push_prompts") or 0) >= PUSH_PROMPTS or not run.surf:
         return run
     save(run, prompted_turn=run.turn_seq, push_prompts=(ci.get("push_prompts") or 0) + 1)

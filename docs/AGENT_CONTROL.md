@@ -1379,12 +1379,33 @@ local verify entry is a quick pre-push check (`scripts/verify-quick.sh`, [above]
 and a green GitHub CI run on the pull request head is what completes a run. Code:
 [`run_ci.py`](../apps/api/jarvis/run_ci.py).
 
-**When it applies.** A plan whose verify entry id is in `JARVIS_AGENT_CI_QUICK_VERIFY_IDS` (default `quick`) under
-completion policy `code_ready` or `pr_open` (`run_ci.required`). The loop is unchanged up to the verdict: the quick
-check runs after the turn and a failing check is still the judge's gap. When the judge finds the criteria met,
-`judged_met` checks integration first, then `run_ci.gate`: unless a green CI record exists for the run's current
-(generation, turn, plan revision), the run moves to **`awaiting_ci`** (`ci_pending`). A plan whose verify entry is
-anything else (`full`: `./scripts/verify.sh`) finishes on its local pass as before; `pr_merged` ends on the merge.
+**The ruleset (Davis, 2026-11-05).** Per plan, under completion policy `code_ready` or `pr_open`:
+
+| The target has | The pull request has | What finishes the run |
+|---|---|---|
+| a quick check (`quick`) | CI checks | the quick check after every turn, then green CI |
+| no verify entry | CI checks | green CI; nothing runs locally |
+| a local check | no CI checks | the local pass; CI is not waited for |
+| no verify entry | no CI checks | nobody: `needs_you(verify_manual)`, **needs your verification** |
+
+Nothing is added automatically: Eridani never writes a quick check into a repository or a CI workflow. Small
+projects without either are meant to move fast; a project worth protecting has one or both. In the last row the card
+says "Needs your verification" and offers **Verified, approve** (completes the task; the completion record carries
+`policy_override.manual_verification: true`) and **Describe what's wrong** (the note goes back to the agent). A
+plan whose verify entry is a full local suite (`full`: `./scripts/verify.sh`) finishes on its local pass and never
+consults CI; `pr_merged` ends on the merge.
+
+**When CI is consulted.** A plan whose verify entry id is in `JARVIS_AGENT_CI_QUICK_VERIFY_IDS` (default `quick`),
+or that names no verify entry, under completion policy `code_ready` or `pr_open` (`run_ci.required`). The loop is
+unchanged up to the verdict: the quick check (when there is one) runs after the turn and a failing check is still the
+judge's gap. When the judge finds the criteria met, `judged_met` checks integration first, then `run_ci.gate`: unless
+a green CI record exists for the run's current (generation, turn, plan revision), or this turn's pull request was
+already found to have no CI, the run moves to **`awaiting_ci`** (`ci_pending`). A host whose hello lacks `ci.status`
+parks a quick-check plan in `ci_unavailable` as before, and lets a plan with no verify entry finish on the judge's
+verdict (nothing to wait for; update remotea to apply the ruleset). A pull request whose checks are
+`absent` on `ABSENT_POLLS` (2) consecutive polls has no CI (`ci_absent` on the timeline): with a local check the
+run goes on to approval or auto_complete on that pass; without one it needs your verification. The same applies when
+the agent was asked twice to push and there is still no pull request and no local check.
 
 **How CI status reaches Eridani.** Eridani holds no GitHub credential. It sends the run's host the read-only
 `ci.status` command, only to a host whose hello `caps` list `ci.status` (a host without it parks the run in

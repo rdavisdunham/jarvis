@@ -54,7 +54,10 @@ The same polling applies to a run stopped on `ci_timeout` or `ci_unavailable`. G
 ## When CI is not the gate
 
 The CI wait applies only when both of these hold:
-- the plan's verify entry is a quick check (its id is in `JARVIS_AGENT_CI_QUICK_VERIFY_IDS`, default `quick`);
+- the plan's verify entry is a quick check (its id is in `JARVIS_AGENT_CI_QUICK_VERIFY_IDS`, default `quick`), or the
+  plan names no verify entry (CI is then the only verification; a pull request with no checks on two polls means the
+  run needs your verification instead: the "Needs your verification" card with Verified, approve and Describe what's
+  wrong). A full local entry never consults CI. See the ruleset in [AGENT_CONTROL.md](AGENT_CONTROL.md#ci-as-the-final-verification);
 - the completion policy is `code_ready` or `pr_open`.
 
 In every other case, the run finishes as before:

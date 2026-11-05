@@ -504,17 +504,23 @@ export function stopCard(run: RunDetail) {
   const passing = run.verification?.status === "passed" && run.verification.evidence === "fresh";
   const judgeable = !run.freestyle && !!run.turn_seq && !!run.plan?.criteria.length;
   const message = runControls(run).message;
+  // verify_manual: nothing verified this run (no local check on the target, no CI on the pull request), so the
+  // person is the verification step: "Verified, approve" records a manual verification; "Describe what's wrong" sends it back.
+  const manual = run.state_reason === "verify_manual";
   return {
     headline: a.headline, action: a.action, lines: a.last_output ?? [],
     detail: a.detail && a.detail !== a.action && !a.headline.includes(a.detail) ? a.detail : "",
-    approve: { enabled: !terminal,
-      confirm: run.state_reason.startsWith("ci_") ? "GitHub CI has not passed on the pull request; approve anyway?"
+    manual,
+    approve: { enabled: !terminal, label: manual ? "Verified, approve" : "Approve",
+      confirm: manual ? "Nothing verified this run. Approve it as verified by you?"
+        : run.state_reason.startsWith("ci_") ? "GitHub CI has not passed on the pull request; approve anyway?"
         : hasVerify && !passing ? "Verification has no passing run; approve anyway?"
-        : "The judge has not found the criteria met; approve anyway?" },
+        : "The judge has not found the criteria met; approve anyway?",
+      button: manual ? "Approve as verified" : "Approve anyway" },
     verifyAgain: { enabled: !terminal && judgeable, label: hasVerify ? "Verify again" : "Judge again",
       reason: terminal ? "Terminal has control." : run.freestyle ? "Freestyle is on, so the judge is off."
         : !run.turn_seq ? "The agent has not finished a turn yet." : !run.plan?.criteria.length ? "The plan has no success criteria." : "" },
-    sendBack: { enabled: message.enabled, reason: message.reason },
+    sendBack: { enabled: message.enabled, reason: message.reason, label: manual ? "Describe what's wrong" : "Send back to the agent" },
   };
 }
 
