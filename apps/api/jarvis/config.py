@@ -88,8 +88,9 @@ class Settings(BaseSettings):
     context_poll_minutes: int = Field(default=5, ge=1, le=1440)
     context_max_source_chars: int = Field(default=1_000_000, ge=1_000, le=20_000_000)
     context_granola_enabled: bool = False
-    # model_map profile for the meeting action-item pass; empty keeps the model map's route (Luna by default).
-    context_actions_model: str = ""
+    # model_map profile for the meeting action-item pass; empty keeps the model map's route (Luna). When the profile
+    # is unknown or its provider key is missing, the pass falls back to that route (context/native/actions.py).
+    context_actions_model: str = "sonnet-5.5"
     # "split": action pass + per-chunk detect/enrich/verify; "combined": one whole-meeting call for facts and
     # follow-ups, then one verify call (an experiment; context/native/extract.py).
     context_extraction_mode: Literal["split", "combined"] = "split"

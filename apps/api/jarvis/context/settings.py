@@ -24,7 +24,7 @@ class ContextSettings:
     poll_minutes: int
     max_source_chars: int
     granola_enabled: bool
-    actions_model: str = ""  # model_map profile for the action-item pass; "" keeps the model map's route
+    actions_model: str = "sonnet-5.5"  # model_map profile for the action-item pass; "" keeps the model map's route
     extraction_mode: str = "split"  # split | combined (native/extract.py)
     embedding_dimensions: int = EMBEDDING_DIMENSIONS
     embedding_storage: str = EMBEDDING_STORAGE

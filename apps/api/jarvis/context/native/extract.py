@@ -154,7 +154,7 @@ class NativeExtractor:
         candidates = [{"id": candidate_key(c.ref), "type": c.ref.entity_type, "name": c.name,
                        "aliases": c.aliases, "detail": c.detail[:300]} for c in request.candidates]
         runs = [ChunkRun(c) for c in chunk_segments(request.segments, self.target_tokens, self.neighbour_tokens)]
-        acts, found = action_pass.ActionRun(), action_pass.Meeting.of(request, ctx)
+        acts, found = action_pass.ActionRun(fallback=action_pass.fallback()), action_pass.Meeting.of(request, ctx)
         token = current_feature.set(FEATURE)
         try:
             if mode == "combined":

@@ -100,7 +100,9 @@ def wire(monkeypatch):
 
 
 def use(monkeypatch, profile: str) -> None:
+    """Route the action pass to `profile` the way the lab does (MODEL_MAP) and as the setting would."""
     monkeypatch.setitem(model_map.MODEL_MAP, "context_actions", profile)
+    monkeypatch.setattr(get_settings(), "context_actions_model", profile)
 
 
 @pytest.mark.parametrize("profile", ["luna", "terra", "terra-high", "sonnet-5.5", "sonnet-5.5-high"])
@@ -194,6 +196,7 @@ def test_synthetic_meeting_recovers_the_missed_patterns(wire, monkeypatch, profi
 def test_attended_meeting_resolves_mine_by_identity_not_by_recorder(wire, monkeypatch):
     """Rowan recorded the meeting; the user is Jules (the owner actor's alias). Private notes are Rowan's."""
     sent = wire()
+    use(monkeypatch, "luna")
     request = meeting_request(recorder="Rowan Vale")
     result = NativeExtractor().extract(request)
 
@@ -234,6 +237,7 @@ def test_unpriced_profile_is_refused_before_any_call(wire, monkeypatch):
 
 def test_long_meetings_fall_back_to_chunks_and_merge(wire, monkeypatch):
     sent = wire()
+    use(monkeypatch, "luna")
     monkeypatch.setitem(ANSWERS, ACTIONS_VERIFY_PROMPT, {"verdicts": []})  # nothing refused by the verifier
     monkeypatch.setattr(actions, "WHOLE_MEETING_TOKENS", 100)
     monkeypatch.setattr(actions, "CHUNK_TOKENS", 150)
@@ -252,13 +256,55 @@ def test_long_meetings_fall_back_to_chunks_and_merge(wire, monkeypatch):
     assert diagnostics["rejected"] and check_extraction(request, result) == []
 
 
-def test_route_prefers_the_lab_override_then_the_setting(monkeypatch):
-    assert actions.route().profile == "luna"
-    monkeypatch.setattr(get_settings(), "context_actions_model", "terra")
-    assert actions.route().profile == "terra"
-    use(monkeypatch, "sonnet-5.5")
-    assert actions.route().profile == "sonnet-5.5"
+def test_sonnet_is_the_default_and_an_unusable_setting_falls_back_to_the_model_map(monkeypatch, caplog):
+    from jarvis.config import Settings
+    from jarvis.context import settings as context_settings
+
+    settings = get_settings()
+    assert Settings(_env_file=None).context_actions_model == "sonnet-5.5"
+    assert context_settings.current().actions_model == "sonnet-5.5"
+    assert model_map.MODEL_MAP["context_actions"] == "luna"  # the facts route and the fallback stay on Luna
+    monkeypatch.setattr(actions, "_warned", set())
+    monkeypatch.setattr(settings, "anthropic_api_key", "configured")
+    assert (actions.route().profile, actions.fallback()) == ("sonnet-5.5", None)
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    with caplog.at_level("WARNING", logger=actions.__name__):
+        for _ in range(3):
+            assert actions.route().profile == "luna"
+    assert actions.fallback() == {"from": "sonnet-5.5", "to": "luna", "reason": "missing_key"}
+    assert len([r for r in caplog.records if r.name == actions.__name__]) == 1  # warned once
+    monkeypatch.setattr(settings, "context_actions_model", "sonnet-9")
+    assert actions.choose() == (model_map.route("context_actions"),
+                                {"from": "sonnet-9", "to": "luna", "reason": "unknown_profile"})
+    monkeypatch.setattr(settings, "context_actions_model", "")
+    assert (actions.route().profile, actions.fallback()) == ("luna", None)
+    # The lab's in-process route wins over the setting and never falls back.
+    monkeypatch.setitem(model_map.MODEL_MAP, "context_actions", "terra")
+    monkeypatch.setattr(settings, "context_actions_model", "sonnet-5.5")
+    assert (actions.route().profile, actions.fallback()) == ("terra", None)
     assert model_map.JOBS["context_actions"].cost_feature == "context_extraction"
+
+
+def test_a_missing_anthropic_key_runs_the_pass_on_the_fallback_and_records_it(wire, monkeypatch):
+    sent = wire()
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "")
+    result = NativeExtractor().extract(meeting_request())
+    diagnostics = result.diagnostics["actions"]
+    assert diagnostics["status"] == "ok" and diagnostics["profile"] == "luna"
+    assert diagnostics["fallback"] == {"from": "sonnet-5.5", "to": "luna", "reason": "missing_key"}
+    assert not any("anthropic" in url for url, _, _ in sent) and len(result.actions) == 5
+    assert result.diagnostics["partial"] is False
+
+
+def test_the_default_routes_the_action_pass_to_sonnet_and_the_facts_to_luna(wire, monkeypatch):
+    sent = wire()  # an Anthropic key is configured
+    result = NativeExtractor().extract(meeting_request())
+    assert result.diagnostics["actions"]["profile"] == "sonnet-5.5" and result.diagnostics["actions"]["fallback"] is None
+    assert result.diagnostics["model"] == model_map.PROFILES["luna"].model
+    hosts = {(system_of(body) == ACTIONS_PROMPT or system_of(body) == ACTIONS_VERIFY_PROMPT, "anthropic" in url)
+             for url, _, body in sent}
+    assert hosts == {(True, True), (False, False)}
 
 
 def test_owner_names_resolve_to_one_actor_or_stay_a_mention():
