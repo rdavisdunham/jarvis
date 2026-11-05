@@ -26,7 +26,10 @@ Eridani starts, watches and steers coding agents (Claude Code and Codex) on Davi
 - **The execution loop.** After each execution turn the host runs the plan's verify command in the
   worktree, then the judge (`agent_judge.py`) compares the turn and the recorded evidence with the success
   criteria. `not_met` sends the judge's gap as the next prompt; `met` waits for **Approve** (or for merged
-  sub-tasks, or completes the task itself when `auto_complete` is on). **Verify by default**: a plan with a
+  sub-tasks, or completes the task itself when `auto_complete` is on). **Local verification is a quick
+  pre-push check and GitHub CI is the final word**: when the plan's verify entry is the quick one
+  (`scripts/verify-quick.sh`), a met verdict waits in `awaiting_ci` until the pull request head's checks are green;
+  red sends the agent the failed jobs and the log ([CI as the final verification](#ci-as-the-final-verification)). **Verify by default**: a plan with a
   test-shaped criterion and no verify command gets the target's verify command picked for it, and the owner
   can set one mid-run. The judge's rules park the run with Davin rather than loop: `verify_missing` (a gap
   that needs a verification the plan cannot record), `proof_request` (asks to paste proof are rewritten to
@@ -237,9 +240,12 @@ A run starts only in a target the host lists in `~/.config/remotea/eridani.json`
   disposable `JARVIS_DATABASE_URL` pointing at a local test Postgres, and runs `uv sync --locked --group
   dev` first: managed worktrees get no dependency provisioning, and the suite must never touch the real
   database.
-- **A timeout that covers the suite: the hard ceiling.** The entry's `timeout` in seconds (`--verify-timeout`).
-  Use **7200** (2 h) for jarvis: the full suite has run past 30 minutes on a loaded desktop (run ad1a1c02 was
-  killed at 1800 s at 94% with no failures), and a slow run now announces itself (below) instead of failing.
+- **A timeout that covers the check: the hard ceiling.** The entry's `timeout` in seconds (`--verify-timeout`).
+  For jarvis the entry after every turn is the quick check (`./scripts/verify-quick.sh`, under 3 minutes) with
+  **600**; GitHub CI runs the full suite on the pull request and is the final verification ([CI as the final
+  verification](#ci-as-the-final-verification)). An entry that runs the full suite locally (`./scripts/verify.sh`)
+  needs **7200** (2 h): it has run past 30 minutes on a loaded desktop (run ad1a1c02 was killed at 1800 s at 94%
+  with no failures), and a slow run announces itself (below) instead of failing.
   Eridani's own deadline for a verify attempt (`run_coordinator.verify_deadline`, stored on the attempt as
   `deadline_at`, which the sweep reads) is the entry's timeout **as the host advertises it** plus 120 s of grace,
   never less than 11 minutes (`VERIFY_DEADLINE`); the attempt keeps the advertised value as `timeout_s`. A host
@@ -267,10 +273,27 @@ Targets are re-read on every use, so editing `eridani.json` needs no restart; th
 carries the change. Where bubblewrap works, remotea runs the command sandboxed (remotea PR #24); each result says
 whether it was (`isolated`, below).
 
-#### jarvis: `scripts/verify.sh`
+#### jarvis: `scripts/verify-quick.sh` after every turn, `scripts/verify.sh` on request
 
-The jarvis repository carries the wrapper a verify entry calls, so the entry holds no toolchain paths of its
-own. [`scripts/verify.sh`](../scripts/verify.sh) `[--dry-run] [--no-sync] [--only api|web] [pytest args…]`:
+Running the full suite locally after every turn and again in GitHub CI is the same work twice, so the entry Eridani
+runs after each turn is the quick pre-push check and CI on the pull request is the final verification.
+[`scripts/verify-quick.sh`](../scripts/verify-quick.sh) `[--dry-run] [--no-sync] [--base <ref>]` (85 s on the
+desktop for a change touching six test files and the web app; target under 3 min):
+
+1. **PATH and test database** exactly as `verify.sh` below.
+2. **What changed**: files that differ from the merge base with `origin/main` (or `--base`, or
+   `JARVIS_VERIFY_BASE`), committed or not, plus untracked files (`GIT_OPTIONAL_LOCKS=0`: the sandbox mounts the
+   repository's git folder read-only).
+3. **ruff** with CI's selection (`E9,F63,F7,F82,F811`) on `apps/api/jarvis`, `tests` and `scripts/app_eval`.
+4. **pytest** on the tests related to the change ([`scripts/verify_quick.py`](../scripts/verify_quick.py), a pure
+   mapping with its own tests in `tests/test_verify_quick.py`): `apps/api/jarvis/x.py` → `tests/test_x*.py`;
+   `apps/api/jarvis/context/y.py` → `tests/context/test_y*.py`, else all of `tests/context`; a changed test file runs
+   itself; anything else falls back to the drift guards, which always run.
+5. **Web**, only when `apps/web` changed: `tsc -b`, then `vitest related --run` on the changed source files.
+
+`./scripts/verify.sh` remains for an explicit full local run (a second entry, below, or by hand).
+
+[`scripts/verify.sh`](../scripts/verify.sh) `[--dry-run] [--no-sync] [--only api|web] [pytest args…]`:
 
 1. **PATH.** Keeps the caller's `PATH` first, then adds `~/.local/bin`, `~/.cargo/bin`, nvm's default node
    (only when no `node` is on `PATH` yet) and `/usr/local/bin`, so `uv`, `node` and `npm` resolve under the
@@ -306,6 +329,17 @@ are; match the node path to the installed nvm version):
     "env": { "PATH": "/home/davin/.nvm/versions/node/v22.23.2/bin:/usr/bin:/bin" } }
 ],
 "verify": [{
+  "id": "quick",
+  "argv": ["./scripts/verify-quick.sh"],
+  "timeout": 600,
+  "network": "loopback",
+  "ports": [55432],
+  "env": {
+    "PATH": "/home/davin/.local/bin:/home/davin/.nvm/versions/node/v22.23.2/bin:/usr/local/bin:/usr/bin:/bin",
+    "JARVIS_DATABASE_URL": "postgresql+psycopg://postgres:verify@127.0.0.1:55432/postgres",
+    "JARVIS_VERIFY_SYNC": "0"
+  }
+}, {
   "id": "full",
   "argv": ["./scripts/verify.sh"],
   "timeout": 7200,
@@ -319,6 +353,10 @@ are; match the node path to the installed nvm version):
 }]
 ```
 
+The id `quick` is what makes a pass a pre-push check rather than the final word: Eridani reads the ids in
+`JARVIS_AGENT_CI_QUICK_VERIFY_IDS` (default `quick`) that way. A plan that names `full` finishes on a local full
+pass as before, without waiting for CI.
+
 The standing test server, once: `docker run -d --restart unless-stopped --name jarvis-verify-pg -e
 POSTGRES_PASSWORD=verify -p 127.0.0.1:55432:5432 postgres:16-alpine`. Until the host runs a remotea build
 with `prepare` (remotea branch `target-templates`), drop `prepare` and `JARVIS_VERIFY_SYNC` and set
@@ -328,8 +366,9 @@ docker, syncs dependencies itself and may start its own throwaway Postgres (drop
 resolves (it must be on the checkout's `main`, since readiness is checked against the repository).
 
 The full suite (API 470–670 s plus the web checks) can outlast Eridani's 11-minute verify deadline above while
-the host does not advertise the entry's `timeout`; a second, narrower entry (`["./scripts/verify.sh", "--only", "web"]`, or API arguments such as
-`["./scripts/verify.sh", "--only", "api", "-x", "tests/test_agent_control.py"]`) stays inside it.
+the host does not advertise the entry's `timeout`; the `quick` entry stays well inside it, and a narrower full
+entry (`["./scripts/verify.sh", "--only", "web"]`, or API arguments such as
+`["./scripts/verify.sh", "--only", "api", "-x", "tests/test_agent_control.py"]`) does too.
 
 ### Setup readiness (E-Q1)
 
@@ -403,6 +442,8 @@ gap and reason text inside it is fenced as data.
 | `verify_set` · "verify command set" | Owner sets the verify command mid-run (`agent_plan.set_verify`) | Only when the run was parked in `needs_you` (it resumes `executing`) | `verify_set()` | Make the work pass that command, end the turn. |
 | `merged` · "pull request merged" | The host reports the run's branch merged (`check_integrations`, `recheck_pr`) | `needs_you(awaiting_merge)`, or `pr_unknown` under `pr_merged` | `merged()` | Update the worktree to the merged result, re-run the checks, end the turn. |
 | `integrated` · "sub-task pull requests merged" | All required sub-task branches merged into this run's branch (`check_integrations`) | `awaiting_integration` | `integrated()` | Pull the merged sub-tasks, re-check the combined code, end the turn. |
+| `ci_failed` · "CI failed on the pull request" | GitHub CI finished red on the pull request head while the run was `awaiting_ci` (`run_ci.failed`) | First failure on that head SHA; turn cap not reached (a second failure on the same head is `needs_you(ci_failed_again)` instead) | `ci_failed()`: the failed jobs with links, the failing log's last 40 lines and the run link, fenced as data | Fix the cause, run the quick check, commit and push to update the PR (never merge), end the turn. |
+| `ci_push` · "push for CI" | `ci.status` says there is no pull request for the branch, or the worktree's HEAD is not the PR head (`run_ci.push_prompt`) | Once per turn, at most twice per run; then the run waits until `ci_timeout` | `ci_push()` | Commit, push, open or update the PR (never merge), end the turn. |
 | `plan_critique` · "review sent to the planner" | Hyperplan: a reviewer's turn ends (`finish_review`), or the owner sends the final plan back (`revise_plan`) | The planner's session; `plan_reviewing` → `planning`, or `needs_you(plan_approval)` → `planning` | `incorporate()` (the review fenced as data; `final` on the last round or after a clean approve), `plan_revise()` (the owner's note) | Answer every blocking/major finding in `review_resolutions`, ask with `task_interview` first if needed, `submit_plan`, stop. |
 | `handoff` · "plan handed to the worker" | Hyperplan: execution starts on a run whose worker differs from its planner (`hand_off`) | Recorded on the timeline; the text is the worker's spawn prompt, not an input | `worker()`: the frozen plan and the "decisions already made" digest | Execute the plan as written; ask for a re-plan instead of re-opening settled points. |
 
@@ -708,7 +749,8 @@ any unsettled → stopping → stopped | completed | failed        executing →
 
 Stage C enters `spawning`, `executing`, `waiting_answer`, `needs_you`, `awaiting_approval`, `stopping`
 and the terminal states; stage D adds `interviewing/planning/verifying/judging/awaiting_integration/
-replanning` and `capped` (see "Planning and the loop" below). Rules:
+replanning` and `capped` (see "Planning and the loop" below); `awaiting_ci` waits for GitHub CI after a met
+verdict on a quick check ([CI as the final verification](#ci-as-the-final-verification)). Rules:
 
 - **Nothing is assumed.** A spawn is confirmed by the provider session showing up (first `turn` or
   `status` naming the run, or a snapshot surface), a stop by an exit, a missing surface or a stop outcome,
@@ -729,7 +771,8 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
   `/?view=remotea&run=<id>`.
 - **The wall clock counts working time, not owner waits** (migration 0043). A run waits on the owner while an
   interview for its current generation is open (from `task_interview` until it is answered or superseded), in
-  `waiting_answer` and in any `needs_you` (including `plan_review`, `plan_approval`, `host_busy`); hyperplan's
+  `waiting_answer` and in any `needs_you` (including `plan_review`, `plan_approval`, `host_busy`); `awaiting_ci` is
+  not the owner's move but is not working time either, so it counts as a wait too (`IDLE_WAIT_STATES`); hyperplan's
   `plan_reviewing` is not a wait (the reviewer works). `agent_runs.owner_wait_since` marks the wait in progress and
   `owner_wait_total_s` sums the finished ones; the deadline is `started_at + wall_clock_limit + owner_wait_total_s`
   (`run_coordinator.wall_clock_deadline`), and a run waiting now never trips `wall_clock`. When a wait ends the run
@@ -1302,6 +1345,64 @@ transition records `actor: run_judge`.
 
 Limits: the wall clock (6 h) now also covers interviewing, planning, verifying and judging; the 45-minute
 no-progress timer still applies to executing.
+
+### CI as the final verification
+
+Davis's decision (2026-11-04): running the full suite locally after every turn and again on GitHub is waste, so the
+local verify entry is a quick pre-push check (`scripts/verify-quick.sh`, [above](#jarvis-scriptsverify-quicksh-after-every-turn-scriptsverifysh-on-request))
+and a green GitHub CI run on the pull request head is what completes a run. Code:
+[`run_ci.py`](../apps/api/jarvis/run_ci.py).
+
+**When it applies.** A plan whose verify entry id is in `JARVIS_AGENT_CI_QUICK_VERIFY_IDS` (default `quick`) under
+completion policy `code_ready` or `pr_open` (`run_ci.required`). The loop is unchanged up to the verdict: the quick
+check runs after the turn and a failing check is still the judge's gap. When the judge finds the criteria met,
+`judged_met` checks integration first, then `run_ci.gate`: unless a green CI record exists for the run's current
+(generation, turn, plan revision), the run moves to **`awaiting_ci`** (`ci_pending`). A plan whose verify entry is
+anything else (`full`: `./scripts/verify.sh`) finishes on its local pass as before; `pr_merged` ends on the merge.
+
+**How CI status reaches Eridani.** Eridani holds no GitHub credential. It sends the run's host the read-only
+`ci.status` command, only to a host whose hello `caps` list `ci.status` (a host without it parks the run in
+`needs_you(ci_unavailable)`: "update remotea, or check CI yourself and approve"). The host runs `gh` with its own
+login, in the run's worktree:
+
+| | |
+|---|---|
+| Command | `{t: "ci.status", command_id, run_id, generation, plan_revision, branch, turn_seq, log_lines: 40, expires_at}` (2 min). Read-only like `worktrees.scan`: no surface fence, sent whoever has control, not journaled on the run timeline. |
+| Host steps | `gh pr view <branch> --json number,url,headRefOid`; `gh pr checks <branch> --json name,state,bucket,link,workflow`; for each failed check whose link is a GitHub Actions job (at most 3), `gh run view <run> --log-failed`, last `log_lines` lines, redacted like other output; `git rev-parse HEAD` in the worktree. |
+| Outcome | `executed` with `result {pr: {number, url, head_sha} \| null, checks: [{name, state, bucket, link, workflow}], failed_logs: [{name, link, lines: [...]}], worktree_head}`; `failed` with the reason (`gh` missing or not logged in). |
+
+`run_ci.parse` folds the checks into one state: `passed` (every check `pass` or `skipping`), `failed` (all
+terminal, one `fail`), `pending` (any still running: CI is read until every check is terminal), `absent` (a PR
+without checks yet), `no_pr`, `unpushed` (the worktree's HEAD is not the PR head) and `cancelled`. Each answer is
+recorded as an attempt of kind `ci` (`verify_id: github_ci`, `initiator: host`), one row per run tuple and head SHA
+(`workspace_fingerprint` holds the SHA), updated on every poll: `result {source: "github_ci", state, head_sha,
+pr_url, pr_number, run_url, checks, failed, log, worktree_head, polls, checked_at}`. It sits beside the local verify
+attempts in the run's attempts.
+
+**The wait.** The sweep asks again every 2 minutes (`POLL`) while the run is `awaiting_ci` and no question is in
+flight; the state shows no attention (the Runs panel lists it under Working) and does not count toward the wall
+clock. Then:
+
+- **Green** on the current head: `ci_passed` on the timeline and `judged_met` again, which goes on to
+  `auto_complete` or `awaiting_approval` as before. No notice: the run completing (or asking for approval) is the
+  notice.
+- **Red**: one `agent_ci_failed` notice per run and head SHA (dedup key `agent:agent_ci_failed:<run>:<sha>`), and the
+  judge's gap to the agent (`ci_failed` above: the failed jobs, up to 40 log lines, the run link); the run goes back
+  to `executing` (or `capped` at its turn cap). The same head failing again after that gap means no fix was pushed:
+  `needs_you(ci_failed_again)`, with the log as the card's last output.
+- **No pull request / not pushed**: the agent is told once per turn (at most twice per run) to push and open or
+  update the PR (`ci_push`).
+- **Nothing terminal within `JARVIS_AGENT_CI_WAIT_SECONDS`** (`agent_ci_wait_seconds`, default 5400 = 90 min, since
+  the run entered `awaiting_ci`): `needs_you(ci_timeout)` with a specific headline (`run_ci.timeout_text`: "CI on
+  1a2b3c4 was still running after 1 h 30 min (Frontend and browser).", "No pull request for … so CI never ran.", "The
+  host could not read CI …: gh: not logged in."), pushed with that headline.
+
+A message (or a direct message) resumes `executing`; **Approve** from `awaiting_ci` is an override recorded as
+`approve_override` like any other. The read model's `ci` (`run_ci.public`) is `{state, current, head_sha, pr_url,
+run_url, checks, failed, log, checked_at, since, wait_until, error}` (`requested` before the first answer); the drawer
+shows it as a chip (CI pending / passing / failing, linked to the checks) and, while waiting or after a failure, a
+card with the wait so far and when it gives up, or the failed jobs and the log the agent was sent; run rows show
+the chip with the wait and a "View checks on GitHub" link beside the row.
 
 ### Verify by default, and set mid-run
 

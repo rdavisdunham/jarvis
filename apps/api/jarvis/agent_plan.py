@@ -815,7 +815,8 @@ class SetVerifyInput(BaseModel):
     action_id: UUID | None = None  # agent_receipts.once
 
 
-VERIFY_SETTABLE = {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "verifying", "judging"}
+VERIFY_SETTABLE = {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "awaiting_ci", "verifying",
+                   "judging"}
 
 
 def set_verify(db, owner, run_id, body, *, actor):

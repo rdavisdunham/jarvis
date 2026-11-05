@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
-import { actorChip, ago, attentionGroups, rowFreshness, stopLine, workflowStage, workflowAttention, type AttentionGroup, type Fact, type Run, type UnmergedWork } from "./remotea-model";
+import { actorChip, ago, attentionGroups, ciChip, isSettled, rowFreshness, stopLine, workflowStage, workflowAttention, type AttentionGroup, type Fact, type Run, type UnmergedWork } from "./remotea-model";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
 import { PendingControls } from "./PendingControls";
 import "./runs.css";
@@ -29,12 +29,23 @@ export function useNow(ms = 15_000) {
  * lease, a stale or incomplete check, uncertain delivery). `now` comes from the list's clock. Used by the Runs panel
  * and the remotea page. */
 export function RunRow({ run, onOpen, now = Date.now() }: { run: Run; onOpen: (id: string) => void; now?: number }) {
+  // GitHub CI (run_ci.py): a chip in the row (with the wait so far while awaiting CI) and, beside the row, a link to the
+  // checks (a link cannot sit inside the row's button).
+  const ci = isSettled(run) ? null : ciChip(run.ci);
+  const waiting = run.state === "awaiting_ci" && run.ci?.since ? " · " + ago(run.ci.since, now).replace(" ago", "") : "";
+  return <>{row(run, onOpen, now, ci && <span className={"run-ci-chip tone-" + ci.tone} title={ci.title}>{ci.label}{waiting}</span>)}
+    {ci?.href && (run.state === "awaiting_ci" || run.ci?.state === "failed") &&
+      <a className="run-row-ci-link" href={ci.href} target="_blank" rel="noreferrer">{run.ci?.state === "failed" ? "Failed checks" : "View checks"} on GitHub</a>}</>;
+}
+
+function row(run: Run, onOpen: (id: string) => void, now: number, ci: ReactNode) {
   return <button key={run.id} className={"remotea-run-row state-" + run.state} onClick={() => onOpen(run.id)}>
     <span className={"remotea-state run-state-" + run.state}>{workflowStage(run)}</span>
     {workflowAttention(run) && <span className="run-attention">· {workflowAttention(run)}</span>}
     {actorChip(run) && <span className="run-actor">{actorChip(run)}</span>}
     <span className="remotea-run-title">{run.task?.title ?? "Task"}</span>
     <small className={run.attention_detail ? "run-stop-line" : undefined}>{stopLine(run) || ago(run.state_since, now)}</small>
+    {ci}
     {!!run.summary && <span className="run-summary" title={run.summary_at ? "As of " + ago(run.summary_at, now) : undefined}>
       {run.summary}{run.summary_stale && <span className="run-summary-updating"> updating…</span>}</span>}
     <Facts facts={rowFreshness(run, null, now)} label="How current this is" className="run-row-fresh" inline/>

@@ -57,7 +57,15 @@ ATTENTION = {
     "awaiting_merge": ("The criteria are met; the pull request is not merged yet.", "Merge it; the run re-checks then."),
     "pr_unknown": ("The criteria are met, but Eridani has no current record of the pull request.",
                    "Check it, then approve or send the agent back to open it."),
+    # GitHub CI as the final verification (run_ci.py). ci_timeout's headline is the specific wait (run_ci.timeout_text).
+    "ci_unavailable": ("The criteria are met on the quick check, but the host cannot report GitHub CI.",
+                       "Update remotea to a build with ci.status, or check CI yourself and approve."),
+    "ci_timeout": ("GitHub CI did not finish on the pull request in time.",
+                   "Check the pull request's checks, then approve, or send the agent back with a note."),
+    "ci_failed_again": ("GitHub CI failed again on the same commit; the agent did not push a fix.",
+                        "Read the failing log, then send the agent back with a note, or approve."),
 }
+CI_REASONS = ("ci_timeout", "ci_failed_again", "ci_unavailable")
 
 # Per infra category (run_coordinator.classify_verify): the headline for verify_infra.
 VERIFY_HEADLINES = {
@@ -87,6 +95,13 @@ def attention(db, run, detail=""):
         last_output = tail_lines(result.get("tail"))
         if reason == "verify_infra" and attempt is not None:
             headline, action = verify_headline(attempt, result, action)
+    elif reason in CI_REASONS:
+        from .run_ci import latest
+
+        ci = latest(db, run)
+        last_output = tail_lines("\n".join((ci.result or {}).get("log") or []) if ci else "")
+        if reason == "ci_timeout" and detail:
+            headline = detail  # "CI on 1a2b3c4 was still running after 1 h 30 min (backend)."
     return {"reason": reason, "headline": headline, "action": action, "detail": detail or "", "last_output": last_output}
 
 

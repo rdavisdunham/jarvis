@@ -369,7 +369,7 @@ Notifications (`models.Notification`): `category` is a free string (no enum or c
       task alerts use `notices.task_importance`) and a `target` dict. Existing creators: `notices.py`
       (`deadline`, `morning`, `question`, `failure`, and the push vehicles `bundle`/`digest`),
       `domain.py` (`reminder` occurrences), `run_coordinator.notify` (`agent_question`, `agent_done`,
-      `agent_stuck`, `agent_verify_slow` once per verify attempt past its soft threshold; capped at `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass`
+      `agent_stuck`, `agent_verify_slow` once per verify attempt past its soft threshold, `agent_ci_failed` once per run and PR head from `run_ci.failed`; capped at `PUSHES_PER_RUN` = 3 per 10 minutes per run; `agent_quiet_bypass`
       makes questions urgent), `context/notices.py` (`context_ready` per meeting review revision,
       `context_backfill` once per owner-local day, `context_digest` at 17:00 owner-local; written by
       `context/scheduler.tick` from `worker.housekeeping` when `context_enabled`).
@@ -456,6 +456,8 @@ Checklist:
       `session_models.TERMINAL_RUN_STATES`.
 - [ ] `run_coordinator.transition` sends notifications on entering `needs_you`, `awaiting_approval`,
       `capped` and `awaiting_integration`; decide whether the new state notifies.
+- [ ] Waits that are neither working time nor the owner's move (`awaiting_ci`) go in `IDLE_WAIT_STATES` (excluded
+      from the wall clock); a state a message should resume goes in `RESUMABLE`.
 - [ ] The phase lists: `PLANNING` (and `PLAN_SUBMIT`, where `submit_plan` is taken), `phase()` / `resume_phase()`
       (where `needs_you` resumes), `RESUMABLE`, `SELF_HEALING`, the `active` tuple in `sweep` (wall clock,
       no progress, host offline) and `reconcile`'s states that never become `surface_lost` (`spawning`,

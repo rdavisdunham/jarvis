@@ -58,11 +58,17 @@ TRANSITIONS = {
     "waiting_answer": {"executing", "interviewing", "planning", "needs_you", "stopping"},
     "verifying": {"judging", "executing", "needs_you", "stopping", "failed"},
     # judging → completed exists for stage D's auto_complete; C never takes it.
-    "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "capped", "completed", "stopping"},
+    # → awaiting_ci: the criteria are met on a quick local check; GitHub CI on the PR head is the final word (run_ci.py).
+    "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "awaiting_ci", "capped", "completed",
+                "stopping"},
+    # Waiting for the PR head's CI (run_ci.py): green → approval or auto_complete (stopping), red → executing with the
+    # gap, nothing terminal in time → needs_you(ci_timeout). A message resumes execution; Approve still works.
+    "awaiting_ci": {"awaiting_approval", "awaiting_integration", "executing", "needs_you", "capped", "verifying",
+                    "judging", "replanning", "stopping"},
     # → verifying / judging: the operator's Judge again (judge_again) on the current turn.
     # → plan_reviewing / handing_off: a hyperplan run resumes its review round or its worker's spawn (phase()).
-    "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "replanning",
-                  "verifying", "judging", "plan_reviewing", "handing_off", "stopping", "failed"},
+    "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "awaiting_ci",
+                  "replanning", "verifying", "judging", "plan_reviewing", "handing_off", "stopping", "failed"},
     # After integration the agent pulls the merged children and the loop verifies and judges again.
     "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
     "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "verifying", "judging", "stopping"},
@@ -73,17 +79,19 @@ TRANSITIONS = {
 }
 STATES = tuple(TRANSITIONS)
 # Where human input (a message, an answer) may resume execution.
-RESUMABLE = {"needs_you", "awaiting_approval"}
+RESUMABLE = {"needs_you", "awaiting_approval", "awaiting_ci"}
 # needs_you reasons the host itself can clear: the terminal comes back.
 SELF_HEALING = {"host_offline", "surface_lost"}
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
-       "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "automation.hold": timedelta(days=36500), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2),
+       "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "automation.hold": timedelta(days=36500), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2), "ci.status": timedelta(minutes=2),
        # Someone is waiting for the tab to come forward: a late one would surprise more than help.
        "terminal.focus": timedelta(seconds=30), "run.pause": timedelta(days=36500), "run.resume": timedelta(days=36500)}
 # Commands that leave no trace on the run's timeline or history (not work the run does).
 QUIET_COMMANDS = {"terminal.focus"}
+# Commands that only read from the host: sent whoever has control of the session (no ensure_eridani_control).
+READ_COMMANDS = {"worktrees.scan", "ci.status"}
 # A verification's deadline, then timed_out (a non-pass): the target's verify timeout as its host advertised it plus
 # VERIFY_GRACE, never less than VERIFY_DEADLINE (the host's old 10-minute default plus a minute), which is also the
 # deadline when the host did not say (verify_deadline). The hard ceiling is the entry's own `timeout` in eridani.json
@@ -104,6 +112,8 @@ TOKEN_TTL = timedelta(hours=24)
 # The wall clock measures the agent's working time, not time spent waiting on the owner: a run waits on the owner in
 # these states and while an interview for its current generation is open (never in plan_reviewing: the reviewer works).
 OWNER_WAIT_STATES = ("needs_you", "waiting_answer")
+# Waits that are neither the agent's working time nor the owner's move: excluded from the wall clock too.
+IDLE_WAIT_STATES = ("awaiting_ci",)
 # Resuming a run parked on its wall clock grants it this much more working time, so it does not bounce straight back.
 WALL_CLOCK_GRANT = timedelta(hours=2)
 PROMPT_CHARS = 32_000  # A spawn prompt's limit (agent_control.PROMPT_CHARS is this).
@@ -157,6 +167,9 @@ REASONS = {
     "awaiting_merge": "The criteria are met; merge the pull request to finish.",
     "pr_unknown": "The criteria are met, but Eridani has no current record of the pull request: check it, then approve or message the agent.",
     "merged": "The pull request merged; confirming the result.",
+    "ci_unavailable": "The criteria are met on the quick check, but the host cannot report GitHub CI, the final verification: update remotea, or approve.",
+    "ci_timeout": "The criteria are met on the quick check, but GitHub CI did not finish on the pull request in time: check it, then approve or message the agent.",
+    "ci_failed_again": "GitHub CI failed again on the same commit; the agent did not push a fix.",
     # Working states: what just happened, so the page never shows a raw reason token.
     "start": "Starting the agent.",
     "started": "The agent is up; planning.",
@@ -166,6 +179,9 @@ REASONS = {
     "plan_reviewed": "You reviewed the plan; the agent is working on it.",
     "turn": "Checking the last turn against the success criteria.",
     "verify_late_result": "The host's verification result arrived after Eridani stopped waiting; judging it now.",
+    "ci_pending": "The criteria are met on the quick check; waiting for GitHub CI on the pull request.",
+    "ci_failed": "GitHub CI failed on the pull request; the agent is fixing it.",
+    "ci_push": "GitHub CI has not run on this work; the agent is pushing it and opening the pull request.",
     "not_met": "Not met yet; the agent is on the next turn.",
     "queue": "Your message is queued for the agent.",
     "steer": "You steered the agent.",
@@ -250,7 +266,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
     if to == "needs_you":
         from .run_attention import attention
 
-        shown = attention(db, run)  # The same headline and action the run card leads with.
+        shown = attention(db, run, detail)  # The same headline and action the run card leads with.
         notify(db, run, "agent_stuck", "An agent needs you",
                f"{shown['headline']} {shown['action']}" if shown and reason in ATTENTION_PUSH
                else REASONS.get(reason, reason or "The run needs attention."), key=f"{run.id}:{run.state_revision}")
@@ -271,7 +287,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
 def awaiting_owner(db, run):
     """Whether the run's next move is the owner's: needs_you, waiting_answer, or an open interview for its current
     generation (plan_reviewing never: the reviewer is working)."""
-    if run.paused or run.state in OWNER_WAIT_STATES:
+    if run.paused or run.state in OWNER_WAIT_STATES or run.state in IDLE_WAIT_STATES:
         return True
     if run.state in TERMINAL or run.state in ("stopping", "plan_reviewing"):
         return False
@@ -361,7 +377,7 @@ def bound(db, host_id, run_id, lock=True):
 PUSHES_PER_RUN = 3
 # needs_you reasons whose push says the run card's headline and action (run_attention) instead of the REASONS line:
 # the ones where the specific cause (a timeout at 94%, a missing database extension) is what the owner acts on.
-ATTENTION_PUSH = ("verify_infra",)
+ATTENTION_PUSH = ("verify_infra", "ci_timeout")
 PUSH_WINDOW = timedelta(minutes=10)
 
 
@@ -427,7 +443,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
                 raise DomainError("HANDOFF_UNCONFIRMED", "Only a confirmed separate worker can retire its planner.", 409)
         elif run is None or run.state not in TERMINAL:
             raise DomainError("RUN_ACTIVE", "Only an ended run can close its terminal sessions.", 409)
-    if run and kind not in QUIET_COMMANDS and kind not in ("worktrees.scan", "run.cleanup"):
+    if run and kind not in QUIET_COMMANDS and kind not in READ_COMMANDS and kind != "run.cleanup":
         ensure_eridani_control(run)
     host = db.get(AgentHost, host_id or run.host_id) if host_id or run else None
     durable = bool(host and "commands.durable" in ((host.caps or {}).get("caps") or []))
@@ -451,7 +467,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
                        plan_revision=run.plan_revision if run else 0)
     db.add(row)
     db.flush()
-    if run and kind not in QUIET_COMMANDS:
+    if run and kind not in QUIET_COMMANDS and kind != "ci.status":  # A CI poll every 2 min would flood the timeline.
         note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}),
              **({"role": body["role"]} if body.get("role") else {}), **({"source": source} if source else {}))
         emit(db, run.owner_id, "agent.changed", run.id)
@@ -523,6 +539,10 @@ def on_outcome(db, row, state, detail="", result=None):
         row.status = "superseded"  # Keep the host's outcome, without letting a suppressed old command move the run.
         emit(db, run.owner_id, "agent.changed", run.id)
         return
+    if row.kind == "ci.status":
+        from . import run_ci
+
+        return run_ci.on_outcome(db, run, row, state, detail, result)  # Not noted: a poll every 2 minutes.
     role = (row.payload or {}).get("role")
     if (row.kind in ("spawn", "stop") or row.kind == "input" and state == "executed") and result and result.get("surf"):
         from . import agent_cleanup
@@ -2062,11 +2082,16 @@ def on_verdict(db, attempt, final):
 
 
 def judged_met(db, run, plan, actor):
-    """The criteria and the completion policy are met: integration first, then auto_complete or approval."""
+    """The criteria and the completion policy are met: integration first, then green CI when the verify entry is only
+    a quick check (run_ci.gate), then auto_complete or approval. run_ci calls it again when CI turns green."""
     pending = integration_pending(db, run, plan)
     if pending:
         run.sync_state = {**(run.sync_state or {}), "integration": pending}
         return transition(db, run, "awaiting_integration", actor=actor, reason="awaiting_integration")
+    from . import run_ci
+
+    if run_ci.gate(db, run, plan, actor) is not None:
+        return run  # A quick check passed: GitHub CI on the PR head is the final verification (awaiting_ci).
     if auto_complete(db, run.owner_id) and plan and plan.criteria and human_gate(plan):
         # A fingerprint that did not cover the whole workspace cannot prove the tree it tested is the one the turn
         # left (remotea `workspace_complete: false`): not fresh enough to close the task without a human.
@@ -2803,6 +2828,9 @@ def sweep(db, clock=None):
             attempt.result = {**(attempt.result or {}), "non_verdict": "timeout"}
             judge_failed(db, attempt, "timeout", "the judge did not finish in time")
     verify_slow_notices(db, clock)
+    from . import run_ci
+
+    run_ci.sweep(db, clock)  # Poll CI every 2 minutes while a run awaits it; past the wait, the run needs you.
     # A judge holding for a fresh PR record past its wait runs once more and settles on what is on record.
     release_held(db, [a for a in db.scalars(select(AgentAttempt).where(
         AgentAttempt.kind == "judge", AgentAttempt.status == "queued").with_for_update(skip_locked=True))
