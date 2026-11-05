@@ -928,6 +928,8 @@ def policy_override(db, run, body, actor):
     fact = verification_fact(db, run) or {}
     return {"state": run.state, "reason": run.state_reason, "note": (body.note or "").strip()[:2000],
             "policy": run.completion_policy or "code_ready",
+            # The ruleset's last rung (run_ci.py): no local check and no CI, so the human's approval is the verification.
+            "manual_verification": run.state_reason == "verify_manual",
             "verification": {"verify_id": fact.get("verify_id"), "status": fact.get("status"),
                              "evidence": fact.get("evidence")} if fact else None,
             "actor": actor.record()}

@@ -8,7 +8,7 @@ from jarvis import agent_control as control
 from jarvis import run_attention, run_ci
 from jarvis import run_coordinator as coordinator
 from jarvis.db import session_scope
-from jarvis.models import Notification, now
+from jarvis.models import Notification, Task, now
 from jarvis.session_models import AgentCommand, AgentHost, AgentRun
 from sqlalchemy import select
 from test_agent_attempts import attempts, planned, result
@@ -64,15 +64,18 @@ def test_parse_keeps_the_failed_jobs_their_run_and_at_most_40_log_lines():
         [{"name": "x", "link": None}]
 
 
-def test_only_a_quick_entry_under_code_ready_or_pr_open_needs_ci(monkeypatch):
+def test_a_quick_entry_or_no_entry_under_code_ready_or_pr_open_consults_ci(monkeypatch):
     from types import SimpleNamespace as Plan
 
     monkeypatch.setattr(run_ci, "quick_ids", lambda: {"quick"})
     assert run_ci.required(Plan(verify={"verify_id": "quick"}, completion_policy="code_ready"))
     assert run_ci.required(Plan(verify={"verify_id": "quick"}, completion_policy="pr_open"))
     assert not run_ci.required(Plan(verify={"verify_id": "quick"}, completion_policy="pr_merged"))
-    assert not run_ci.required(Plan(verify={"verify_id": "full"}, completion_policy="code_ready"))
-    assert not run_ci.required(Plan(verify=None, completion_policy="code_ready")) and not run_ci.required(None)
+    assert not run_ci.required(Plan(verify={"verify_id": "full"}, completion_policy="code_ready"))  # A full pass is enough.
+    # The ruleset: a plan with no verify entry relies on CI (and needs you when the pull request has none).
+    assert run_ci.required(Plan(verify=None, completion_policy="code_ready"))
+    assert run_ci.required(Plan(verify={}, completion_policy="pr_open"))
+    assert not run_ci.required(Plan(verify=None, completion_policy="pr_merged")) and not run_ci.required(None)
 
 
 # ---------------------------------------------------------------- the loop
@@ -346,3 +349,78 @@ def test_parked_runs_are_polled_less_often_and_not_after_a_day(ci_host):
     assert due(0, 3) and not due(2, 3)  # Every 2 min during the CI wait…
     assert not due(90, 95) and due(90, 101)  # …then every 10 min…
     assert not due(0, 25 * 60)  # …and not after a day.
+
+
+# ---------------------------------------------------------------- the ruleset's other rows (Davis, 2026-11-05)
+
+
+def met_without_verify(run_id, seq=3):
+    """A turn on a plan with no verify entry: no local check runs, the judge finds the criteria met."""
+    turn(run_id, seq)
+    return judged(run_id, stub(verdict()))
+
+
+def events(run_id, name):
+    with session_scope() as db:
+        return [h for h in db.get(AgentRun, run_id).history if h.get("event") == name]
+
+
+def test_a_plan_without_a_verify_entry_relies_on_ci(ci_host):
+    run_id = planned(ci_host, verify=False)
+    assert met_without_verify(run_id) == ("awaiting_ci", "ci_pending")
+    assert attempts(run_id) == []  # Nothing ran locally.
+    assert report(run_id, checks=checks("pass", "pending")) == ("awaiting_ci", "ci_pending")
+    assert report(run_id) == ("awaiting_approval", "judge_met")
+
+
+def test_a_quick_pass_finishes_the_run_when_the_pull_request_has_no_ci(ci_host):
+    run_id = planned(ci_host)
+    assert met(ci_host, run_id) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, checks=[]) == ("awaiting_ci", "ci_pending")  # Once could be a slow workflow start.
+    assert report(run_id, checks=[]) == ("awaiting_approval", "judge_met")
+    [absent] = events(run_id, "ci_absent")
+    assert "no CI checks" in absent["detail"]
+    # The decision is this turn's: a later turn (a new tuple) consults CI again.
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        assert run_ci.ci_state(run)["no_ci"] == run_ci.tuple_key(run) == f"{run.generation}:{run.turn_seq}:{run.plan_revision}"
+
+
+def test_no_verify_and_no_ci_needs_your_verification(ci_host):
+    run_id = planned(ci_host, verify=False)
+    assert met_without_verify(run_id) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, checks=[]) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, checks=[]) == ("needs_you", "verify_manual")
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        detail = run_attention.attention(db, run)
+        assert detail["headline"].startswith("Needs your verification")
+        assert "approve it as verified" in detail["action"]
+        revision = run.state_revision
+    with session_scope() as db:
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=revision, note="Clicked through it."), actor=HUMAN)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        assert run.state in ("stopping", "completed")  # Settles as completed once the host confirms the stop.
+        assert db.get(Task, run.task_id).status == "completed"
+        [entry] = [h for h in run.history if h.get("event") == "approve_override"]
+        assert entry["reason"] == "verify_manual" and entry["manual_verification"] is True
+        assert run.sync_state["completion"]["policy_override"]["manual_verification"] is True
+
+
+def test_no_pull_request_after_two_push_prompts_needs_your_verification_without_a_local_check(ci_host):
+    run_id = planned(ci_host, verify=False)
+    for seq in (3, 4):
+        assert met_without_verify(run_id, seq) == ("awaiting_ci", "ci_pending")
+        assert report(run_id, pr=None) == ("executing", "ci_push")
+    assert met_without_verify(run_id, 5) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, pr=None) == ("needs_you", "verify_manual")
+
+
+def test_green_ci_later_unparks_a_run_that_needed_your_verification(ci_host):
+    run_id = planned(ci_host, verify=False)
+    met_without_verify(run_id)
+    report(run_id, checks=[])
+    assert report(run_id, checks=[]) == ("needs_you", "verify_manual")
+    poll(5)
+    assert report(run_id) == ("awaiting_approval", "judge_met")

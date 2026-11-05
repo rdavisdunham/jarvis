@@ -735,6 +735,28 @@ serves cited context to agents over MCP. Off by default; personal workspace only
   0047-0050; needs the owner's explicit go).
 - [ ] Bind `meeting_context` scenarios to `tests/context/` assertions in `evals/app/bindings.json`.
 
+## Verification loop — decided November 5, 2026, with what comes after
+
+The ruleset for agent runs (docs/AGENT_CONTROL.md "CI as the final verification"): quick local check plus GitHub
+CI when both exist; CI alone when the target has no verify entry; the local check alone when the pull request has
+no CI; neither means the run needs Davis's own verification ("Needs your verification": Verified, approve, or
+Describe what's wrong). Nothing is added to a repository automatically. Merges stay manual while the loop is tested.
+
+- [ ] **Judge reads the diff.** An extra layer for every row of the ruleset, and the only layer for the last one:
+  the judge reviews the actual diff against the criteria (not the agent's report and the test output alone) and
+  names concrete problems. Plan it once the ruleset has run on real tasks for a while.
+- [ ] **Automatic merge.** Once the loop (quick check, judge, CI, approval) is trusted on jarvis, let a green,
+  approved run merge its own pull request under a policy (`pr_merged` already ends on the merge; the missing
+  piece is Eridani asking the host to merge). Davis wants to test the loop first.
+- Decided against for now, with the reasons, so they are not re-proposed by accident:
+  - *Agents setting up a light quick check on targets without one.* Rejected: other engineers' agents would pick
+    the committed check up on shared repositories such as brainforge-platform, which already have CI. Rely on CI
+    where it exists.
+  - *Repository-declared verify entries* (a `.remotea/verify.json` or a `scripts/verify-quick.sh` convention the
+    host advertises). Not needed without the point above; verify entries stay in the host's `eridani.json`.
+  - *Minimal CI workflows for the small repositories* (budget, popscribe, the-connection). Not worth it yet: those
+    are meant to move fast and break things; the "needs your verification" card is the check there.
+
 ## Explicitly deferred, not forgotten
 
 - **Chat about it — guided task-space design.** Promoted into the

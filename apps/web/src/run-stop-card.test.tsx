@@ -52,6 +52,23 @@ describe("the stop reason leads, without opening a dropdown", () => {
     expect(stopCard(parked({ state: "awaiting_approval" }))).toBeNull();
     expect(stopCard(parked({ freestyle: true }))!.verifyAgain).toMatchObject({ enabled: false, reason: "Freestyle is on, so the judge is off." });
   });
+
+  it("makes the person the verification step when nothing verified the run (no local check, no CI)", () => {
+    const manual = parked({ state_reason: "verify_manual", verification: null, plan: { revision: 1, title: "t", prd_text: "", steps: [], verify: null,
+      criteria: [{ id: "c1", text: "done", kind: "text" }] }, attention_detail: { reason: "verify_manual",
+      headline: "Needs your verification: the target has no verify command and the pull request has no CI checks.",
+      action: "Check the work yourself, then approve it as verified, or describe what is wrong and send the agent back.", detail: "", last_output: [] } });
+    const card = stopCard(manual)!;
+    expect(card.manual).toBe(true);
+    expect(card.approve).toMatchObject({ label: "Verified, approve", button: "Approve as verified", confirm: "Nothing verified this run. Approve it as verified by you?" });
+    expect(card.sendBack.label).toBe("Describe what's wrong");
+    expect(card.verifyAgain.label).toBe("Judge again");
+    const html = renderToStaticMarkup(<RunStopCard run={manual} disabled={false} onApprove={() => {}} onVerifyAgain={() => {}} onSendBack={() => {}}/>);
+    expect(html).toContain("Needs your verification");
+    expect(html).toContain("Verified, approve");
+    expect(html).toContain("Describe what&#x27;s wrong");
+    expect(stopCard(parked())!.approve.label).toBe("Approve");
+  });
 });
 
 describe("the three actions", () => {
