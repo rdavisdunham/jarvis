@@ -202,22 +202,65 @@ def locate(segment_text: str, quote: str, owned: Callable[[int, int], bool] = la
     return next((h for h in hits if owned(*h)), hits[0] if hits else None)
 
 
+ELLIPSIS = re.compile(r"\.{3,}|\u2026")
+MIN_FRAGMENT_WORDS = 3
+FRAGMENT_NEIGHBOURS = (0, 1, -1, 2, -2)  # the cited line first, then lines a ref off by one or two would mean
+
+
+def fragments(quote: str) -> list[str]:
+    """The contiguous pieces of a quote stitched together with "..." or "…", trimmed, without pieces under
+    MIN_FRAGMENT_WORDS words (a dangling "so" or "and")."""
+    pieces = (p.strip().strip(",;:-\u2013\u2014").strip() for p in ELLIPSIS.split(quote))
+    return [p for p in pieces if len(p.split()) >= MIN_FRAGMENT_WORDS]
+
+
+def _locate_fragment(seq: int, fragment: str, ctx: SourceContext,
+                     owns: Callable[[int, int, int], bool]) -> tuple[int, tuple[int, int]] | None:
+    """A fragment in the cited segment, else in a neighbour within two lines, as (segment, span)."""
+    for offset in FRAGMENT_NEIGHBOURS:
+        segment = ctx.segments.get(seq + offset)
+        if segment is None:
+            continue
+        for needle in dict.fromkeys((fragment, fragment.rstrip(".!?,;:").strip())):
+            span = needle and locate(segment.text, needle, lambda a, b, s=seq + offset: owns(s, a, b))
+            if span and owns(seq + offset, *span):
+                return seq + offset, span
+    return None
+
+
 def ground_evidence(quotes: Iterable[tuple[int, str]], ctx: SourceContext,
                     owns: Callable[[int, int, int], bool]) -> tuple[list[EvidenceRef], str | None, str]:
+    """Each quote as an exact span of its segment. A quote that is not one span but contiguous pieces joined with
+    "..." or "…" grounds piece by piece (in the cited segment or up to two lines away), one span per piece in
+    order; it is refused when any piece is found nowhere."""
     refs, seen = [], set()
+
+    def add(seq: int, span: tuple[int, int]) -> None:
+        if (seq, *span) not in seen:
+            seen.add((seq, *span))
+            text = ctx.segments[seq].text
+            refs.append(EvidenceRef(segment_seq=seq, quote=text[span[0]:span[1]], char_start=span[0],
+                                    char_end=span[1]))
+
     for seq, quote in quotes:
         segment = ctx.segments.get(seq)
         if segment is None:
             return [], "unknown_segment", f"segment {seq}"
         span = locate(segment.text, quote, lambda a, b, seq=seq: owns(seq, a, b))
+        if span is None and ELLIPSIS.search(quote):
+            pieces = fragments(quote)
+            found = [_locate_fragment(seq, piece, ctx, owns) for piece in pieces]
+            if not pieces or None in found:
+                missing = next((p for p, f in zip(pieces, found, strict=True) if f is None), quote)
+                return [], "quote_not_found", f"segment {seq}: {missing[:120]!r}"
+            for where, piece_span in found:
+                add(where, piece_span)
+            continue
         if span is None:
             return [], "quote_not_found", f"segment {seq}: {quote[:120]!r}"
         if not owns(seq, *span):
             return [], "evidence_outside_chunk", f"segment {seq} is context for this chunk"
-        if (seq, *span) not in seen:
-            seen.add((seq, *span))
-            refs.append(EvidenceRef(segment_seq=seq, quote=segment.text[span[0]:span[1]], char_start=span[0],
-                                    char_end=span[1]))
+        add(seq, span)
     return refs, None, ""
 
 

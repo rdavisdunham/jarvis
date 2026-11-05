@@ -13,7 +13,7 @@ from jarvis import memory_learning, model_map
 from jarvis.config import get_settings
 from jarvis.context.native import actions
 from jarvis.context.native.extract import NativeExtractor
-from jarvis.context.native.prompts import ACTIONS_PROMPT, ACTIONS_VERIFY_PROMPT, PROMPT_VERSION
+from jarvis.context.native.prompts import ACTIONS_PROMPT, ACTIONS_VERIFY_PROMPT, PROMPT_VERSION, ActionItem
 from jarvis.context.native.validate import SourceContext, ungrounded_numbers, ungrounded_tokens
 from jarvis.context.schema import (
     Decision,
@@ -673,3 +673,106 @@ def test_the_action_prompt_is_recall_first_and_status_updates_reach_the_checker(
     (kept,) = out.drafts  # never dropped by the extractor; unverified, so never checked in proposals
     assert (kept.status, kept.verified) == ("ongoing", None)
     assert kept.describe(meeting)["status"] == "ongoing"
+
+
+SHARED_FIRST = [("Davis Dunham", "Robert, could you pull the Q3 numbers before Friday?"),
+                ("Robert Tseng", "Sure, I'll pull them tomorrow."),
+                ("Davis Dunham", "Great. I'll send the deck to Yvette after that.")]
+
+
+def test_owner_aliases_match_but_a_first_name_two_people_share_never_does():
+    """The user is Davis Dunham (Robert Davis Dunham); Robert Tseng is in the meeting too."""
+    me, tseng = "act_me", "act_tseng"
+    aliases = ["Davis Dunham", "Davis", "Robert Dunham", "Robert Davis Dunham", "R. Davis Dunham"]
+    request = ExtractRequest(
+        owner_id="davin", source_revision_id="srcrev_robert", occurred_at=datetime(2026, 11, 3, 15, tzinfo=UTC),
+        timezone="America/Chicago", title="Q3 review",
+        participants=[Participant(name="Davis Dunham", role="organizer", speaker_label="Davis Dunham"),
+                      Participant(name="Robert Tseng", role="attendee", speaker_label="Robert Tseng")],
+        segments=[Segment(seq=i, speaker_label=who, attribution="owner" if who == "Davis Dunham" else "other",
+                          text=text) for i, (who, text) in enumerate(SHARED_FIRST)],
+        candidates=[EntityCandidate(ref=EntityRef(entity_type="actor", entity_id=me), name="owner", aliases=aliases),
+                    EntityCandidate(ref=EntityRef(entity_type="actor", entity_id=tseng), name="Robert Tseng")])
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+
+    assert "robert" in meeting.shared_firsts and "davis" not in meeting.shared_firsts
+    for name in [*aliases, "davis"]:
+        assert actions.resolve(name, meeting).entity_id == me, name
+    assert actions.resolve("Robert Tseng", meeting).entity_id == tseng
+    assert actions.resolve("Robert", meeting).entity_id is None  # either of them: left as a mention
+    assert not actions._same_person("Robert Tseng", "Robert Davis Dunham", meeting)
+    assert actions._same_person("Davis", "Robert Davis Dunham", meeting)
+
+    q = dict(enumerate(t for _, t in SHARED_FIRST))
+    drafts = {d.title if isinstance(d, actions.ActionDraft) else d["title"]: d for d in (
+        actions.check(ActionItem.model_validate(i), meeting, lambda seq, a, b: True) for i in [
+            item([(0, q[0]), (1, q[1])], "Pull the Q3 numbers", "Robert Tseng", "accepted_request"),
+            item([(2, q[2])], "Send the deck to Yvette", "Davis"),
+            # the user's own name on Robert Tseng's promise: his line is not the user's
+            item([(1, q[1])], "Pull the Q3 figures", "Robert Davis Dunham")])}
+    assert [r.entity_id for r in drafts["Pull the Q3 numbers"].responsible] == [tseng]
+    assert [r.entity_id for r in drafts["Send the deck to Yvette"].responsible] == [me]
+    assert drafts["Pull the Q3 figures"]["code"] == "attribution_mismatch"
+
+
+STANDUP_ELLIPSIS = [("Davis Dunham", "Quick update from me."),
+                    ("Davis Dunham", "I'm working on weekend definitions right now, it's taking a while."),
+                    ("Davis Dunham", "So yeah. I'm going to finish that in this week."),
+                    ("Robert Tseng", "Sounds good, thanks.")]
+
+
+def ellipsis_meeting() -> actions.Meeting:
+    request = ExtractRequest(
+        owner_id="davin", source_revision_id="srcrev_ellipsis", occurred_at=datetime(2026, 11, 4, 15, tzinfo=UTC),
+        timezone="America/Chicago", title="Daily delivery sync",
+        participants=[Participant(name="Davis Dunham", role="organizer", speaker_label="Davis Dunham"),
+                      Participant(name="Robert Tseng", role="attendee", speaker_label="Robert Tseng")],
+        segments=[Segment(seq=i, speaker_label=who, attribution="owner" if who == "Davis Dunham" else "other",
+                          text=text) for i, (who, text) in enumerate(STANDUP_ELLIPSIS)],
+        candidates=[EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_me"), name="owner",
+                                    aliases=["Davis Dunham"])])
+    return actions.Meeting.of(request, SourceContext.from_request(request))
+
+
+def test_quotes_stitched_with_an_ellipsis_ground_piece_by_piece():
+    from jarvis.context.native.validate import fragments, ground_evidence
+
+    ctx = ellipsis_meeting().ctx
+    def anywhere(seq, a, b):
+        return True
+
+    # Two pieces of one line: two spans, in order.
+    refs, code, _ = ground_evidence([(1, "I'm working on weekend definitions... it's taking a while.")], ctx, anywhere)
+    assert code is None and [(r.segment_seq, r.quote) for r in refs] == [
+        (1, "I'm working on weekend definitions"), (1, "it's taking a while.")]
+    assert all(r.matches(ctx.segments[r.segment_seq].text) for r in refs)
+    # The Nov 4 shape: the second piece is on the next line (the ref is off by one); "…" works the same way.
+    stitched = "I'm working on weekend definitions\u2026 I'm going to finish that in this week."
+    refs, code, _ = ground_evidence([(1, stitched)], ctx, anywhere)
+    assert code is None and [(r.segment_seq, r.quote) for r in refs] == [
+        (1, "I'm working on weekend definitions"), (2, "I'm going to finish that in this week.")]
+    # Pieces under three words are dropped; a piece found nowhere refuses the quote.
+    assert fragments("So yeah... I'm going to finish that ...") == ["I'm going to finish that"]
+    refs, code, detail = ground_evidence([(1, "I'm working on weekend definitions... we shipped the importer")],
+                                         ctx, anywhere)
+    assert (refs, code) == ([], "quote_not_found") and "we shipped the importer" in detail
+    # Two lines away is the limit; a chunk's neighbour it does not own is not used.
+    assert ground_evidence([(0, "Quick update from me... Sounds good, thanks.")], ctx, anywhere)[1] == \
+        "quote_not_found"
+    assert ground_evidence([(1, "I'm working on weekend definitions... finish that in this week")], ctx,
+                           lambda seq, a, b: seq == 1)[1] == "quote_not_found"
+    # A real "..." in the line still grounds as one span.
+    ctx.segments[0] = ctx.segments[0].model_copy(update={"text": "Quick update... from me."})
+    refs, code, _ = ground_evidence([(0, "Quick update... from me.")], ctx, anywhere)
+    assert code is None and [r.quote for r in refs] == ["Quick update... from me."]
+
+
+def test_an_action_item_cited_with_an_ellipsis_keeps_every_piece():
+    meeting = ellipsis_meeting()
+    draft = actions.check(ActionItem.model_validate(item(
+        [(1, "I'm working on weekend definitions... I'm going to finish that in this week.")],
+        "Finish the weekend definitions", "Davis Dunham", "stated_promise")), meeting, lambda seq, a, b: True)
+    assert isinstance(draft, actions.ActionDraft), draft
+    assert [(e.segment_seq, e.quote) for e in draft.evidence] == [
+        (1, "I'm working on weekend definitions"), (2, "I'm going to finish that in this week.")]
+    assert [r.entity_id for r in draft.responsible] == ["act_me"]
