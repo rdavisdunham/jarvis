@@ -17,7 +17,9 @@ import {
 } from "./remotea-model";
 import { postAction } from "./api";
 import { DecisionCard, DeliveryReceipt, submittedDraft, decisionFor, respondDecision, useReceipts, useRunDraft, workflowAttention, workflowStage } from "./RunWorkflow";
-import { chatByDefault, conversationEntries, drawerStatus, PlanProgress, useRunView } from "./RunPresentation";
+import { chatByDefault, conversationEntries, drawerStatus, useRunView } from "./RunPresentation";
+import { StageHeader, StageSection, StepList, VerifyCriteria } from "./RunStages";
+import { openSections, planSummary, recoveryShown, runStage, runSummary, sectionAttention, toggleSections, verifySummary } from "./run-stages";
 import { RemoteaReadiness, SetupCodeBox } from "./RemoteaSetup";
 import { WorktreeMaintenance } from "./WorktreeMaintenance";
 import { SwarmList } from "./Swarm";
@@ -25,7 +27,7 @@ import { RunStopCard } from "./RunStopCard";
 import { RunCiCard } from "./RunCiCard";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
-import { APPROVAL_FACTS, freshnessFacts, type Fact } from "./remotea-model";
+import { APPROVAL_FACTS, ciCard, freshnessFacts, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 
 import "./remotea.css";
@@ -439,7 +441,7 @@ export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone
 
 /** Hyperplan's final-plan stop (needs_you(plan_approval)): the frozen plan and the review history; Approve starts the
  * work (or hands the plan to the worker), Revise with note sends it back to the planner. */
-export function PlanApproval({ run, onDone, onConflict, compact = false }: { run: RunDetail; onDone: () => void; onConflict?: () => void; compact?: boolean }) {
+export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDone: () => void; onConflict?: () => void }) {
   const [note, setNote] = useRunDraft("plan-note:" + run.id + ":" + run.plan_revision, ""), [busy, setBusy] = useState<"" | "approve" | "revise">(""), [error, setError] = useState("");
   const receipts = useReceipts();
   const decision = decisionFor(run, "plan_approval");
@@ -455,15 +457,14 @@ export function PlanApproval({ run, onDone, onConflict, compact = false }: { run
     } finally { setBusy(""); }
   };
   const plan = run.plan, reviews = run.reviews ?? [], worker = run.roles?.worker;
-  return <DecisionCard title={awaiting ? "Final plan" : "Latest plan"} label="Final plan approval" task={awaiting ? run.task?.title : undefined} agent={awaiting ? actorChip(run) : undefined} className="remotea-plan-approval" receipt={receipts.filter(r => r.url.includes(decision ? encodeURIComponent(decision.id) : `/runs/${run.id}/plan-review`)).at(-1)}>
+  return <DecisionCard title={awaiting ? "Final plan" : "Latest plan"} label="Final plan approval" task={awaiting ? run.task?.title : undefined} agent={awaiting ? actorChip(run) : undefined} className={"remotea-plan-approval" + (awaiting ? "" : " is-reference")} receipt={receipts.filter(r => r.url.includes(decision ? encodeURIComponent(decision.id) : `/runs/${run.id}/plan-review`)).at(-1)}>
     {run.paused && run.plan?.approval_status === "approved" && <p role="status">Plan approved · paused. Resume when you are ready to start.</p>}
-    {!compact && <p className="footnote">{!awaiting ? "The latest submitted plan remains available as work continues. " : ""}{reviews.length ? `Reviewed ${reviews.length} time${reviews.length === 1 ? "" : "s"}. ` : ""}{awaiting ? "Approve to start the work" : ""}
-      {awaiting && worker ? ` with ${modelLabel(worker.harness, worker.model)} in a fresh session` : ""}{awaiting ? ", or send it back to the planner with a note." : ""}</p>}
-    {plan && compact && <PlanProgress run={run}/>}
-    {plan ? <details className="run-plan-expanded" open={!compact}><summary>{compact ? "Expand plan" : "Full plan"}</summary>
+    <p className="footnote">{!awaiting ? "The latest submitted plan remains available as work continues. " : ""}{reviews.length ? `Reviewed ${reviews.length} time${reviews.length === 1 ? "" : "s"}. ` : ""}{awaiting ? "Approve to start the work" : ""}
+      {awaiting && worker ? ` with ${modelLabel(worker.harness, worker.model)} in a fresh session` : ""}{awaiting ? ", or send it back to the planner with a note." : ""}</p>
+    {plan ? <div className="run-plan-expanded">
       <p><strong>{plan.title}</strong> <small>revision {plan.revision}</small></p>
       {plan.prd_text && <details open><summary>Plan</summary><p className="remotea-plan-text">{plan.prd_text}</p></details>}
-      {!!plan.steps.length && <details><summary>Steps · {plan.steps.length}</summary><ol>{plan.steps.map(s => <li key={s.id} className={"step-" + s.status}><strong>{s.status === "done" ? "Done" : s.status === "doing" ? "Doing" : "To do"}</strong> · {s.title}{s.note && <p>{s.note}</p>}</li>)}</ol></details>}
+      {!!plan.steps.length && <details open={awaiting}><summary>Steps · {plan.steps.length}</summary><StepList steps={plan.steps} compact/></details>}
       {!!plan.criteria.length && <details open><summary>Success criteria · {plan.criteria.length}</summary>
         <ul>{plan.criteria.map(c => <li key={c.id}>{c.text}{c.kind === "verify" && <small> · needs {c.verify_id} to pass</small>}</li>)}</ul></details>}
     {!!run.plan_history?.filter(p => p.revision !== plan?.revision).length && <details className="run-plan-history"><summary>Previous plans</summary>
@@ -474,7 +475,7 @@ export function PlanApproval({ run, onDone, onConflict, compact = false }: { run
       </details>)}
     </details>}
     {!!reviews.length && <ul className="remotea-review-history" aria-label="Review history">{reviews.map(r => <li key={r.id}>{reviewTitle(r)}</li>)}</ul>}
-    </details> : <p className="footnote">The plan is still loading.</p>}
+    </div> : <p className="footnote">The plan is still loading.</p>}
     {awaiting && <><label className="remotea-proposal-new"><span>Note for the planner (to revise)</span>
       <textarea rows={3} maxLength={4000} value={note} disabled={!!busy || run.controller === "terminal"} onChange={e => setNote(e.target.value)}/></label>
     <div className="remotea-control-row">
@@ -527,16 +528,17 @@ export function Criteria({ run }: { run: RunDetail }) {
 const PACKET_STATUS = { met: "Met", "not met": "Not met", unknown: "Unknown" } as const;
 
 /** E-Q3: everything a reviewer needs beside Approve, from reviewPacket. Read-only in needs_you and settled runs. */
-export function ReviewPacketCard({ packet, children }: { packet: ReviewPacket; children?: ReactNode }) {
+/** `criteria={false}` beside the Verify section, which already lists each criterion with its evidence. */
+export function ReviewPacketCard({ packet, children, criteria = true }: { packet: ReviewPacket; children?: ReactNode; criteria?: boolean }) {
   return <details className={"remotea-plan review-packet" + (packet.readOnly ? " read-only" : "")} open={!packet.readOnly || undefined}
     aria-label="Review packet">
     <summary>Review · {packet.text}</summary>
     {packet.decision && <p className={"review-decision kind-" + packet.decision.kind}>{packet.decision.text}</p>}
-    <h4>Success criteria · {packet.met}/{packet.total} met</h4>
+    {criteria && <><h4>Success criteria · {packet.met}/{packet.total} met</h4>
     {packet.judgedEarlierPlan && <p className="footnote attention">Judged against an earlier plan: the criteria changed since. Judge again to check them.</p>}
     {packet.criteria.length ? <ul>{packet.criteria.map(c => <li key={c.id} className={"criterion-" + c.status.replace(" ", "_")}>
       <strong>{PACKET_STATUS[c.status]}</strong> {c.text}{c.evidence && <p>{c.evidence}</p>}
-    </li>)}</ul> : <p className="footnote">No success criteria: the judge cannot complete this run; you decide.</p>}
+    </li>)}</ul> : <p className="footnote">No success criteria: the judge cannot complete this run; you decide.</p>}</>}
     <h4>Changes</h4>
     <p>{packet.prs.length ? packet.prs.map((p, i) => <span key={p.url}>{i ? ", " : ""}<a href={p.url} target="_blank" rel="noreferrer">{p.label}</a></span>) : null}
       {packet.prs.length ? " " + packet.prState : packet.changesLine}
@@ -814,7 +816,40 @@ export function RunDrawer({ id, onClose, preloaded }: {
   // Host lease, transcript, state, verification, workspace and unconfirmed controls, each with its own age (E-S6).
   const now = useNow();
   const fresh = run ? freshnessFacts(run, null, now) : [];
-  return <section className="run-view remotea-chat run-drawer" aria-label="Agent run" data-run-id={run?.id} data-state-revision={run?.state_revision}>
+  const stage = run ? runStage(run) : "plan";
+  const sections = run ? openSections(run, view.sections) : { plan: false, run: false, verify: false };
+  const attention = run ? sectionAttention(run) : { plan: false, run: false, verify: false };
+  const toggleSection = (name: "plan" | "run" | "verify") => { if (run) setView({ sections: toggleSections(run, view.sections, name) }); };
+  // Each card is built once and placed by view: in chat beside the conversation, otherwise in its stage's section.
+  const recoveryCard = run && bound && recoveryShown(run) ? <DecisionCard title={run.coordination_failure?.recovering ? "Retrying planning" : "Planning needs recovery"} reason={run.coordination_failure ? (run.coordination_failure.outcome === "uncertain" ? "The tool result is unconfirmed. Reconcile it before retrying." : "The planning submission was rejected; your interview was not saved.") : run.reason_text || "The planner stopped without saving questions or a plan."}>
+    {run.coordination_failure?.code && <p>{run.coordination_failure.code}</p>}
+    <button className="btn btn-sm btn-primary" disabled={off || (!!run.paused && (run.operator_paused !== false || run.pause_reason !== "receipt_uncertain")) || !!run.automation?.held || !!run.coordination_failure?.recovering || run.coordination_failure?.outcome === "uncertain"} onClick={() => { void postAction(`/remotea/runs/${run.id}/retry-planning`, { expected_revision: run.state_revision }).then(refresh).catch(e => setError(message(e))); }}>Retry planning</button>
+    <button className="btn btn-sm" onClick={() => setView({ chat: true })}>Show conversation</button>
+  </DecisionCard> : null;
+  const planReviewCard = run && bound ? <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh} onConflict={changed}/> : null;
+  const planCard = run?.plan && bound ? <PlanApproval key={"approval-" + run.plan_revision} run={run} onDone={refresh} onConflict={changed}/> : null;
+  const interviewCards = run && bound ? <OpenInterviews run={run} onDone={refresh}/> : null;
+  const liveCards = run && bound ? <>
+    {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
+    {(run.decisions ?? []).filter(d => d.kind === "control" && ["open", "pending"].includes(d.status)).map(d =>
+      <DecisionCard key={d.id} title="Pending request" task={run.task?.title} reason={String(d.payload.summary ?? "Review this request before it is sent.")} receipt={receipts.filter(receipt => receipt.url.includes(encodeURIComponent(d.id))).at(-1)}>
+        <div className="remotea-control-row">{d.actions.map(action => <button key={action} className="btn btn-sm" disabled={off}
+          onClick={() => { void respondDecision(d, action).then(refresh).catch(e => { if (isRevisionConflict(e)) changed(); else setError(message(e)); }); }}>{action === "confirm" ? "Approve once" : action === "decline" ? "Deny" : action}</button>)}</div>
+      </DecisionCard>)}
+  </> : null;
+  const acceptance = (withCriteria: boolean) => run && bound && run.state === "awaiting_approval" ? <DecisionCard title="Final acceptance" task={run.task?.title} reason="Review the results, then accept the completed task.">
+    {packet && <ReviewPacketCard packet={packet} criteria={withCriteria}/>}
+    <button className="btn btn-sm btn-primary" disabled={off} onClick={() => void acceptResults()}>Accept results</button>
+    {packet && <p className="review-beside-approve" role="note"><strong>{packet.text}.</strong> {packet.decision?.text}</p>}
+  </DecisionCard> : null;
+  // What a parked run needs from you (run_attention) and GitHub CI (run_ci.py): the stop card sits in the current stage's
+  // section; the CI card does too while it has news (awaiting CI, failed), otherwise its chip line stays in Verify.
+  const stopEl = run && bound ? <RunStopCard run={run} disabled={off} onApprove={note => void act("approve", note ? { note } : {})}
+    onVerifyAgain={() => void act("judge")} onSendBack={note => void act("message", { text: note, mode: "queue" })}/> : null;
+  const ciEl = run ? <RunCiCard run={run} now={now}/> : null;
+  const ciCardHere = !!run && !!ciCard(run, now);
+  const decisionsHere = (cards: ReactNode) => <section className="run-drawer-decisions" aria-label="Pending decisions">{cards}</section>;
+  return <section className="run-view remotea-chat run-drawer" aria-label="Agent run" data-run-id={run?.id} data-state-revision={run?.state_revision} data-stage={run ? stage : undefined}>
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
         <h2>{run?.task?.title ?? "Run"}</h2>
@@ -822,7 +857,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
           disabled={!!busy || !bound || !run.surf} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
         <button type="button" className="btn-icon run-drawer-close" aria-label="Close run" title="Close run" onClick={onClose}><X size={20} aria-hidden="true"/></button>
       </div>
-      {run && <p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}
+      {run && <StageHeader run={run} status={<p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}/>}
       {run && !bound && <p role="status" className="footnote">Loading the selected run…</p>}
     </header>
     <div className="remotea-chat-log run-drawer-middle" ref={log} onScroll={onScroll}>
@@ -830,40 +865,39 @@ export function RunDrawer({ id, onClose, preloaded }: {
         ? run.automation.recovery === "worker_starting" ? "Restoring the approved worker. Automation remains held; resume again after your message reaches the runtime." : run.automation.releasing ? "Reconciling before automation resumes. The hold remains until Remotea confirms release." : "Eridani automation is held. The worker can continue; automatic prompts, judging, reviews and handoffs wait. Explicit decision cards remain available."
         : "Message saved on this device. The automation hold is pending server confirmation."}</p>}
       {!run ? error ? <div><p role="alert" className="work-error">{error}</p><button className="btn btn-sm" onClick={refresh}>Retry loading run</button></div> : <p role="status">Loading run…</p> : <>
-        {bound && <RunStopCard run={run} disabled={off} onApprove={note => void act("approve", note ? { note } : {})}
-          onVerifyAgain={() => void act("judge")} onSendBack={note => void act("message", { text: note, mode: "queue" })}/>}
-        <RunCiCard run={run} now={now}/>
-        {run.plan && bound && <PlanApproval key={"approval-" + run.plan_revision} run={run} compact={!chatByDefault(run)} onDone={refresh} onConflict={changed}/>}
-        {bound && <section className="run-drawer-decisions" aria-label="Pending decisions">
-          {!isSettled(run) && (run.state_reason === "no_plan" || run.coordination_failure) && !(run.interviews ?? []).some(i => i.status === "open") && !run.plan && <DecisionCard title={run.coordination_failure?.recovering ? "Retrying planning" : "Planning needs recovery"} reason={run.coordination_failure ? (run.coordination_failure.outcome === "uncertain" ? "The tool result is unconfirmed. Reconcile it before retrying." : "The planning submission was rejected; your interview was not saved.") : run.reason_text || "The planner stopped without saving questions or a plan."}>
-            {run.coordination_failure?.code && <p>{run.coordination_failure.code}</p>}
-            <button className="btn btn-sm btn-primary" disabled={off || (!!run.paused && (run.operator_paused !== false || run.pause_reason !== "receipt_uncertain")) || !!run.automation?.held || !!run.coordination_failure?.recovering || run.coordination_failure?.outcome === "uncertain"} onClick={() => { void postAction(`/remotea/runs/${run.id}/retry-planning`, { expected_revision: run.state_revision }).then(refresh).catch(e => setError(message(e))); }}>Retry planning</button>
-            <button className="btn btn-sm" onClick={() => setView({ chat: true })}>Show conversation</button>
-          </DecisionCard>}
-          <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh} onConflict={changed}/>
-          {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
-          <OpenInterviews run={run} onDone={refresh}/>
-          {(run.decisions ?? []).filter(d => d.kind === "control" && ["open", "pending"].includes(d.status)).map(d =>
-            <DecisionCard key={d.id} title="Pending request" task={run.task?.title} reason={String(d.payload.summary ?? "Review this request before it is sent.")} receipt={receipts.filter(receipt => receipt.url.includes(encodeURIComponent(d.id))).at(-1)}>
-              <div className="remotea-control-row">{d.actions.map(action => <button key={action} className="btn btn-sm" disabled={off}
-                onClick={() => { void respondDecision(d, action).then(refresh).catch(e => { if (isRevisionConflict(e)) changed(); else setError(message(e)); }); }}>{action === "confirm" ? "Approve once" : action === "decline" ? "Deny" : action}</button>)}</div>
-            </DecisionCard>)}
-          {run.state === "awaiting_approval" && <DecisionCard title="Final acceptance" task={run.task?.title} reason="Review the results, then accept the completed task.">
-            {packet && <ReviewPacketCard packet={packet}/>}
-            <button className="btn btn-sm btn-primary" disabled={off} onClick={() => void acceptResults()}>Accept results</button>
-            {packet && <p className="review-beside-approve" role="note"><strong>{packet.text}.</strong> {packet.decision?.text}</p>}
-          </DecisionCard>}
-        </section>}
-        {chatOpen && <section className="run-conversation" aria-label="Conversation">
-          {shown?.retention?.expired && <p className="remotea-log-note"><span className="remotea-label label-expired">Expired</span> This run ended more than 90 days ago, so its turns and commands were deleted.</p>}
-          {pagedOut && <div className="remotea-log-note"><span className="remotea-label label-paged">Paged out</span> {pagedOut}
-            <button className="btn btn-ghost btn-sm" disabled={loadingEarlier || !bound} onClick={() => void loadEarlier()}><ChevronUp size={14}/>{loadingEarlier ? "Loading…" : "Load earlier"}</button></div>}
-          <ol className="remotea-timeline" aria-label="Run conversation">{entries.map(entry => <Bubble key={entry.id} entry={entry} runId={run.id} unfolded/>)}</ol>
-          {!entries.length && <p className="footnote">Published assistant messages will appear here.</p>}
-          {!!diagnostics.length && <details className="run-system-events"><summary>Tools and system events · {diagnostics.length}</summary>
-            <ol className="remotea-timeline">{diagnostics.map(entry => <Bubble key={entry.id} entry={entry} runId={run.id}/>)}</ol></details>}
-        </section>}
-        {isSettled(run) && <p className="remotea-chat-end">{runLabel(run.state)}{run.finished_at ? " · " + ago(run.finished_at) : ""}</p>}
+        {chatOpen ? <>
+          {stopEl}{ciEl}
+          {stage === "plan" && planCard}
+          {bound && decisionsHere(<>{recoveryCard}{planReviewCard}{liveCards}{interviewCards}{acceptance(true)}</>)}
+          <section className="run-conversation" aria-label="Conversation">
+            {shown?.retention?.expired && <p className="remotea-log-note"><span className="remotea-label label-expired">Expired</span> This run ended more than 90 days ago, so its turns and commands were deleted.</p>}
+            {pagedOut && <div className="remotea-log-note"><span className="remotea-label label-paged">Paged out</span> {pagedOut}
+              <button className="btn btn-ghost btn-sm" disabled={loadingEarlier || !bound} onClick={() => void loadEarlier()}><ChevronUp size={14}/>{loadingEarlier ? "Loading…" : "Load earlier"}</button></div>}
+            <ol className="remotea-timeline" aria-label="Run conversation">{entries.map(entry => <Bubble key={entry.id} entry={entry} runId={run.id} unfolded/>)}</ol>
+            {!entries.length && <p className="footnote">Published assistant messages will appear here.</p>}
+            {!!diagnostics.length && <details className="run-system-events"><summary>Tools and system events · {diagnostics.length}</summary>
+              <ol className="remotea-timeline">{diagnostics.map(entry => <Bubble key={entry.id} entry={entry} runId={run.id}/>)}</ol></details>}
+          </section>
+        </> : <div className="run-stages">
+          <StageSection name="plan" summary={planSummary(run)} open={sections.plan} attention={attention.plan} onToggle={() => toggleSection("plan")}>
+            {recoveryCard}{interviewCards}{planReviewCard}
+            {stage === "plan" && <>{stopEl}{ciCardHere && ciEl}{bound && decisionsHere(liveCards)}</>}
+            {planCard ?? (!recoveryCard && !(run.interviews ?? []).some(i => i.status === "open") && <p className="footnote">{isSettled(run) ? "This run ended before a plan was saved." : "The plan appears here once the planner submits it."}</p>)}
+          </StageSection>
+          <StageSection name="run" summary={runSummary(run)} open={sections.run} attention={attention.run} onToggle={() => toggleSection("run")}>
+            {stage === "run" && <>{stopEl}{ciCardHere && ciEl}{bound && decisionsHere(liveCards)}</>}
+            {run.plan && (stage !== "plan" || run.plan.approval_status === "approved")
+              ? <StepList steps={run.plan.steps} settled={isSettled(run)} scroll={sections.run && !chatOpen}/>
+              : <p className="footnote">Steps appear here once the plan is approved.</p>}
+          </StageSection>
+          <StageSection name="verify" summary={verifySummary(run)} open={sections.verify} attention={attention.verify} onToggle={() => toggleSection("verify")}>
+            {stage === "verify" && <>{stopEl}{ciCardHere && ciEl}{bound && decisionsHere(liveCards)}</>}
+            {!ciCardHere && ciEl}
+            {run.plan ? <VerifyCriteria run={run}/> : <p className="footnote">Success criteria arrive with the plan.</p>}
+            {acceptance(false)}
+          </StageSection>
+        </div>}
+        {chatOpen && isSettled(run) && <p className="remotea-chat-end">{runLabel(run.state)}{run.finished_at ? " · " + ago(run.finished_at) : ""}</p>}
         <details className="run-drawer-details"><summary>Details</summary>
           <dl><dt>Task</dt><dd>{run.task?.id ?? "Standalone"}</dd><dt>Run</dt><dd>{run.id}</dd><dt>Branch</dt><dd>{run.branch || "Not reported"}</dd>
             <dt>Worktree</dt><dd>{run.worktree || "Not reported"}</dd><dt>Host</dt><dd>{run.host?.name ?? "Not reported"}</dd><dt>Turns</dt><dd>{run.turn_count}{run.turn_cap > 0 ? `/${run.turn_cap}` : ""}</dd></dl>
@@ -880,7 +914,6 @@ export function RunDrawer({ id, onClose, preloaded }: {
           {!!linearOutcomes(run).length && <ul>{linearOutcomes(run).map(item => <li key={item.key}>{item.text}</li>)}</ul>}
           {!isSettled(run) && <label className="remotea-toggle"><input type="checkbox" checked={!!run.freestyle} disabled={off || run.state === "stopping"}
             onChange={e => void act("freestyle", { enabled: e.target.checked })}/>Freestyle policy <small>{run.freestyle ? "judge and prompts off" : "judge on"}</small></label>}
-          {verify?.text && <p>{verify.text}</p>}
           {verify?.canSet && <div className="remotea-control-row"><select aria-label="Verify command" disabled={off} value={verifyPick || verify.current || verify.options[0]} onChange={e => setVerifyPick(e.target.value)}>{verify.options.map(option => <option key={option}>{option}</option>)}</select>
             <button className="btn btn-sm" disabled={off} onClick={() => void act("verify-config", { verify_id: verifyPick || verify.current || verify.options[0] })}>Set verify</button></div>}
           {parked && !editing && <div className="remotea-control-row"><button className="btn btn-sm" disabled={off} onClick={() => setEditing(true)}>Edit criteria</button>

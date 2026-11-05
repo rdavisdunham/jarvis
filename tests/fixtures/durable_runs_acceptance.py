@@ -71,7 +71,7 @@ def event_fixture(run_id: str, event: str, body: dict, user: User):
             return agent_plan.submit_plan(db, bot_for(run), agent_plan.SubmitPlanInput(
                 run_token=coordinator.run_token(run), submission_id=uuid4(), expected_plan_revision=task.plan_revision,
                 prd=body.get("prd", "Measure widget latency, implement the focused fix, and open a pull request."),
-                steps=[{"title": "Measure widget latency"}, {"title": "Implement and test the fix"}],
+                steps=[{"title": "Measure widget latency", "phase": "Measure"}, {"title": "Implement and test the fix", "phase": "Fix"}],
                 success_criteria=[{"text": "The latency target is measured and met"}]))
         elif event == "activity":
             agent_link.record_activity(db, bot_for(run), host.id, agent_link.Activity(

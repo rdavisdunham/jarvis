@@ -76,12 +76,26 @@ paused it or held automation.
 
 ### Run progress, chat, and automation hold
 
-The drawer has one stage/model status and one plan card. During approved execution, the card shows steps
-the agent has explicitly marked `doing`, their latest progress notes and when they were reported. If no
-step is marked `doing`, the card labels the first unfinished step **Next step**. A completed checklist does
-not imply verification or the whole run has finished. **Expand plan** reveals the full plan and criteria
-in place. Pending questions and approvals remain beside the plan even when chat is hidden. Technical
-identifiers, worktree/base facts, detailed verification and diagnostics live under **Details**.
+The drawer's header holds one stage/model status line, a **Plan → Run → Verify** track and a ring with the
+percent of steps settled (done or skipped). With chat hidden, the body is three collapsible sections, one
+per stage; only the section the run is in opens by itself (`run-stages.ts` `runStage`), each collapsed
+section shows a one-line summary, and any section can be opened by hand. A choice made by hand lasts until the
+stage changes or a new card needs you.
+
+- **Plan** holds the interview, plan review, planning recovery and the full plan (PRD, steps, criteria,
+  previous revisions, review history), with Approve while the plan waits for it.
+- **Run** is the plan in flight: steps grouped by phase and numbered 1a, 1b, 2a (flat 1..N when no step has
+  a phase). Done and skipped steps stay in place, dimmed; the step the agent marked `doing` is highlighted
+  with its latest note and when it was reported, otherwise the first unfinished step is marked **Next**.
+- **Verify** lists each success criterion with the latest judge's status and evidence, the verify command,
+  the latest verification and judge notes, GitHub CI on the pull request (the chip, or the Awaiting CI card),
+  the Final acceptance card, and the outcome once the run settles. `awaiting_ci` and `needs_you` stops on
+  judge, verify or CI reasons (`ci_timeout`, `ci_failed_again`, `ci_unavailable`) open Verify.
+
+A finished checklist does not imply verification or that the run has finished. Agent questions, control
+requests and a parked run's Needs you card appear in the section of the current stage, even when chat is
+hidden; so does the CI card while it has news (a failed CI card sits in Run while the agent fixes it). Technical identifiers,
+worktree/base facts, Edit criteria, Judge again, Re-plan and diagnostics live under **Details**.
 
 The top-right **X** closes the run drawer. The arrow on its left edge collapses it to a status rail
 (or an edge pill on phones); select that rail to reopen it. These controls never pause, cancel, send a

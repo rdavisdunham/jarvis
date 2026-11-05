@@ -361,7 +361,7 @@ export type Proposals = {
   completion_policy?: { current: string; proposed: string };
 };
 export type RunDetail = Run & {
-  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string; note?: string; updated_at?: string; revision?: number; by?: string }[];
+  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string; note?: string; phase?: string; updated_at?: string; revision?: number; by?: string }[];
     criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
     proposals?: Proposals | null; approval_status?: string } | null;
   plan_history?: (NonNullable<RunDetail["plan"]> & { approval_status?: string; frozen_at?: string | null })[];
