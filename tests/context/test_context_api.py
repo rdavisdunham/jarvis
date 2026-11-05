@@ -17,7 +17,7 @@ from .test_service import mint, seed, source_id, stub_views, task_for, vec
 
 BASE = "/api/v1/external/context"
 READ_TOOLS = {"context_search", "context_brief", "context_evidence", "context_source", "context_open_loops",
-              "context_meeting_prep", "context_changes"}
+              "context_meeting_prep", "context_changes", "context_runs", "context_proposals"}
 
 
 @pytest.fixture(autouse=True)
@@ -140,6 +140,68 @@ def test_shared_workspaces_and_viewers_are_refused(client):
     assert code(http().post(f"{BASE}/search", headers=headers, json={"query": "pilot"})) == (
         403, "PERSONAL_WORKSPACE")
     assert code(http().get(f"{BASE}/changes", headers=headers)) == (403, "PERSONAL_WORKSPACE")
+    for read in ("runs", "proposals"):
+        assert code(http().get(f"{BASE}/sources/{uuid4()}/{read}", headers=headers)) == (403, "PERSONAL_WORKSPACE")
     feedback = {"request_id": str(uuid4()), "target_type": "assertion", "target_id": str(uuid4()),
                 "expected_revision": 1, "suggestion": "wrong", "explanation": "x"}
     assert code(http().post(f"{BASE}/feedback", headers=headers, json=feedback)) == (403, "READ_ONLY")
+
+
+def test_runs_and_proposals_show_how_a_meeting_was_processed(client, monkeypatch):
+    from jarvis.context.models import ContextRun
+
+    from .test_pipeline import use_doubles, vector
+    from .test_proposals import meeting, process
+
+    monkeypatch.setattr("jarvis.memory_learning.embeddings", vector)
+    use_doubles()
+    got = process(meeting())
+    _, reader = mint(client, "context:read")
+    with session_scope() as db:  # what the native extractor and the action pass record
+        run = db.scalar(select(ContextRun).where(ContextRun.source_id == got.source_id,
+                                                 ContextRun.stage == "extract"))
+        result = dict(run.stage_results["result"])
+        result["diagnostics"] = {
+            "prompt_version": "v9", "profile": "terra", "partial": False, "uncovered_segments": [],
+            "rejection_counts": {"no_promise_language": 6},
+            "rejected": [{"code": "no_promise_language", "statement": f"Item {i}", "detail": "no promise",
+                          "segment_seqs": [i]} for i in range(6)],
+            "actions": {"model": "gpt-5.6-terra", "profile": "terra", "prompt_version": "actions-v1", "calls": 2,
+                        "cost_usd": 0.01, "latency_ms": 900, "items": [{"title": "x"}],
+                        "rejected": [{"code": "not_followup", "reason": "done in the meeting",
+                                      "title": "Share screen", "segments": [2]}]}}
+        run.stage_results = {**run.stage_results, "result": result}
+    response = http().get(f"{BASE}/sources/{got.source_id}/runs", headers=reader)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source_id"] == got.source_id and body["revision"] == 1 and body["has_more"] is False
+    assert {"ingest", "extract", "link", "reconcile", "proposals"} <= {r["stage"] for r in body["runs"]}
+    extract = next(r for r in body["runs"] if r["stage"] == "extract")
+    assert extract["status"] == "succeeded" and extract["revision"] == 1 and extract["reprocess"] is False
+    assert extract["profile"] == "terra" and extract["coverage"]["segments"] == 3
+    assert "chunks" not in extract["results"] and "payload" not in extract["results"]
+    diagnostics = extract["diagnostics"]
+    assert diagnostics["rejected_total"] == 6 and len(diagnostics["rejected"]) == 5
+    assert diagnostics["rejected"][0] == {"code": "no_promise_language", "reason": "no promise",
+                                          "statement": "Item 0", "segments": [0]}
+    assert diagnostics["actions"] == {
+        "model": "gpt-5.6-terra", "profile": "terra", "prompt_version": "actions-v1", "calls": 2, "cost_usd": 0.01,
+        "latency_ms": 900, "items": 1, "rejected_total": 1,
+        "rejected": [{"code": "not_followup", "reason": "done in the meeting", "statement": "Share screen",
+                      "segments": [2]}]}
+    full = http().get(f"{BASE}/sources/{got.source_id}/runs?detail=true&limit=1", headers=reader).json()
+    assert len(full["runs"]) == 1 and full["has_more"] is True
+
+    listed = http().get(f"{BASE}/sources/{got.source_id}/proposals", headers=reader)
+    assert listed.status_code == 200, listed.text
+    items = {p["title"]: p for p in listed.json()["proposals"]}
+    mine = next(p for t, p in items.items() if "circulate" in t)
+    assert mine["preselected"] and mine["status"] == "pending" and mine["responsible"]["name"]
+    assert mine["evidence"][0]["segment"] == 0 and mine["evidence"][0]["quote"] and mine["source_revision"] == 1
+    marco = next(p for t, p in items.items() if "checklist" in t)
+    assert not marco["preselected"] and marco["responsible"]["mention"] == "Marco" and marco["reason"]
+
+    _, tasks_only = mint(client, "tasks:read")
+    assert code(http().get(f"{BASE}/sources/{got.source_id}/runs", headers=tasks_only)) == (
+        403, "INSUFFICIENT_SCOPE")
+    assert code(http().get(f"{BASE}/sources/{uuid4()}/proposals", headers=reader)) == (404, "NOT_FOUND")

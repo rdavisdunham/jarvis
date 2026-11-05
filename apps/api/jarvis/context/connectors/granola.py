@@ -12,6 +12,10 @@ connection `auth_failed`; 429, 5xx and timeouts mark it `degraded`; neither adva
 ever deleted here: a 403 or 404 for one note only parks it for retry. Notes without a transcript yet are parked
 the same way. Only notes whose `owner.email` is the connection's account are imported.
 
+Speakers: "me" lines are the note owner's and "them" lines keep Granola's name or diarization label. A group call
+(more than two people) heard through one audio source with no names is not separated: its lines get no speaker
+and no attribution rather than all going to the note owner (`speakers_separated`).
+
 Secrets and transcript text are never logged.
 """
 
@@ -225,8 +229,33 @@ def owner_label(note: dict) -> str:
     return _text(owner.get("name")) or _text(owner.get("email")) or "Note owner"
 
 
+def _speaker(item: dict) -> dict:
+    return item.get("speaker") if isinstance(item.get("speaker"), dict) else {}
+
+
+def _emails(note: dict) -> set[str]:
+    """Everyone the note knows was in the meeting: owner, attendees, invitees and organiser, by email."""
+    event = note.get("calendar_event") or {}
+    people = [note.get("owner") or {}, *(note.get("attendees") or []), *(event.get("invitees") or [])]
+    found = {(_text(p.get("email")) or "").lower() for p in people if isinstance(p, dict)}
+    found.add((_text(event.get("organiser")) or "").lower())
+    return found - {""}
+
+
+def speakers_separated(note: dict, transcript: list[dict]) -> bool:
+    """False for a group call (more than two people) heard through one audio source with no names or diarization:
+    a colleague's single-device recording, where every line comes out as "me" whoever spoke."""
+    speakers = [_speaker(i) for i in transcript if isinstance(i.get("text"), str) and i["text"].strip()]
+    if len(_emails(note)) <= 2 or not speakers:
+        return True
+    if any(_text(s.get("name")) or _text(s.get("diarization_label")) for s in speakers):
+        return True
+    return len({(s.get("source"), s.get("attribution")) for s in speakers}) > 1
+
+
 def _segments(note: dict, transcript: list[dict]) -> list[Segment]:
     me = owner_label(note)
+    separated = speakers_separated(note, transcript)
     timed = [t for t in (_time(i.get("start_time")) for i in transcript) if t]
     base = timed[0] if timed else None
     segments = []
@@ -234,9 +263,12 @@ def _segments(note: dict, transcript: list[dict]) -> list[Segment]:
         text = item.get("text")
         if not isinstance(text, str) or not text.strip():
             continue
-        speaker = item.get("speaker") if isinstance(item.get("speaker"), dict) else {}
+        speaker = _speaker(item)
         attribution = speaker.get("attribution")
-        if attribution == "me":
+        if not separated:
+            # One audio source in a group call: who spoke is unknown, not the note owner.
+            label, attributed = None, None
+        elif attribution == "me":
             # "me" is the note owner (the person who took the note), never the Eridani importer.
             label, attributed = me, "owner"
         else:
@@ -313,6 +345,8 @@ def to_envelope(note: dict, transcript: list[dict]) -> SourceEnvelope:
         "event_title": event.get("event_title"),
         "folders": [f.get("name") for f in note.get("folder_membership") or [] if isinstance(f, dict)] or None,
     }.items() if v}
+    if not speakers_separated(note, transcript):
+        metadata["speakers_separated"] = False
     return SourceEnvelope(
         connector="granola", external_id=str(note["id"]),
         title=(_text(note.get("title")) or _text(event.get("event_title")) or "")[:500],

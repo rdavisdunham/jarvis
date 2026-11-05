@@ -291,6 +291,30 @@
 .setting-inline-form input:not([type="number"]) {
   width: 220px;
 }
+/* "Also known as" (NameAliases.tsx): removable name chips above the add form. */
+.name-aliases {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  min-width: 0;
+}
+.name-aliases .chip-row {
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.name-aliases .chip .text-button {
+  display: inline-flex;
+  margin-left: 4px;
+  padding: 0;
+}
+@media (max-width: 700px) {
+  .name-aliases, .name-aliases .chip-row {
+    justify-items: start;
+    justify-content: flex-start;
+  }
+}
 /* Checkbox labels, inline detail buttons and nested rule details inside settings panels. */
 .settings-content .check-label {
   display: flex;

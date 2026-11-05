@@ -176,6 +176,8 @@ export interface Preferences {
   source_colors?: Record<string,string>;
   agent_provider: AgentProvider;
   preferred_name: string;
+  /** Other names the user goes by ("Also known as"); resolved to them wherever a person is named. */
+  name_aliases?: string[];
   history_enabled: boolean;
   memory_learning: boolean;
   live_memory_updates?: boolean;

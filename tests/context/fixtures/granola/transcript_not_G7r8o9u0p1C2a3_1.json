@@ -1,0 +1,51 @@
+{
+  "transcript": [
+    {
+      "speaker": {
+        "source": "microphone",
+        "attribution": "me"
+      },
+      "text": "Okay, everyone's here, let's go through the rollout.",
+      "start_time": "2026-11-03T16:00:00.000Z",
+      "end_time": "2026-11-03T16:00:05.000Z"
+    },
+    {
+      "speaker": {
+        "source": "microphone",
+        "attribution": "me"
+      },
+      "text": "Alex, can you send the clinic list to Priya?",
+      "start_time": "2026-11-03T16:01:00.000Z",
+      "end_time": "2026-11-03T16:01:05.000Z"
+    },
+    {
+      "speaker": {
+        "source": "microphone",
+        "attribution": "me"
+      },
+      "text": "Sure, I'll send it tonight.",
+      "start_time": "2026-11-03T16:02:00.000Z",
+      "end_time": "2026-11-03T16:02:05.000Z"
+    },
+    {
+      "speaker": {
+        "source": "microphone",
+        "attribution": "me"
+      },
+      "text": "I'll take the vendor call, this is Tomas.",
+      "start_time": "2026-11-03T16:03:00.000Z",
+      "end_time": "2026-11-03T16:03:05.000Z"
+    },
+    {
+      "speaker": {
+        "source": "microphone",
+        "attribution": "me"
+      },
+      "text": "Great, let's meet again next week.",
+      "start_time": "2026-11-03T16:04:00.000Z",
+      "end_time": "2026-11-03T16:04:05.000Z"
+    }
+  ],
+  "hasMore": false,
+  "cursor": null
+}

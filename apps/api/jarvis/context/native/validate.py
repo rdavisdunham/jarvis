@@ -8,7 +8,9 @@ Every rejection carries a reason code (`REJECTION_CODES`). The checks, in order:
 - times: a due date or validity bound is kept only when its expression occurs in the quotes and its value
   parses; unknown values stay unknown. Common relative expressions ("tomorrow", "in two weeks", "by Friday",
   "November 20") are recomputed from the meeting's local date and must agree. Validity is never "now".
-- numbers: every number in the statement appears in the quotes, or is a component of a date derived above.
+- numbers: every number in the statement appears in the quotes, or is a component of a date derived above;
+  an identifier such as `C2` or `Q3` counts as present when the quotes contain it, and ranges ("1 to 5",
+  "1-5", "one to five") reduce to their end points.
 - modality: hypothetical cues ("if we were to", "suppose") or negation cues ("won't", "not") in the quotes
   forbid `asserted`, except a non-commitment whose statement carries the negation itself.
 - commitments: promise language in the quotes, no tentative cue in the promising quote, modality asserted,
@@ -200,22 +202,65 @@ def locate(segment_text: str, quote: str, owned: Callable[[int, int], bool] = la
     return next((h for h in hits if owned(*h)), hits[0] if hits else None)
 
 
+ELLIPSIS = re.compile(r"\.{3,}|\u2026")
+MIN_FRAGMENT_WORDS = 3
+FRAGMENT_NEIGHBOURS = (0, 1, -1, 2, -2)  # the cited line first, then lines a ref off by one or two would mean
+
+
+def fragments(quote: str) -> list[str]:
+    """The contiguous pieces of a quote stitched together with "..." or "…", trimmed, without pieces under
+    MIN_FRAGMENT_WORDS words (a dangling "so" or "and")."""
+    pieces = (p.strip().strip(",;:-\u2013\u2014").strip() for p in ELLIPSIS.split(quote))
+    return [p for p in pieces if len(p.split()) >= MIN_FRAGMENT_WORDS]
+
+
+def _locate_fragment(seq: int, fragment: str, ctx: SourceContext,
+                     owns: Callable[[int, int, int], bool]) -> tuple[int, tuple[int, int]] | None:
+    """A fragment in the cited segment, else in a neighbour within two lines, as (segment, span)."""
+    for offset in FRAGMENT_NEIGHBOURS:
+        segment = ctx.segments.get(seq + offset)
+        if segment is None:
+            continue
+        for needle in dict.fromkeys((fragment, fragment.rstrip(".!?,;:").strip())):
+            span = needle and locate(segment.text, needle, lambda a, b, s=seq + offset: owns(s, a, b))
+            if span and owns(seq + offset, *span):
+                return seq + offset, span
+    return None
+
+
 def ground_evidence(quotes: Iterable[tuple[int, str]], ctx: SourceContext,
                     owns: Callable[[int, int, int], bool]) -> tuple[list[EvidenceRef], str | None, str]:
+    """Each quote as an exact span of its segment. A quote that is not one span but contiguous pieces joined with
+    "..." or "…" grounds piece by piece (in the cited segment or up to two lines away), one span per piece in
+    order; it is refused when any piece is found nowhere."""
     refs, seen = [], set()
+
+    def add(seq: int, span: tuple[int, int]) -> None:
+        if (seq, *span) not in seen:
+            seen.add((seq, *span))
+            text = ctx.segments[seq].text
+            refs.append(EvidenceRef(segment_seq=seq, quote=text[span[0]:span[1]], char_start=span[0],
+                                    char_end=span[1]))
+
     for seq, quote in quotes:
         segment = ctx.segments.get(seq)
         if segment is None:
             return [], "unknown_segment", f"segment {seq}"
         span = locate(segment.text, quote, lambda a, b, seq=seq: owns(seq, a, b))
+        if span is None and ELLIPSIS.search(quote):
+            pieces = fragments(quote)
+            found = [_locate_fragment(seq, piece, ctx, owns) for piece in pieces]
+            if not pieces or None in found:
+                missing = next((p for p, f in zip(pieces, found, strict=True) if f is None), quote)
+                return [], "quote_not_found", f"segment {seq}: {missing[:120]!r}"
+            for where, piece_span in found:
+                add(where, piece_span)
+            continue
         if span is None:
             return [], "quote_not_found", f"segment {seq}: {quote[:120]!r}"
         if not owns(seq, *span):
             return [], "evidence_outside_chunk", f"segment {seq} is context for this chunk"
-        if (seq, *span) not in seen:
-            seen.add((seq, *span))
-            refs.append(EvidenceRef(segment_seq=seq, quote=segment.text[span[0]:span[1]], char_start=span[0],
-                                    char_end=span[1]))
+        add(seq, span)
     return refs, None, ""
 
 
@@ -270,7 +315,51 @@ def numbers(text: str) -> set[Decimal]:
     return {v.normalize() for v in found}
 
 
+# An identifier is a letter prefix immediately followed by digits (C2, Q1, P0, v2): one token, never a number.
+IDENTIFIER = re.compile(r"(?<![\w'])[A-Za-z]+\d+[A-Za-z\d]*(?![\w])")
+# Digits immediately followed by letters (5k, 3x, 6th): grounded verbatim, else by the number they carry.
+DIGIT_TOKEN = re.compile(r"(?<![\w'.,])\d+[A-Za-z]+(?![\w])")
+JOINED = re.compile(r"(?<=\w)\s*[-/\u2010-\u2014]\s*(?=\w)")
+
+
+def split_joined(text: str) -> str:
+    """Hyphen-, dash- and slash-joined forms as separate words: "1-to-5", "1-5" and "1/5" are 1, to, 5."""
+    return JOINED.sub(" ", text.translate(QUOTE_CHARS))
+
+
+def strip_identifiers(statement: str, quotes: str) -> str:
+    """`statement` without the alphanumeric identifiers (C2, Q3, v2) that `quotes` contains, so their digits are
+    not read as numbers to ground."""
+    text = quotes.translate(QUOTE_CHARS).casefold()
+    return IDENTIFIER.sub(lambda m: " " if _word_in(m.group().casefold(), text) else m.group(), statement)
+
+
+def ungrounded_tokens(statement: str, text: str, derived: Sequence[date | datetime]) -> list[str]:
+    """For action items, grounded against the whole meeting: identifiers (C2, Q1, P0, v2) are whole tokens that
+    must occur in `text`, never bare numbers; joined forms ("1-to-5", "1-5", "1/5") are their component words;
+    digit tokens (5k, 3x) occur verbatim or carry a number `text` has; every other number must occur in `text`
+    outside its identifiers (or be part of a derived date). Returns what is missing."""
+    statement, text = split_joined(statement), split_joined(text)
+    folded = text.casefold()
+    missing = sorted({m.group() for m in IDENTIFIER.finditer(statement)
+                      if not _word_in(m.group().casefold(), folded)}, key=str.casefold)
+    allowed = numbers(IDENTIFIER.sub(" ", text))
+    for value in derived:
+        allowed |= {Decimal(value.year), Decimal(value.month), Decimal(value.day)}
+        if isinstance(value, datetime):
+            allowed |= {Decimal(value.hour), Decimal(value.minute), Decimal(value.hour % 12 or 12)}
+    rest = IDENTIFIER.sub(" ", statement)
+    for m in DIGIT_TOKEN.finditer(rest):  # "5k": verbatim, or any number it carries ("5,000", "five thousand")
+        if _word_in(m.group().casefold(), folded) or numbers(m.group()) & allowed:
+            rest = rest.replace(m.group(), " ", 1)
+        else:
+            missing.append(m.group())
+            rest = rest.replace(m.group(), " ", 1)
+    return missing + [format(n, "f") for n in sorted(numbers(rest) - allowed)]
+
+
 def ungrounded_numbers(statement: str, quotes: str, derived: Sequence[date | datetime]) -> set[Decimal]:
+    statement = strip_identifiers(statement, quotes)
     allowed = numbers(quotes)
     for value in derived:
         allowed |= {Decimal(value.year), Decimal(value.month), Decimal(value.day)}
@@ -325,10 +414,14 @@ def expected_date(expression: str, meeting: date) -> tuple[date | None, bool]:
     return None, False
 
 
-def _parse_value(value: str, zone: ZoneInfo) -> datetime | None:
+def _parse_value(value: str, zone: ZoneInfo, precision: str = "instant") -> datetime | None:
+    """A model's time value as an aware datetime. A date-precision value (day and coarser) is the calendar date
+    it names, at local midnight in the meeting's zone: "2026-11-04T00:00:00Z" for "today" is Nov 4 there, never
+    midnight UTC shifted back to Nov 3."""
     try:
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-            return datetime.combine(date.fromisoformat(value), time(), zone)
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) or (precision not in ("instant", "unknown")
+                                                        and re.match(r"\d{4}-\d{2}-\d{2}(?:[T ]|$)", value)):
+            return datetime.combine(date.fromisoformat(value[:10]), time(), zone)
         parsed = datetime.fromisoformat(value)
     except ValueError:
         return None
@@ -349,7 +442,7 @@ def resolve_time(name: str, te: TimeExpression | None, quotes: str, ctx: SourceC
         return None, {**record, "dropped": "expression not in quotes"}, None
     if te.value is None or te.precision == "unknown":
         return None, {**record, "dropped": "unknown"}, None
-    at = _parse_value(te.value, ctx.zone)
+    at = _parse_value(te.value, ctx.zone, te.precision)
     if at is None:
         return None, {**record, "dropped": "unparseable value"}, "invalid_time"
     expected, year_known = expected_date(te.expression, ctx.local_date)

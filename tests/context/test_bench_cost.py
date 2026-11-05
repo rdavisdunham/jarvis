@@ -28,7 +28,9 @@ def test_model_cost_prices_the_native_extractor_passes_for_a_meeting(monkeypatch
     assert extract.call_model is original  # restored
     assert cost["assertions"] == planted and cost["partial"] is False
     passes = cost["passes"]
-    assert set(passes) == {"context_detect", "context_enrich", "context_verify"}
+    assert set(passes) == {"context_actions", "context_actions_verify", "context_detect", "context_enrich",
+                           "context_verify"}
+    assert passes["context_actions"]["calls"] == passes["context_actions_verify"]["calls"] == 1
     assert passes["context_detect"]["calls"] == cost["chunks"] >= 1
     assert all(p["prompt"] > 0 and p["completion"] > 1000 for p in passes.values())
     assert cost["extract_usd"] == pytest.approx(cost["extractor_cost_usd"], abs=1e-5)

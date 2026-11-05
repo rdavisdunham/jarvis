@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, BellRing, Check, RefreshCw } from "lucide-react";
+import { ArrowLeft, BellRing, Check, RefreshCw, RotateCw } from "lucide-react";
 import * as context from "./context-api";
 import {
   chosen, DESTINATION_LABELS, effectiveAt, groupItems, meetingDate, meetingStatus, nextSelection, proposalGroup, PUBLICATION_LABELS,
@@ -8,10 +8,12 @@ import {
   type TranscriptSegment,
 } from "./context-model";
 
+const POLL_MS = 5000;
 const sameSet = (a: Set<string>, b: Set<string>) => a.size === b.size && [...a].every(x => b.has(x));
 type Props = { sourceId: string; zone?: string; onBack: () => void; onPerson: (actorId: string) => void };
 const GROUPS: { id: ProposalGroup; title: string; hint: string }[] = [
   { id: "tasks", title: "Work to add", hint: "New tasks, or links to tasks you already have." },
+  { id: "waiting", title: "Waiting on others", hint: "Other people's work from this meeting. Add one only if you want to track it." },
   { id: "updates", title: "Changes to existing work", hint: "Applied separately, only when you choose to." },
   { id: "suggestions", title: "Suggested next steps", hint: "Nobody promised these; add them only if you want to." },
 ];
@@ -23,7 +25,7 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set()), [destination, setDestination] = useState<Destination | null>(null);
   const [error, setError] = useState(""), [stale, setStale] = useState(false), [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false), [focus, setFocus] = useState<{ assertion?: string; segment?: number } | null>(null);
-  const [finishing, setFinishing] = useState(false);
+  const [finishing, setFinishing] = useState(false), [confirmReprocess, setConfirmReprocess] = useState(false);
   const current = useRef<Review | null>(null);
 
   const apply = useCallback((next: Review) => {
@@ -47,6 +49,13 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
     if (busy) return;  // the write in flight returns the latest review
     if (dirty) setUpdated(true); else void load();
   });
+  // While the meeting is processing (after Reprocess), check back until it settles; the last stages may change nothing.
+  const processing = !!review?.busy;
+  useEffect(() => {
+    if (!processing || dirty || busy) return;
+    const timer = setTimeout(() => void load(), POLL_MS);
+    return () => clearTimeout(timer);
+  }, [processing, dirty, busy, review, load]);
 
   /** Every write: apply the review the server returns (with its new revisions), or reload; never guess. */
   async function act(run: () => Promise<context.WriteResult>, done: string) {
@@ -102,6 +111,8 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
         {state && state.tone !== "ok" && state.detail && <p className="meeting-row-detail">{state.detail}</p>}
       </div>
       {review && <div className="meeting-review-actions">
+        <button className="btn btn-sm" disabled={busy || stale || processing} onClick={() => setConfirmReprocess(true)}
+          title="Read this meeting again with the current model"><RotateCw size={15}/>{processing ? "Reprocessing…" : "Reprocess"}</button>
         <button className="btn btn-sm" disabled={busy || stale} onClick={() => void act(() => context.later(sourceId), "Saved for later. It will be in today's evening digest.").then(ok => ok && onBack())}><BellRing size={15}/>Remind me later</button>
         <button className="btn btn-sm btn-soft" disabled={busy || stale} onClick={() => toAdd.length || toUpdate.length ? setFinishing(true)
           : void act(() => context.done(sourceId, review.revision, open.map(p => ({ proposal_id: p.id, revision: p.revision }))), "Review finished.").then(ok => ok && onBack())}><Check size={15}/>Done</button>
@@ -111,6 +122,11 @@ export function MeetingReview({ sourceId, zone, onBack, onPerson }: Props) {
       <p>{toAdd.length + toUpdate.length} selected {toAdd.length + toUpdate.length === 1 ? "item has" : "items have"} not been added. Finishing dismisses every proposal still open; the meeting's context stays.</p>
       <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { setFinishing(false); void act(() => context.done(sourceId, review.revision, open.map(p => ({ proposal_id: p.id, revision: p.revision }))), "Review finished.").then(ok => ok && onBack()); }}>Finish anyway</button>
       <button className="btn btn-sm" onClick={() => setFinishing(false)}>Keep reviewing</button>
+    </div>}
+    {confirmReprocess && review && <div className="meeting-confirm" role="alertdialog" aria-label="Reprocess this meeting">
+      <p>Read this meeting again with the current model? Open proposals may change. Work you added or dismissed stays as it is. This uses model budget.</p>
+      <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => { setConfirmReprocess(false); void act(() => context.reprocess(sourceId), "Reprocessing. Updated proposals appear here when it finishes."); }}>Reprocess now</button>
+      <button className="btn btn-sm" onClick={() => setConfirmReprocess(false)}>Cancel</button>
     </div>}
     {stale && <div className="error-banner meeting-stale" role="alert"><span>This meeting changed since you opened it, so nothing was saved. Refresh to review the latest version; your selections are kept where nothing changed.</span>
       <button className="btn btn-sm" onClick={() => void load()}><RefreshCw size={14}/>Refresh</button></div>}

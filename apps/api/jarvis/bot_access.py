@@ -75,7 +75,8 @@ READ_SCOPES = {
     "session_search": "sessions:read",
     # Meeting context (context/mcp.py TOOLS); the service re-authorizes before returning.
     **{f"context_{name}": "context:read"
-       for name in ("search", "brief", "evidence", "source", "open_loops", "meeting_prep", "changes")},
+       for name in ("search", "brief", "evidence", "source", "open_loops", "meeting_prep", "changes", "runs",
+                    "proposals")},
 }
 # Non-command write tools: each use is a write check (authorize(..., write=True)) that refuses viewers.
 WRITE_TOOLS = {"context_feedback": "context:write"}

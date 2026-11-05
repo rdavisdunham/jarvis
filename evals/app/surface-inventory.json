@@ -1080,6 +1080,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/context/reviews/{source_id}/reprocess",
+      "handler": "reprocess",
+      "source": "apps/api/jarvis/context/routes/review.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/context/reviews/{source_id}/speakers",
       "handler": "speakers",
       "source": "apps/api/jarvis/context/routes/review.py",
@@ -1390,6 +1397,20 @@
       "method": "GET",
       "path": "/api/v1/external/context/sources/{source_id}",
       "handler": "source",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/sources/{source_id}/proposals",
+      "handler": "proposals",
+      "source": "apps/api/jarvis/context/routes/context.py",
+      "feature": "meeting_context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/external/context/sources/{source_id}/runs",
+      "handler": "runs",
       "source": "apps/api/jarvis/context/routes/context.py",
       "feature": "meeting_context"
     },

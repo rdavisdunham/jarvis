@@ -373,3 +373,25 @@ def test_backfill_scans_created_window_once(received, enabled):
     assert report.delivered == 1 and report.advanced and again.status == "complete"
     assert fake.requests[0].url.params["created_after"] == "2026-08-06"
     assert "updated_after" not in fake.requests[0].url.params
+
+
+GROUP = "not_G7r8o9u0p1C2a3"  # a colleague's single-device recording of a four-person call
+
+
+def test_one_audio_source_in_a_group_call_leaves_speakers_unknown():
+    note, items = load(f"note_{GROUP}.json"), load(f"transcript_{GROUP}_1.json")["transcript"]
+    envelope = granola.to_envelope(note, items)
+    assert {(s.speaker_label, s.attribution) for s in envelope.segments} == {(None, None)}
+    assert envelope.metadata["granola"]["speakers_separated"] is False
+    assert all(p.speaker_label is None for p in envelope.participants)  # nobody is the "me" voice
+    assert {p.email for p in envelope.participants} >= {"sam.okafor@fernhill.example", "tomas.reyes@northwind.example"}
+    # Two people on one microphone is the owner's own call: lines stay the owner's.
+    pair = note | {"attendees": note["attendees"][:2], "calendar_event": None}
+    assert {(s.speaker_label, s.attribution) for s in granola.to_envelope(pair, items).segments} == {
+        ("Sam Okafor", "owner")}
+    # Any name or diarization label means Granola separated the voices.
+    named = [items[0], {**items[1], "speaker": {"source": "speaker", "attribution": "them", "name": "Alex Morgan"}},
+             *items[2:]]
+    labels = [s.speaker_label for s in granola.to_envelope(note, named).segments]
+    assert labels[:2] == ["Sam Okafor", "Alex Morgan"]
+    assert "speakers_separated" not in granola.to_envelope(note, named).metadata["granola"]

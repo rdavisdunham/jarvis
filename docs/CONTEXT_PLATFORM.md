@@ -138,6 +138,14 @@ cap, reusing completed chunks); an owner-budget refusal or failed chunks leave i
 Cost labels: `context_extraction`, `context_linking`, `context_reconciliation`, `context_embeddings`,
 `context_synthesis`. Model timeout `context_model_timeout_s` (default 90 s).
 
+**Models.** Facts and decisions follow the model map's `context_extraction` route (Luna). The whole-meeting action
+pass runs on `context_actions_model` (env `JARVIS_CONTEXT_ACTIONS_MODEL`, default `sonnet-5.5`; empty keeps the
+model map's `context_actions` route, Luna). When that profile is unknown or its provider key is missing (no
+`JARVIS_ANTHROPIC_API_KEY` for Sonnet), the pass runs on the model map's route instead, logs one warning and records
+`diagnostics.actions.fallback = {"from", "to", "reason": "missing_key" | "unknown_profile"}`; the source is not
+failed. A call that fails at the provider still fails the pass and leaves the source `partial`. The experimental
+`context_extraction_mode` (`split` by default, or `combined`) is described in `native/extract.py`.
+
 **Validation** (`native/validate.py`, deterministic, each rejection has a reason code): quotes must occur in the
 cited segment inside the owning chunk; dates and validity bounds only when their expression is quoted and
 recomputes from the meeting's local date; every number in a statement appears in the quotes; hypothetical and

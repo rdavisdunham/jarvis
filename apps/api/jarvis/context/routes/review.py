@@ -17,6 +17,7 @@
                                               effective_at?, due_at?}
     POST /reviews/{source_id}/speakers       {command_id, link_id, expected_revision, action, decision_id?}
     POST /reviews/publications/{publication_id}/retry   {command_id}
+    POST /reviews/{source_id}/reprocess      {command_id}  a fresh extraction of the current revision
 
 Every write is one transaction and answers `{review}` with the new state. A stale revision anywhere in a batch
 refuses the whole batch with 409 REVISION_CONFLICT. A write whose command ID already recorded decisions (the UI
@@ -40,6 +41,12 @@ speaker label (subject: the label's first segment in the current revision, role 
 when the meeting is processed again) and `undo` apply; the label's segments then follow the link, and
 `apply.apply_speakers` leaves decided segments alone. `link_id` in the API is that first segment's ID.
 
+Reprocess (`pipeline.reprocess`) queues a fresh extract run of the current revision under the current prompt and
+model, keyed by the command ID (a resend answers the same job), then the normal downstream stages. It is
+human-only like approval, refused with 409 CONTEXT_BUSY while a job for the meeting is in flight, and changes no
+approved or published proposal; dismissals still hold. `busy` in the review says a job for the meeting is in
+flight.
+
 `external` serves bot keys read-only under /api/v1/external/context/reviews with `context:read` (included in
 `routes.router`); task details need `tasks:read`. Agents never approve or publish; their corrections go through
 `context_feedback`.
@@ -56,7 +63,7 @@ from ...auth import Identity, authenticate
 from ...db import session_scope
 from ...domain import DomainError
 from ...models import LinearConnection, Task, now
-from .. import apply, decisions, proposals, publication, service, sources, views
+from .. import apply, decisions, pipeline, proposals, publication, service, sources, views
 from ..models import (
     ContextAssertion,
     ContextDecision,
@@ -333,6 +340,7 @@ def review(db, caller: service.Caller, source_id: str) -> dict:
     status, review_revision = state(rows)
     return {
         "source_id": source.id, "source": info, "revision": review_revision, "status": status,
+        "busy": pipeline.busy(db, owner, source.id),
         "destination": proposals.destination(db, owner), "destinations": _destinations(db, owner),
         "brief": _brief(items), "items": items, "speakers": _speakers(db, owner, revision_id, names),
         "proposals": [_proposal(r, names, tasks, segments, latest) for r in rows], "names": names,
@@ -578,6 +586,17 @@ def speakers(source_id: UUID, body: SpeakerAction, user: User):
             _follow(segments, row, decision.id)
         return {"decision_id": decision.id}
     return _write(user, source_id, body.command_id, act)
+
+
+@router.post("/{source_id}/reprocess")
+def reprocess(source_id: UUID, body: Retry, user: User):
+    """Process the meeting again with the current prompt and model (see the module docstring)."""
+    if decisions.origin_of(body.command_id) != "human":
+        raise DomainError("HUMAN_REQUIRED", "Only you can reprocess a meeting, from the review screen.", 403)
+
+    def act(db, caller, source):
+        return {"reprocess": pipeline.reprocess(db, caller.owner, source.id, body.command_id)}
+    return _write(user, source_id, body.command_id, act, replay=False)
 
 
 @router.post("/publications/{publication_id}/retry")

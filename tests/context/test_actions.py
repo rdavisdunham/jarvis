@@ -1,0 +1,824 @@
+"""The whole-meeting action pass on a synthetic meeting that reproduces the first real meeting's misses, with
+recorded answers in each provider's wire shape (OpenAI Responses for Luna and Terra, Anthropic Messages for
+Sonnet 5.5). Every model call is mocked at the HTTP transport; no network."""
+
+import json
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from pathlib import Path
+
+import httpx
+import pytest
+from jarvis import memory_learning, model_map
+from jarvis.config import get_settings
+from jarvis.context.native import actions
+from jarvis.context.native.extract import NativeExtractor
+from jarvis.context.native.prompts import ACTIONS_PROMPT, ACTIONS_VERIFY_PROMPT, PROMPT_VERSION, ActionItem
+from jarvis.context.native.validate import SourceContext, ungrounded_numbers, ungrounded_tokens
+from jarvis.context.schema import (
+    Decision,
+    EntityCandidate,
+    EntityRef,
+    EvidenceRef,
+    ExtractRequest,
+    Participant,
+    Segment,
+    TimeBound,
+    check_extraction,
+)
+from jarvis.db import session_scope
+from jarvis.models import BudgetReservation, Usage
+from sqlalchemy import select
+
+FIXTURE = json.loads((Path(__file__).parent / "fixtures/extraction/actions_meeting.json").read_text())
+ANSWERS = {ACTIONS_PROMPT: FIXTURE["context_actions"], ACTIONS_VERIFY_PROMPT: FIXTURE["context_actions_verify"]}
+USAGE = (6000, 1500)  # input, output tokens per recorded answer
+
+
+def meeting_request(recorder: str = "Jules Park", **update) -> ExtractRequest:
+    segments = [Segment(**{**s, "attribution": ("owner" if s.get("speaker_label") == recorder else "other")
+                           if s["kind"] == "transcript" else "owner"}) for s in FIXTURE["segments"]]
+    return ExtractRequest(owner_id="davin", source_revision_id="srcrev_actions", occurred_at=FIXTURE["occurred_at"],
+                          timezone=FIXTURE["timezone"], title=FIXTURE["title"],
+                          participants=[Participant(**p) for p in FIXTURE["participants"]], segments=segments,
+                          candidates=[EntityCandidate(**c) for c in FIXTURE["candidates"]], **update)
+
+
+def system_of(body: dict) -> str:
+    return body.get("system") or body["input"][0]["content"]
+
+
+def user_of(body: dict) -> dict:
+    return json.loads(body["messages"][0]["content"] if "system" in body else body["input"][1]["content"])
+
+
+def answer_for(system: str) -> dict:
+    """The recorded answer for a pass, by its system prompt; the chunk passes find nothing."""
+    if system in ANSWERS:
+        return ANSWERS[system]
+    return {"candidates": []}
+
+
+def responses_reply(body: dict) -> dict:
+    text = json.dumps(answer_for(body["input"][0]["content"]))
+    return {"id": "resp_rec", "object": "response", "status": "completed", "service_tier": "default",
+            "model": body["model"], "usage": {"input_tokens": USAGE[0], "output_tokens": USAGE[1],
+                                              "input_tokens_details": {"cached_tokens": 0}},
+            "output": [{"type": "reasoning", "summary": []},
+                       {"type": "message", "content": [{"type": "output_text", "text": text}]}]}
+
+
+def messages_reply(body: dict, stop: str = "end_turn") -> dict:
+    text = json.dumps(answer_for(body["system"]))
+    return {"id": "msg_rec", "type": "message", "role": "assistant", "model": body["model"],
+            "content": [{"type": "thinking", "thinking": "", "signature": "sig"}, {"type": "text", "text": text}],
+            "stop_reason": stop, "stop_details": None,
+            "usage": {"input_tokens": USAGE[0] - 1000, "cache_read_input_tokens": 1000,
+                      "cache_creation_input_tokens": 0, "output_tokens": USAGE[1]}}
+
+
+@pytest.fixture
+def wire(monkeypatch):
+    """install(anthropic=handler): every provider call is answered from the recorded answers; returns the list of
+    (url, headers, body) sent."""
+    original = httpx.Client
+    settings = get_settings()
+    monkeypatch.setattr(settings, "openai_api_key", "synthetic")
+    monkeypatch.setattr(settings, "anthropic_api_key", "synthetic-anthropic")
+    sent = []
+
+    def install(anthropic=lambda body: (200, messages_reply(body))):
+        def respond(request):
+            body = json.loads(request.content)
+            sent.append((str(request.url), dict(request.headers), body))
+            status, data = anthropic(body) if "anthropic" in str(request.url) else (200, responses_reply(body))
+            return httpx.Response(status, json=data)
+        transport = httpx.MockTransport(respond)
+        monkeypatch.setattr(memory_learning.httpx, "Client", lambda **kw: original(transport=transport))
+        return sent
+    return install
+
+
+def use(monkeypatch, profile: str) -> None:
+    """Route the action pass to `profile` the way the lab does (MODEL_MAP) and as the setting would."""
+    monkeypatch.setitem(model_map.MODEL_MAP, "context_actions", profile)
+    monkeypatch.setattr(get_settings(), "context_actions_model", profile)
+
+
+@pytest.mark.parametrize("profile", ["luna", "terra", "terra-high", "sonnet-5.5", "sonnet-5.5-high"])
+def test_synthetic_meeting_recovers_the_missed_patterns(wire, monkeypatch, profile):
+    sent = wire()
+    use(monkeypatch, profile)
+    request = meeting_request()
+    result = NativeExtractor().extract(request)
+
+    assert check_extraction(request, result) == []
+    me, rowan = "act_me", "act_rowan"
+    got = [(a.kind, a.title, [r.entity_id for r in a.responsible], bool(a.assertion_indexes)) for a in result.actions]
+    assert got == [
+        # implied intent ("I wanna fix those") folded with the rubric change and the private note
+        ("create", "Update the Q4 rubric to a 1-5 scale, fix the N/A rows and re-import it", [me], False),
+        # a request at line 4, accepted at line 9
+        ("create", "Build reviewer assignment for specific calls", [me], True),
+        # someone else's commitment, with its due date
+        ("create", "Pull fifty calls for the pilot batch", [rowan], True),
+        # an identifier (Q4) and a range (1 to 5) grounded in the cited line
+        ("create", "Tell Rowan when Q4 is live in the tool", [me], True),
+        # work implied by the discussion
+        ("create", "Rename the old column names in the export", [me], False)]
+    rubric, assignment, fifty = result.actions[:3]
+    assert {e.segment_seq for e in rubric.evidence} == {2, 3, 15}  # N2 is segment 15
+    assert {e.segment_seq for e in assignment.evidence} == {4, 9, 14}
+    assert (fifty.due.at.date(), fifty.due.expression) == (date(2026, 11, 6), "by Friday")
+    assert [a.statement for a in result.assertions] == [
+        "Jules will build reviewer assignment for specific calls.",
+        "Rowan will pull fifty calls for the pilot batch by Friday.",
+        "Jules Park will tell Rowan when Q4 is live in the tool."]
+    assert result.assertions[0].recipient == EntityRef(entity_type="actor", entity_id=rowan, mention="Rowan Vale")
+    assert {(link.mention, link.candidate.entity_id) for link in result.links} >= {("Jules", me), ("Rowan", rowan)}
+
+    diagnostics = result.diagnostics["actions"]
+    spec = model_map.PROFILES[profile]
+    assert (diagnostics["profile"], diagnostics["model"], diagnostics["prompt_version"]) == \
+        (profile, spec.model, PROMPT_VERSION)
+    assert (diagnostics["status"], diagnostics["mode"], diagnostics["calls"]) == ("ok", "whole", 2)
+    assert [i["owner_basis"] for i in diagnostics["items"]] == [
+        "self_assigned_intent", "accepted_request", "stated_promise", "stated_promise", "implied_by_discussion"]
+    assert [i["action_index"] for i in diagnostics["items"]] == [0, 1, 2, 3, 4]
+    assert diagnostics["items"][0]["evidence"][-1] == {
+        "segment": 15, "line": "N2", "speaker": "Jules Park", "quote": "Rubric Q4 -> 1-5, fix N/A rows, re-import"}
+    assert sorted(r["code"] for r in diagnostics["rejected"]) == [
+        "done_in_meeting", "duplicate", "hypothetical", "negated", "not_a_follow_up", "owner_rejected",
+        "quote_not_found", "ungrounded_number"]
+    assert all(set(r) == {"code", "reason", "title", "segments"} for r in diagnostics["rejected"])
+    assert result.diagnostics["rejection_counts"]["hypothetical"] == 1
+
+    # What the model saw: whole meeting, private notes flagged as the recorder's, people with the recorder.
+    action_calls = [(url, headers, body) for url, headers, body in sent if system_of(body) in ANSWERS]
+    assert len(action_calls) == 2
+    url, headers, body = action_calls[0]
+    user = user_of(body)
+    assert user["recorded_by"] == "Jules Park" and user["meeting_local_date"] == "2026-11-03"
+    assert user["private_notes"].startswith("Typed by Jules Park during the meeting:\n[N1] Rowan - reviewer")
+    assert user["lines"].splitlines()[9] == "[9] Jules Park: Cool, I see it. I can get that in, absolutely."
+    assert [p.get("recorded_the_meeting") for p in user["people"]] == [True, False]
+    verify = user_of(action_calls[1][2])
+    assert len(verify["items"]) == 7 and "[N2] Private note: Rubric Q4" in verify["context"]
+
+    if spec.api == "anthropic_messages":
+        assert url == "https://api.anthropic.com/v1/messages"
+        assert headers["x-api-key"] == "synthetic-anthropic" and headers["anthropic-version"] == "2026-10-21"
+        assert body["model"] == "claude-sonnet-5-5" and body["max_tokens"] == 32000
+        assert body["output_config"]["effort"] == spec.reasoning_effort
+        assert body["output_config"]["format"]["type"] == "json_schema"
+        schema = json.dumps(body["output_config"]["format"]["schema"])
+        assert "maxLength" not in schema and "minimum" not in schema and "maxItems" not in schema
+        assert body["output_config"]["format"]["schema"]["additionalProperties"] is False
+        assert "temperature" not in body and body["system"] == ACTIONS_PROMPT
+    else:
+        assert body["model"] == spec.model and body["reasoning"] == {"effort": spec.reasoning_effort}
+        assert body["text"]["format"]["strict"] is True and body["text"]["format"]["name"] == "context_actions"
+
+    # Each call is reserved and recorded at the routed model's price (the chunk passes stay on Luna).
+    agent = model_map.costing(profile)
+    cached = 1000 if spec.api == "anthropic_messages" else 0
+    one = agent.usage_cost({"prompt_tokens": USAGE[0], "completion_tokens": USAGE[1],
+                            "prompt_tokens_details": {"cached_tokens": cached, "cache_write_tokens": 0}})
+    assert diagnostics["cost_usd"] == pytest.approx(2 * one, abs=1e-6)
+    with session_scope() as db:
+        rows = [u for u in db.scalars(select(Usage)) if u.model == spec.model]
+        assert len(rows) == (len(sent) if profile == "luna" else 2)
+        for row in rows:
+            assert row.amount == pytest.approx(Decimal(str(agent.usage_cost(row.tokens))))
+        assert {r.state for r in db.scalars(select(BudgetReservation))} == {"closed"}
+
+
+def test_attended_meeting_resolves_mine_by_identity_not_by_recorder(wire, monkeypatch):
+    """Rowan recorded the meeting; the user is Jules (the owner actor's alias). Private notes are Rowan's."""
+    sent = wire()
+    use(monkeypatch, "luna")
+    request = meeting_request(recorder="Rowan Vale")
+    result = NativeExtractor().extract(request)
+
+    owners = {a.title: [r.entity_id for r in a.responsible] for a in result.actions}
+    assert owners["Pull fifty calls for the pilot batch"] == ["act_rowan"]
+    assert owners["Build reviewer assignment for specific calls"] == ["act_me"]
+    user = json.loads(sent[0][2]["input"][1]["content"])
+    assert user["recorded_by"] == "Rowan Vale" and user["private_notes"].startswith("Typed by Rowan Vale")
+    rubric = result.diagnostics["actions"]["items"][0]
+    assert rubric["evidence"][-1]["speaker"] == "Rowan Vale"  # a private note is the recorder's
+
+
+def test_refusal_truncation_and_missing_key_fail_the_pass_and_leave_the_source_partial(wire, monkeypatch):
+    use(monkeypatch, "sonnet-5.5")
+    request = meeting_request()
+    for stop, reason in (("refusal", "context_actions: refusal"), ("max_tokens", "context_actions: truncated")):
+        wire(lambda body, stop=stop: (200, {**messages_reply(body, stop), "stop_details":
+                                            {"type": "refusal", "category": "cyber"} if stop == "refusal" else None}))
+        result = NativeExtractor().extract(request)
+        assert result.actions == [] and set(result.coverage.values()) == {"failed"}
+        assert result.diagnostics["actions"]["status"] == "failed"
+        assert result.diagnostics["actions"]["reason"] == reason
+        assert result.diagnostics["partial"] is True
+        assert set(result.diagnostics["failed"].values()) == {f"actions: {reason}"}
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "")
+    result = NativeExtractor().extract(request)
+    assert result.diagnostics["actions"]["reason"] == "context_actions: INTEGRATION_UNAVAILABLE"
+    assert result.diagnostics["actions"]["cost_usd"] == 0  # refused before any request was sent
+
+
+def test_unpriced_profile_is_refused_before_any_call(wire, monkeypatch):
+    sent = wire()
+    use(monkeypatch, "deepseek")
+    result = NativeExtractor().extract(meeting_request())
+    assert result.diagnostics["actions"]["reason"] == "context_actions: model profile deepseek has no price"
+    assert not any(system_of(body) == ACTIONS_PROMPT for _, _, body in sent)
+
+
+def test_long_meetings_fall_back_to_chunks_and_merge(wire, monkeypatch):
+    sent = wire()
+    use(monkeypatch, "luna")
+    monkeypatch.setitem(ANSWERS, ACTIONS_VERIFY_PROMPT, {"verdicts": []})  # nothing refused by the verifier
+    monkeypatch.setattr(actions, "WHOLE_MEETING_TOKENS", 100)
+    monkeypatch.setattr(actions, "CHUNK_TOKENS", 150)
+    request = meeting_request()
+    result = NativeExtractor().extract(request)
+
+    diagnostics = result.diagnostics["actions"]
+    calls = [json.loads(body["input"][1]["content"]) for _, _, body in sent
+             if body["input"][0]["content"] == ACTIONS_PROMPT]
+    assert diagnostics["mode"] == "chunked" and len(calls) > 1 and diagnostics["calls"] == len(calls) + 1
+    assert all(c["private_notes"].startswith("Typed by Jules Park") for c in calls)
+    assert "context_before" in calls[1]
+    # Each chunk answered with the whole list: items citing other chunks' lines are refused, the rest merge.
+    titles = [a.title for a in result.actions]
+    assert len(titles) == len(set(titles)) and "Pull fifty calls for the pilot batch" in titles
+    assert diagnostics["rejected"] and check_extraction(request, result) == []
+
+
+def test_sonnet_is_the_default_and_an_unusable_setting_falls_back_to_the_model_map(monkeypatch, caplog):
+    from jarvis.config import Settings
+    from jarvis.context import settings as context_settings
+
+    settings = get_settings()
+    assert Settings(_env_file=None).context_actions_model == "sonnet-5.5"
+    assert context_settings.current().actions_model == "sonnet-5.5"
+    assert model_map.MODEL_MAP["context_actions"] == "luna"  # the facts route and the fallback stay on Luna
+    monkeypatch.setattr(actions, "_warned", set())
+    monkeypatch.setattr(settings, "anthropic_api_key", "configured")
+    assert (actions.route().profile, actions.fallback()) == ("sonnet-5.5", None)
+
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    with caplog.at_level("WARNING", logger=actions.__name__):
+        for _ in range(3):
+            assert actions.route().profile == "luna"
+    assert actions.fallback() == {"from": "sonnet-5.5", "to": "luna", "reason": "missing_key"}
+    assert len([r for r in caplog.records if r.name == actions.__name__]) == 1  # warned once
+    monkeypatch.setattr(settings, "context_actions_model", "sonnet-9")
+    assert actions.choose() == (model_map.route("context_actions"),
+                                {"from": "sonnet-9", "to": "luna", "reason": "unknown_profile"})
+    monkeypatch.setattr(settings, "context_actions_model", "")
+    assert (actions.route().profile, actions.fallback()) == ("luna", None)
+    # The lab's in-process route wins over the setting and never falls back.
+    monkeypatch.setitem(model_map.MODEL_MAP, "context_actions", "terra")
+    monkeypatch.setattr(settings, "context_actions_model", "sonnet-5.5")
+    assert (actions.route().profile, actions.fallback()) == ("terra", None)
+    assert model_map.JOBS["context_actions"].cost_feature == "context_extraction"
+
+
+def test_a_missing_anthropic_key_runs_the_pass_on_the_fallback_and_records_it(wire, monkeypatch):
+    sent = wire()
+    monkeypatch.setattr(get_settings(), "anthropic_api_key", "")
+    result = NativeExtractor().extract(meeting_request())
+    diagnostics = result.diagnostics["actions"]
+    assert diagnostics["status"] == "ok" and diagnostics["profile"] == "luna"
+    assert diagnostics["fallback"] == {"from": "sonnet-5.5", "to": "luna", "reason": "missing_key"}
+    assert not any("anthropic" in url for url, _, _ in sent) and len(result.actions) == 5
+    assert result.diagnostics["partial"] is False
+
+
+def test_the_default_routes_the_action_pass_to_sonnet_and_the_facts_to_luna(wire, monkeypatch):
+    sent = wire()  # an Anthropic key is configured
+    result = NativeExtractor().extract(meeting_request())
+    assert result.diagnostics["actions"]["profile"] == "sonnet-5.5" and result.diagnostics["actions"]["fallback"] is None
+    assert result.diagnostics["model"] == model_map.PROFILES["luna"].model
+    hosts = {(system_of(body) == ACTIONS_PROMPT or system_of(body) == ACTIONS_VERIFY_PROMPT, "anthropic" in url)
+             for url, _, body in sent}
+    assert hosts == {(True, True), (False, False)}
+
+
+def test_owner_names_resolve_to_one_actor_or_stay_a_mention():
+    request = meeting_request()
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    assert actions.resolve("Jules", meeting).entity_id == "act_me"
+    assert actions.resolve("jules park", meeting).entity_id == "act_me"
+    assert actions.resolve("Rowan", meeting).entity_id == "act_rowan"
+    assert actions.resolve("Imani", meeting) == EntityRef(entity_type="actor", mention="Imani")
+    assert actions.resolve("we", meeting).entity_id is None and actions.resolve(None, meeting) is None
+    assert (meeting.seq("N1"), meeting.seq("[N2]"), meeting.seq("3"), meeting.seq("N9")) == (14, 15, 3, None)
+
+
+def test_identifiers_and_ranges_count_when_a_cited_quote_has_them():
+    assert ungrounded_numbers("Update the C2 rubric to a 1-5 scale", "C2 should go one to five", []) == set()
+    assert ungrounded_numbers("Update the C2 rubric to a 1 to 5 scale", "move C2 to 1-5", []) == set()
+    assert ungrounded_numbers("Update the C3 rubric", "C2 should go one to five", []) == {Decimal(3)}
+
+
+def test_action_titles_ground_identifiers_as_tokens_against_the_whole_meeting():
+    meeting = "[1] The C2 column is broken. [4] Let's move it to 1 to 5. [N1] Q1 planning: backfill scores"
+    assert ungrounded_tokens("Update the C2 rubric to a 1-5 scale", meeting, []) == []
+    assert ungrounded_tokens("Backfill C2 scores for Q1", meeting, []) == []
+    # an identifier is one token: C3 is not grounded by the digit 3 elsewhere, nor 2 by C2
+    assert ungrounded_tokens("Update the C3 rubric", meeting + " 3 people", []) == ["C3"]
+    assert ungrounded_tokens("Pull 2 samples", meeting, []) == ["2"]
+    assert ungrounded_tokens("Plan Q2 with 40 clinics", meeting, []) == ["Q2", "40"]
+    assert ungrounded_tokens("Ship v2 by the 6th", "ship v2", [date(2026, 11, 6)]) == []
+
+
+@pytest.mark.parametrize("written", ["1-to-5", "1-5", "1/5", "1 \u2013 5", "1 to 5"])
+def test_joined_ranges_are_their_numbers(written):
+    said = "Honestly it should be a 1 to 5 scale, same as the others."
+    assert ungrounded_tokens(f"Move the rubric to a {written} scale", said, []) == []
+    assert ungrounded_tokens(f"Move the rubric to a {written} scale", "a 1 to 4 scale", []) == ["5"]
+
+
+def test_digit_tokens_ground_verbatim_or_by_their_number():
+    assert ungrounded_tokens("Pull 5k calls", "we need 5k calls", []) == []
+    assert ungrounded_tokens("Pull 5k calls", "about five thousand calls", []) == []
+    assert ungrounded_tokens("Pull 5k calls", "about fifty calls", []) == ["5k"]
+    assert ungrounded_tokens("Make it 3x faster", "three times faster, so 3x", []) == []
+
+
+def test_an_ungrounded_description_sentence_is_dropped_not_the_action():
+    from jarvis.context.native.prompts import ActionList
+
+    meeting = regression_meeting()
+    listed = ActionList.model_validate({"items": [
+        {**item([(6, REGRESSION[6][1])], "Update the C2 rubric", "Jules Park"),
+         "description": "Move C2 to the new scale. Backfill 300 old scores first."},
+        {**item([(6, REGRESSION[6][1])], "Update the C3 rubric", "Jules Park"),
+         "description": "Backfill 300 old scores."},
+        item([(6, REGRESSION[6][1])], "Update the C7 rubric", "Jules Park")]})
+    kept = [actions.check(i, meeting, lambda *_: True) for i in listed.items]
+    c2, c3, c7 = kept
+    assert (c2.description, c2.signals["description_ungrounded"]) == ("Move C2 to the new scale.", ["300"])
+    assert (c3.description, c3.signals["description_ungrounded"]) == ("", ["300"])
+    assert c7 == {"code": "ungrounded_number", "reason": "title: C7", "title": "Update the C7 rubric",
+                  "segments": [6]}  # only the title rejects
+
+
+def test_a_completed_pass_round_trips_for_resumable_callers(wire, monkeypatch):
+    wire()
+    request = meeting_request()
+    ctx = SourceContext.from_request(request)
+    meeting = actions.Meeting.of(request, ctx)
+    out = actions.ActionRun()
+    NativeExtractor()._actions("davin", meeting, out, extract_spend(), 30)
+    key = actions.cache_key(meeting)
+    saved = json.loads(json.dumps(out.dump(key)))
+    restored = actions.ActionRun()
+    restored.restore(saved, meeting)
+    assert saved["key"] == key and restored.cost == out.cost > 0 and restored.calls == out.calls == 2
+    assert restored.diagnostics(meeting) == out.diagnostics(meeting)
+    assert [d.assertion for d in restored.drafts] == [d.assertion for d in out.drafts]
+    # anything the pass reads changes the key: the lines, the prompt's model, the candidates
+    assert actions.cache_key(actions.Meeting.of(request.model_copy(update={"title": "Other"}), ctx)) != key
+    # a dismissal since the save rejects that item again; decisions alone don't change the key
+    title = out.drafts[0].title
+    dismissed = request.model_copy(update={"decisions": [Decision(
+        id="dec-1", seq=1, operation="dismiss", origin="human", target_type="proposal", target_id="p-1",
+        statement=title, recorded_at=request.occurred_at)]})
+    later = actions.Meeting.of(dismissed, SourceContext.from_request(dismissed))
+    assert actions.cache_key(later) == key
+    again = actions.ActionRun()
+    again.restore(saved, later)
+    assert [d.title for d in again.drafts] == [d.title for d in out.drafts[1:]]
+    assert again.rejected[-1]["code"] == "prior_decision"
+    use(monkeypatch, "terra")
+    assert actions.cache_key(meeting) != key
+
+
+def extract_spend():
+    from jarvis.context.native.extract import Spend
+    return Spend(cap=5.0)
+
+
+# ---------------------------------------------------------------- unseparated speakers (one audio source)
+
+UNSEPARATED = [
+    "Davis, can you send the pilot deck to the board?",
+    "Sure, I'll send it tomorrow.",
+    "I'll take the vendor call, this is Aarish.",
+    "I'll update the tracker after this.",
+    "I'll book the room for Thursday.",
+    "I can draft the agenda.",
+]
+
+
+def unseparated_request() -> ExtractRequest:
+    segments = [Segment(seq=i, text=t) for i, t in enumerate(UNSEPARATED)]  # no speaker, attribution unknown
+    segments.append(Segment(seq=len(UNSEPARATED), kind="private_note", attribution="owner",
+                            text="Rowan: draft the agenda"))
+    people = [("Uttam Rao", "organizer"), ("Davis Dunham", "attendee"), ("Rowan Vale", "attendee"),
+              ("Aarish Khan", "attendee")]
+    return ExtractRequest(
+        owner_id="davin", source_revision_id="srcrev_group", occurred_at="2026-11-03T15:00:00+00:00",
+        timezone="America/New_York", title="Group sync", segments=segments,
+        participants=[Participant(name=n, role=r) for n, r in people],
+        candidates=[EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_me"), name="owner",
+                                    aliases=["Davis Dunham"]),
+                    EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_rowan"), name="Rowan Vale"),
+                    EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_aarish"), name="Aarish Khan")])
+
+
+def item(lines, title, owner, basis="stated_promise") -> dict:
+    return {"evidence": [{"line": str(i) if isinstance(i, int) else i, "quote": q} for i, q in lines],
+            "title": title, "description": "", "owner": owner, "owner_basis": basis, "recipient": None,
+            "due": None, "status": "open", "kind": "action", "confidence": 0.8}
+
+
+def test_unseparated_speakers_take_the_owner_from_content_or_leave_it_unclear():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    request = unseparated_request()
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [
+        item([(0, UNSEPARATED[0]), (1, UNSEPARATED[1])], "Send the pilot deck to the board", "Davis Dunham",
+             "accepted_request"),
+        item([(2, UNSEPARATED[2])], "Take the vendor call", "Aarish Khan"),
+        item([(3, UNSEPARATED[3])], "Update the tracker", "Uttam Rao"),  # guessed as the recorder
+        item([(4, UNSEPARATED[4])], "Book the room for Thursday", "Unknown speaker"),
+        item([(5, UNSEPARATED[5])], "Draft the agenda", "Rowan Vale", "self_assigned_intent"),
+        item([(3, UNSEPARATED[3])], "Order the catering", "Mustafa Ali"),  # not in the meeting
+        item([(2, UNSEPARATED[2])], "Call the vendor back", "Rowan Vale"),  # the line shows Aarish took it
+    ]})
+
+    def call(name, user):
+        if name == "context_actions":
+            assert "Unknown speaker: Sure, I'll send it tomorrow." in user["lines"]
+            return listed
+        return ActionVerification.model_validate({"verdicts": [
+            {"item": i["item"], "progress_report": False, "real_follow_up": True, "owner_correct": True,
+             "reason": ""} for i in user["items"]]})
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    assert out.rejected == []
+    got = {d.title: (d.owner, [r.entity_id for r in d.responsible], d.basis, bool(d.assertion)) for d in out.drafts}
+    assert got == {
+        # addressed by name, accepted on an unattributed line: Davis's, a commitment
+        "Send the pilot deck to the board": ("Davis Dunham", ["act_me"], "accepted_request", True),
+        # self-identified on the line
+        "Take the vendor call": ("Aarish Khan", ["act_aarish"], "stated_promise", True),
+        # nothing in the lines proves it, but the model names a participant: an inferred owner, never a commitment
+        "Update the tracker": ("Uttam Rao", [None], "inferred", False),
+        # no owner given: unassigned, never the recorder, never dropped
+        "Book the room for Thursday": (None, [], "implied_by_discussion", False),
+        # the recorder's private note names the owner
+        "Draft the agenda": ("Rowan Vale", ["act_rowan"], "self_assigned_intent", False),
+        # a name outside the meeting, or one the quotes contradict: unassigned
+        "Order the catering": (None, [], "implied_by_discussion", False),
+        "Call the vendor back": (None, [], "implied_by_discussion", False)}
+    signals = {d.title: d.signals for d in out.drafts}
+    assert signals["Update the tracker"]["owner_inferred"] == "Uttam Rao"
+    assert signals["Order the catering"] == {"owner_unverified": "Mustafa Ali",
+                                             "owner_unverified_reason": "not in the meeting"}
+    assert signals["Call the vendor back"] == {"owner_unverified": "Rowan Vale",
+                                               "owner_unverified_reason": "taken by Aarish Khan"}
+    assert signals["Book the room for Thursday"] == {"owner_unknown": True}
+    assert signals["Send the pilot deck to the board"]["owner_from_content"] is True
+
+
+def test_date_only_dues_keep_the_meetings_calendar_date():
+    from zoneinfo import ZoneInfo
+
+    from jarvis.context.native.prompts import ActionList
+    from jarvis.context.proposals import _local_date
+
+    request = ExtractRequest.model_validate({
+        **unseparated_request().model_dump(),
+        "timezone": "America/Chicago", "occurred_at": "2026-11-04T18:00:00+00:00",  # noon in Chicago
+        "segments": [{"seq": 0, "speaker_label": "Davis Dunham", "attribution": "owner",
+                      "text": "I'll send the recap today."}]})
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [{**item([(0, "I'll send the recap today.")], "Send the recap",
+                                                          "Davis Dunham"),
+                                                   "due": {"expression": "today", "value": "2026-11-04T00:00:00Z",
+                                                           "precision": "day", "derivation": "meeting date"}}]})
+    draft = actions.check(listed.items[0], meeting, lambda *_: True)
+    chicago = ZoneInfo("America/Chicago")
+    assert draft.due.at == datetime(2026, 11, 4, tzinfo=chicago) and draft.due.precision == "day"
+    assert _local_date(draft.due.at, "America/Chicago") == date(2026, 11, 4)
+    assert draft.derivations[0]["verified"] is True
+
+
+# ---------------------------------------------------------------- regression cases (synthetic)
+
+REGRESSION = [
+    ("Rowan Vale", "Jules, can you redo the onboarding slides?"),
+    ("Jules Park", "No, I can't take that on this week."),
+    ("Rowan Vale", "Okay, no problem."),
+    ("Jules Park", "Yes, the new office is great."),
+    ("Jules Park", "If approval arrives Monday, I'll start the data migration."),
+    ("Jules Park", "I just fixed the typo in the invite, it's done."),
+    ("Jules Park", "I'll update the C2 rubric and the C3 rubric before the review."),
+    ("Jules Park", "I'll send Rowan the report by Friday, and the final version by Monday."),
+    ("Jules Park", "I'll order new badges for the team."),
+    ("Jules Park", "Actually, scrap that, the old badges are fine."),
+    ("Rowan Vale", "I'll deploy the payment service fix to staging, then to production after QA."),
+]
+NOTES = ["Cynthia annotation admin", "todo: send Yvette the deck"]
+
+
+def regression_meeting() -> actions.Meeting:
+    segments = [Segment(seq=i, speaker_label=who, attribution="owner" if who == "Jules Park" else "other", text=t)
+                for i, (who, t) in enumerate(REGRESSION)]
+    segments += [Segment(seq=len(REGRESSION) + i, kind="private_note", attribution="owner", text=t)
+                 for i, t in enumerate(NOTES)]
+    request = meeting_request().model_copy(update={"segments": segments})
+    return actions.Meeting.of(request, SourceContext.from_request(request))
+
+
+def due(expression: str, value: str) -> dict:
+    return {"expression": expression, "value": value, "precision": "day", "derivation": "weekday after the meeting"}
+
+
+def test_regression_cases_keep_real_work_and_refuse_the_rest():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    meeting = regression_meeting()
+    q = dict(enumerate(t for _, t in REGRESSION))
+    listed = ActionList.model_validate({"items": [
+        # a declined request, then an unrelated "yes"
+        item([(0, q[0]), (1, q[1]), (3, q[3])], "Redo the onboarding slides", "Jules Park", "accepted_request"),
+        # a condition attached to planned work
+        {**item([(4, q[4])], "Start the data migration", "Jules Park"),
+         "description": "Start the data migration once approval arrives Monday."},
+        # finished during the meeting
+        {**item([(5, q[5])], "Fix the typo in the invite", "Jules Park"), "status": "done_in_meeting"},
+        # two deliverables that differ only by an identifier
+        item([(6, q[6])], "Update the C2 rubric", "Jules Park"),
+        item([(6, q[6])], "Update the C3 rubric", "Jules Park"),
+        # the same action on two dates
+        {**item([(7, q[7])], "Send Rowan the report", "Jules Park"), "due": due("by Friday", "2026-11-06")},
+        {**item([(7, q[7])], "Send Rowan the report", "Jules Park"), "due": due("by Monday", "2026-11-09")},
+        # promised, then withdrawn
+        item([(8, q[8]), (9, q[9])], "Order new badges for the team", "Jules Park"),
+        # the same fix to two environments
+        item([(10, q[10])], "Deploy the payment service fix to staging", "Rowan Vale"),
+        item([(10, q[10])], "Deploy the payment service fix to production", "Rowan Vale"),
+        # shorthand note only: assigns nothing; an explicit to-do note is the recorder's
+        item([("N1", NOTES[0])], "Build the annotation admin", "Jules Park", "self_assigned_intent"),
+        {**item([("N2", NOTES[1])], "Send Yvette the deck", "Yvette", "self_assigned_intent"), "recipient": "Yvette"},
+    ]})
+
+    def call(name, user):
+        if name == "context_actions":
+            return listed
+        return ActionVerification.model_validate({"verdicts": [
+            {"item": i["item"], "progress_report": False, "real_follow_up": True, "owner_correct": True, "reason": ""} for i in user["items"]]})
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    refused = {r["title"]: r["code"] for r in out.rejected}
+    assert refused == {"Redo the onboarding slides": "negated", "Fix the typo in the invite": "done_in_meeting",
+                       "Order new badges for the team": "negated"}
+    kept = [(d.title, d.owner, d.due.at.date().isoformat() if d.due else None) for d in out.drafts]
+    assert kept == [
+        ("Start the data migration", "Jules Park", None),
+        ("Update the C2 rubric", "Jules Park", None), ("Update the C3 rubric", "Jules Park", None),
+        ("Send Rowan the report", "Jules Park", "2026-11-06"), ("Send Rowan the report", "Jules Park", "2026-11-09"),
+        ("Deploy the payment service fix to staging", "Rowan Vale", None),
+        ("Deploy the payment service fix to production", "Rowan Vale", None),
+        ("Build the annotation admin", None, None),
+        ("Send Yvette the deck", "Jules Park", None)]
+    drafts = {d.title: d for d in out.drafts}
+    migration = drafts["Start the data migration"]
+    assert "approval arrives" in migration.description and migration.signals["tentative"] is True
+    assert drafts["Build the annotation admin"].signals == {"note_only": "Jules Park"}
+    assert drafts["Build the annotation admin"].basis == "implied_by_discussion"
+    assert drafts["Send Yvette the deck"].signals["owner_from_note"] == "Yvette"
+
+
+def test_near_titles_merge_unless_identifiers_recipients_or_dates_differ():
+    meeting = regression_meeting()
+
+    def draft(title, recipient=None, at=None):
+        bound = TimeBound(at=at, precision="day") if at else None
+        return actions.ActionDraft(kind="action", title=title, description="", owner="Jules Park",
+                                   basis="stated_promise", model_basis="stated_promise", recipient=recipient,
+                                   evidence=[EvidenceRef(segment_seq=6, quote="I'll update", char_start=0, char_end=11)],
+                                   due=bound,
+                                   responsible=[actions.resolve("Jules Park", meeting)])
+    friday, monday = (datetime(2026, 11, d, tzinfo=UTC) for d in (6, 9))
+
+    def titles(*drafts):
+        kept, rejected = actions.merge(list(drafts))
+        return [d.title for d in kept], [r["title"] for r in rejected]
+    assert titles(draft("Update the C2 rubric"), draft("Update the C3 rubric"), draft("Update the C2 rubric now")) == (
+        ["Update the C2 rubric", "Update the C3 rubric"], ["Update the C2 rubric now"])
+    assert titles(draft("Deploy the payment service fix to staging"),
+                  draft("Deploy the payment service fix to production")) == (
+        ["Deploy the payment service fix to staging", "Deploy the payment service fix to production"], [])
+    assert titles(draft("Send the deck", "Rowan"), draft("Send the deck", "Yvette"))[1] == []
+    assert titles(draft("Send the deck", at=friday), draft("Send the deck", at=monday))[1] == []
+    # one dated copy and one undated copy are the same item, keeping the date
+    kept, _ = actions.merge([draft("Send the deck"), draft("Send the deck", at=friday)])
+    assert [d.due.at for d in kept] == [friday]
+    assert titles(draft("Pull fifty calls"), draft("Pull 50 calls"))[1] == ["Pull 50 calls"]
+
+
+def test_a_checker_contradiction_blanks_an_inferred_owner_but_rejects_a_proven_one():
+    from jarvis.context.native.prompts import ActionVerdict
+
+    request = unseparated_request()
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    from jarvis.context.native.prompts import ActionList
+    listed = ActionList.model_validate({"items": [
+        item([(3, UNSEPARATED[3])], "Update the tracker", "Uttam Rao"),
+        item([(2, UNSEPARATED[2])], "Take the vendor call", "Aarish Khan")]})
+    drafts = [actions.check(i, meeting, lambda *_: True) for i in listed.items]
+    no = [ActionVerdict(item=i, progress_report=False, real_follow_up=True, owner_correct=False, reason="Rowan does")
+          for i in range(2)]
+    kept, rejected = actions.apply_verdicts(drafts, no)
+    assert [(d.title, d.owner, d.basis, d.signals["owner_rejected"]) for d in kept] == [
+        ("Update the tracker", None, "implied_by_discussion", "Uttam Rao")]
+    assert [(r["code"], r["title"]) for r in rejected] == [("owner_rejected", "Take the vendor call")]
+
+
+STANDUP = [
+    ("Rowan Vale", "Quick round. Jules?"),
+    ("Jules Park", "I'm working on the demos and the marketing site."),
+    ("Jules Park", "ClickHouse cert is going well, aiming to finish this weekend."),
+]
+
+
+def test_standup_progress_reports_are_refused_and_a_dated_next_step_is_kept():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    segments = [Segment(seq=i, speaker_label=who, attribution="owner" if who == "Jules Park" else "other", text=t)
+                for i, (who, t) in enumerate(STANDUP)]
+    request = meeting_request().model_copy(update={"segments": segments})
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [
+        item([(1, STANDUP[1][1])], "Work on the demos and marketing site", "Jules Park", "self_assigned_intent"),
+        {**item([(2, STANDUP[2][1])], "Finish the ClickHouse certification", "Jules Park", "self_assigned_intent"),
+         "due": due("this weekend", "2026-11-08")}]})
+    reviewed = []
+
+    def call(name, user):
+        if name == "context_actions":
+            return listed
+        reviewed.extend(user["items"])
+        return ActionVerification.model_validate({"verdicts": [
+            {"item": 0, "progress_report": True, "real_follow_up": False, "owner_correct": True,
+             "reason": "a status update"},
+            {"item": 1, "progress_report": False, "real_follow_up": True, "owner_correct": True, "reason": ""}]})
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    assert [(r["code"], r["title"]) for r in out.rejected] == [
+        ("progress_report", "Work on the demos and marketing site")]
+    (cert,) = out.drafts
+    assert (cert.title, cert.owner, cert.verified) == ("Finish the ClickHouse certification", "Jules Park", True)
+    assert cert.due is not None and cert.due.expression == "this weekend"
+    assert "progress_report" in ACTIONS_VERIFY_PROMPT and "Status updates in a standup" in ACTIONS_PROMPT
+
+
+def test_high_reasoning_profiles_are_priced_like_their_base_and_routable(monkeypatch):
+    for high, base, effort in (("terra-high", "terra", "high"), ("sonnet-5.5-high", "sonnet-5.5", "high")):
+        spec = model_map.PROFILES[high]
+        assert (spec.model, spec.reasoning_effort) == (model_map.PROFILES[base].model, effort)
+        assert model_map.costing(high).price == model_map.costing(base).price
+        use(monkeypatch, high)
+        assert actions.route().profile == high
+
+
+def test_the_action_prompt_is_recall_first_and_status_updates_reach_the_checker():
+    from jarvis.context.native.prompts import ActionList, ActionVerification
+
+    assert "List every candidate" in ACTIONS_PROMPT and "Scheduling, sending, forwarding" in ACTIONS_PROMPT
+    assert "status ongoing" in ACTIONS_PROMPT and "status ongoing" in ACTIONS_VERIFY_PROMPT
+    segments = [Segment(seq=i, speaker_label=who, attribution="owner" if who == "Jules Park" else "other", text=t)
+                for i, (who, t) in enumerate(STANDUP)]
+    request = meeting_request().model_copy(update={"segments": segments})
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+    listed = ActionList.model_validate({"items": [
+        {**item([(1, STANDUP[1][1])], "Work on the demos and marketing site", "Jules Park"), "status": "ongoing"}]})
+    reviewed = []
+
+    def call(name, user):
+        if name == "context_actions":
+            return listed
+        reviewed.extend(user["items"])
+        return ActionVerification.model_validate({"verdicts": []})  # the checker skipped it
+
+    out = actions.ActionRun()
+    actions.run(meeting, call, out)
+    assert [i["status"] for i in reviewed] == ["ongoing"]
+    (kept,) = out.drafts  # never dropped by the extractor; unverified, so never checked in proposals
+    assert (kept.status, kept.verified) == ("ongoing", None)
+    assert kept.describe(meeting)["status"] == "ongoing"
+
+
+SHARED_FIRST = [("Davis Dunham", "Robert, could you pull the Q3 numbers before Friday?"),
+                ("Robert Tseng", "Sure, I'll pull them tomorrow."),
+                ("Davis Dunham", "Great. I'll send the deck to Yvette after that.")]
+
+
+def test_owner_aliases_match_but_a_first_name_two_people_share_never_does():
+    """The user is Davis Dunham (Robert Davis Dunham); Robert Tseng is in the meeting too."""
+    me, tseng = "act_me", "act_tseng"
+    aliases = ["Davis Dunham", "Davis", "Robert Dunham", "Robert Davis Dunham", "R. Davis Dunham"]
+    request = ExtractRequest(
+        owner_id="davin", source_revision_id="srcrev_robert", occurred_at=datetime(2026, 11, 3, 15, tzinfo=UTC),
+        timezone="America/Chicago", title="Q3 review",
+        participants=[Participant(name="Davis Dunham", role="organizer", speaker_label="Davis Dunham"),
+                      Participant(name="Robert Tseng", role="attendee", speaker_label="Robert Tseng")],
+        segments=[Segment(seq=i, speaker_label=who, attribution="owner" if who == "Davis Dunham" else "other",
+                          text=text) for i, (who, text) in enumerate(SHARED_FIRST)],
+        candidates=[EntityCandidate(ref=EntityRef(entity_type="actor", entity_id=me), name="owner", aliases=aliases),
+                    EntityCandidate(ref=EntityRef(entity_type="actor", entity_id=tseng), name="Robert Tseng")])
+    meeting = actions.Meeting.of(request, SourceContext.from_request(request))
+
+    assert "robert" in meeting.shared_firsts and "davis" not in meeting.shared_firsts
+    for name in [*aliases, "davis"]:
+        assert actions.resolve(name, meeting).entity_id == me, name
+    assert actions.resolve("Robert Tseng", meeting).entity_id == tseng
+    assert actions.resolve("Robert", meeting).entity_id is None  # either of them: left as a mention
+    assert not actions._same_person("Robert Tseng", "Robert Davis Dunham", meeting)
+    assert actions._same_person("Davis", "Robert Davis Dunham", meeting)
+
+    q = dict(enumerate(t for _, t in SHARED_FIRST))
+    drafts = {d.title if isinstance(d, actions.ActionDraft) else d["title"]: d for d in (
+        actions.check(ActionItem.model_validate(i), meeting, lambda seq, a, b: True) for i in [
+            item([(0, q[0]), (1, q[1])], "Pull the Q3 numbers", "Robert Tseng", "accepted_request"),
+            item([(2, q[2])], "Send the deck to Yvette", "Davis"),
+            # the user's own name on Robert Tseng's promise: his line is not the user's
+            item([(1, q[1])], "Pull the Q3 figures", "Robert Davis Dunham")])}
+    assert [r.entity_id for r in drafts["Pull the Q3 numbers"].responsible] == [tseng]
+    assert [r.entity_id for r in drafts["Send the deck to Yvette"].responsible] == [me]
+    assert drafts["Pull the Q3 figures"]["code"] == "attribution_mismatch"
+
+
+STANDUP_ELLIPSIS = [("Davis Dunham", "Quick update from me."),
+                    ("Davis Dunham", "I'm working on weekend definitions right now, it's taking a while."),
+                    ("Davis Dunham", "So yeah. I'm going to finish that in this week."),
+                    ("Robert Tseng", "Sounds good, thanks.")]
+
+
+def ellipsis_meeting() -> actions.Meeting:
+    request = ExtractRequest(
+        owner_id="davin", source_revision_id="srcrev_ellipsis", occurred_at=datetime(2026, 11, 4, 15, tzinfo=UTC),
+        timezone="America/Chicago", title="Daily delivery sync",
+        participants=[Participant(name="Davis Dunham", role="organizer", speaker_label="Davis Dunham"),
+                      Participant(name="Robert Tseng", role="attendee", speaker_label="Robert Tseng")],
+        segments=[Segment(seq=i, speaker_label=who, attribution="owner" if who == "Davis Dunham" else "other",
+                          text=text) for i, (who, text) in enumerate(STANDUP_ELLIPSIS)],
+        candidates=[EntityCandidate(ref=EntityRef(entity_type="actor", entity_id="act_me"), name="owner",
+                                    aliases=["Davis Dunham"])])
+    return actions.Meeting.of(request, SourceContext.from_request(request))
+
+
+def test_quotes_stitched_with_an_ellipsis_ground_piece_by_piece():
+    from jarvis.context.native.validate import fragments, ground_evidence
+
+    ctx = ellipsis_meeting().ctx
+    def anywhere(seq, a, b):
+        return True
+
+    # Two pieces of one line: two spans, in order.
+    refs, code, _ = ground_evidence([(1, "I'm working on weekend definitions... it's taking a while.")], ctx, anywhere)
+    assert code is None and [(r.segment_seq, r.quote) for r in refs] == [
+        (1, "I'm working on weekend definitions"), (1, "it's taking a while.")]
+    assert all(r.matches(ctx.segments[r.segment_seq].text) for r in refs)
+    # The Nov 4 shape: the second piece is on the next line (the ref is off by one); "…" works the same way.
+    stitched = "I'm working on weekend definitions\u2026 I'm going to finish that in this week."
+    refs, code, _ = ground_evidence([(1, stitched)], ctx, anywhere)
+    assert code is None and [(r.segment_seq, r.quote) for r in refs] == [
+        (1, "I'm working on weekend definitions"), (2, "I'm going to finish that in this week.")]
+    # Pieces under three words are dropped; a piece found nowhere refuses the quote.
+    assert fragments("So yeah... I'm going to finish that ...") == ["I'm going to finish that"]
+    refs, code, detail = ground_evidence([(1, "I'm working on weekend definitions... we shipped the importer")],
+                                         ctx, anywhere)
+    assert (refs, code) == ([], "quote_not_found") and "we shipped the importer" in detail
+    # Two lines away is the limit; a chunk's neighbour it does not own is not used.
+    assert ground_evidence([(0, "Quick update from me... Sounds good, thanks.")], ctx, anywhere)[1] == \
+        "quote_not_found"
+    assert ground_evidence([(1, "I'm working on weekend definitions... finish that in this week")], ctx,
+                           lambda seq, a, b: seq == 1)[1] == "quote_not_found"
+    # A real "..." in the line still grounds as one span.
+    ctx.segments[0] = ctx.segments[0].model_copy(update={"text": "Quick update... from me."})
+    refs, code, _ = ground_evidence([(0, "Quick update... from me.")], ctx, anywhere)
+    assert code is None and [r.quote for r in refs] == ["Quick update... from me."]
+
+
+def test_an_action_item_cited_with_an_ellipsis_keeps_every_piece():
+    meeting = ellipsis_meeting()
+    draft = actions.check(ActionItem.model_validate(item(
+        [(1, "I'm working on weekend definitions... I'm going to finish that in this week.")],
+        "Finish the weekend definitions", "Davis Dunham", "stated_promise")), meeting, lambda seq, a, b: True)
+    assert isinstance(draft, actions.ActionDraft), draft
+    assert [(e.segment_seq, e.quote) for e in draft.evidence] == [
+        (1, "I'm working on weekend definitions"), (2, "I'm going to finish that in this week.")]
+    assert [r.entity_id for r in draft.responsible] == ["act_me"]
