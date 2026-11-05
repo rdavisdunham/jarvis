@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     # A run's verification still running after this long sends the owner one notice (it keeps running up to the verify
     # entry's own timeout); a verify entry's advertised `notify_after_s` overrides it (run_coordinator.verify_notify_after).
     agent_verify_notify_after_seconds: int = Field(default=1800, ge=60, le=4 * 3600)
+    # GitHub CI as the final verification (run_ci.py): a run whose criteria are met on a quick local check waits this
+    # long in awaiting_ci for the PR head's checks to finish, then needs you (ci_timeout).
+    agent_ci_wait_seconds: int = Field(default=90 * 60, ge=300, le=12 * 3600)
+    # Verify entry ids that are only a pre-push check (scripts/verify-quick.sh): their pass needs green CI on the PR
+    # head to finish the run. Any other entry's pass counts on its own, as before. Comma-separated.
+    agent_ci_quick_verify_ids: str = "quick"
     agent_queue_limit: int = Field(default=100, ge=10, le=1000)
     max_tool_calls_per_request: int = Field(default=100, ge=1, le=1000)
     max_model_rounds_per_request: int = Field(default=30, ge=2, le=100)

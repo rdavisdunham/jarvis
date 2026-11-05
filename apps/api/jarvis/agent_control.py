@@ -15,7 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, not_, or_, select
 
-from . import agent_link, run_attention, run_summaries
+from . import agent_link, run_attention, run_ci, run_summaries
 from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
@@ -743,7 +743,7 @@ def send_message(db, owner, run_id, body, *, actor):
         if not coordinator.host_cap(db, run.host_id, "input.direct") or not coordinator.host_cap(db, run.host_id, "commands.durable") or (run.sync_state or {}).get("execution_mode") != "managed":
             raise DomainError("DIRECT_UNSUPPORTED", "This host cannot deliver direct messages; update Remotea and use a managed run.", 409)
         agent_automation.hold(db, run, actor=actor)
-        if run.state in ("verifying", "judging"):
+        if run.state in ("verifying", "judging", "awaiting_ci"):
             coordinator.transition(db, run, "executing", actor=actor, reason="direct_message")
         coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
             "text": body.text, "mode": "direct", "origin": "human"})
@@ -983,6 +983,9 @@ def public_attempt(a):
                    **(({k: result.get(k) for k in ("isolated", "isolation", "isolation_reason", "workspace_complete",
                                                    "workspace_reasons", "timeout_s", "stale_workspace")}
                        | {"deadline_at": a.deadline_at}) if a.kind == "verify" else {}),
+                   # GitHub CI (run_ci.py, kind `ci`, verify_id `github_ci`): one row per PR head, updated per poll.
+                   **({k: result.get(k) for k in ("source", "state", "head_sha", "pr_url", "run_url", "checks", "failed",
+                                                  "checked_at")} if a.kind == "ci" else {}),
                    "created_at": a.created_at, "updated_at": a.updated_at})
 
 
@@ -1277,6 +1280,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # current turn, and controls sent but not yet taken by the host or whose delivery is uncertain.
         "last_turn_at": db.scalar(run_turns(run).with_only_columns(func.max(AgentTurn.created_at))),
         "verification": verification_fact(db, run),
+        # GitHub CI on the PR head, the final verification after a quick local check (run_ci.py); null without one.
+        "ci": run_ci.public(db, run),
         "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question") or harness.get("managed_questions")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
@@ -1822,7 +1827,7 @@ def verify_fix(reason):
                 '(sudo apt install bubblewrap) or set isolation "none" on the entry. ' + RELOAD)
     if "path" in text:
         return ("Its program is not on the service PATH (systemd's minimal PATH; uv in ~/.local/bin is the usual "
-                "case): use scripts/verify.sh or an absolute program, or set env.PATH on the entry in "
+                "case): use scripts/verify-quick.sh (or scripts/verify.sh) or an absolute program, or set env.PATH on the entry in "
                 f"{CONFIG_FILE}. {RELOAD}")
     if "cwd" in text:
         return f"Its cwd does not exist in the repository: fix cwd on the entry in {CONFIG_FILE}. {RELOAD}"
@@ -1922,8 +1927,9 @@ def target_setup(db, owner, host, host_target, saved=None):
     elif not status:
         out["problems"].append(problem(
             "NO_VERIFY", f"{label} has no verify command, so a run cannot check its work with tests.",
-            f"Add a verify[] entry to the target in {CONFIG_FILE} (for jarvis, scripts/verify.sh with an isolated "
-            f"test database). {RELOAD}", blocks=False))
+            f"Add a verify[] entry to the target in {CONFIG_FILE} (for jarvis, id \"quick\" running "
+            f"scripts/verify-quick.sh with timeout 600 and an isolated test database; GitHub CI is the final "
+            f"verification). {RELOAD}", blocks=False))
     for entry in status or []:
         if not entry["ready"]:
             out["problems"].append(problem(

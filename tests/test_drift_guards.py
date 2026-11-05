@@ -218,6 +218,27 @@ def test_web_run_states_match_the_coordinator():
     assert set(terminal) == set(TERMINAL_RUN_STATES)
 
 
+def test_every_run_notice_category_is_documented():
+    """run_coordinator.notify categories (run_ci's agent_ci_failed among them) are free strings; ADDING_FEATURES § 7
+    lists each one so a new push category is a decision, not an accident."""
+    categories = set()
+    for name in ("run_coordinator.py", "run_ci.py"):
+        source = (ROOT / "apps/api/jarvis" / name).read_text()
+        categories |= set(re.findall(r'notify\(db, run, "([a-z_]+)"', source))
+    assert {"agent_stuck", "agent_ci_failed"} <= categories, "notify() parser"
+    guide = (ROOT / "docs/ADDING_FEATURES.md").read_text()
+    assert {c for c in categories if f"`{c}`" not in guide} == set()
+
+
+def test_ci_state_is_registered_where_runs_wait():
+    """awaiting_ci (run_ci.py) is a wait the wall clock skips, a message resumes, and the web labels."""
+    from jarvis import run_coordinator
+
+    assert "awaiting_ci" in run_coordinator.IDLE_WAIT_STATES and "awaiting_ci" in run_coordinator.RESUMABLE
+    assert "awaiting_ci" in run_coordinator.TRANSITIONS["judging"]
+    assert re.search(r'awaiting_ci: "Awaiting CI"', web("remotea-model.ts")), "RUN_LABELS / STAGES"
+
+
 def test_every_needs_you_reason_has_text():
     """REASONS is what the run page, push body and control_status show; a missing key shows the raw code."""
     from jarvis.run_coordinator import REASONS

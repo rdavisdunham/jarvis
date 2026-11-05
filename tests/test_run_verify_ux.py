@@ -173,7 +173,8 @@ def test_other_infra_categories_have_their_own_headline(verifying_host, category
 @pytest.mark.parametrize("reason", sorted(run_attention.ATTENTION))
 def test_every_stop_reason_has_a_plain_headline_and_action(reason):
     run = AgentRun(id="r", state="needs_you", state_reason=reason)
-    shown = run_attention.attention(None, run, "the detail") if reason not in run_attention.VERIFY_REASONS else None
+    shown = run_attention.attention(None, run, "the detail") \
+        if reason not in (*run_attention.VERIFY_REASONS, *run_attention.CI_REASONS) else None
     if shown is not None:
         assert shown == {"reason": reason, "headline": run_attention.ATTENTION[reason][0],
                          "action": run_attention.ATTENTION[reason][1], "detail": "the detail", "last_output": []}

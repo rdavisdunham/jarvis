@@ -237,3 +237,14 @@
 .run-stop-form p { margin: 0; }
 .run-stop-form textarea { width: 100%; box-sizing: border-box; }
 .run-stop-line { overflow-wrap: anywhere; }
+
+/* GitHub CI on the PR head (run_ci.py): the chip on run rows and in the drawer, the awaiting-CI / failed card. */
+.run-ci-chip { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px; font-size: 0.78rem; color: var(--ink-2); text-decoration: none; white-space: nowrap; }
+.run-ci-chip.tone-ok { color: var(--done); border-color: var(--done); }
+.run-ci-chip.tone-warn { color: var(--danger); border-color: var(--danger); }
+a.run-ci-chip:hover { text-decoration: underline; }
+.run-row-ci-link { justify-self: end; margin-top: -4px; font-size: 0.8rem; color: var(--ink-3); }
+.run-ci-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin: 0; color: var(--ink-3); font-size: 0.85rem; }
+.run-ci-card .run-ci-wait { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.run-ci-card.run-ci-failed { border-color: var(--danger); }
+.run-ci-jobs { margin: 0; padding-left: 18px; }
