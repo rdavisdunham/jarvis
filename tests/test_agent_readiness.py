@@ -45,6 +45,8 @@ def test_verify_timeout_reads_the_hosts_advert():
     assert control.verify_timeout(item, "lint") is None and control.verify_timeout(item, "huge") is None  # Malformed.
     assert control.verify_timeout({"verify": ["tests"]}, "tests") is None  # Plain ids: the host did not say.
     assert control.verify_timeout(None, "tests") is None
+    # remotea's wire name (launch-caps.ts verifyStatus): `timeout_s` on the status row.
+    assert control.verify_timeout({"verify_status": [{"id": "full", "ready": True, "timeout_s": 7200}]}, "full") == 7200
     assert control.target_verify_status(item)[0] == {"id": "tests", "ready": True, "timeout": 1800}
 
 

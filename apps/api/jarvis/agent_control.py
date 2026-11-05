@@ -15,7 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, not_, or_, select
 
-from . import agent_link, run_summaries
+from . import agent_link, run_attention, run_summaries
 from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
@@ -115,6 +115,9 @@ class ApproveInput(Input):
     # Required: approving completes the task, so it must be the state the approver reviewed (REVISION_CONFLICT if not).
     expected_revision: int = Field(ge=1)
     action_id: UUID | None = None  # agent_receipts.once
+    # Approving a run that is not awaiting approval overrides the completion policy (e.g. no passing verification);
+    # the approver's reason is recorded with the override (approve).
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class VerifyNowInput(Input):
@@ -227,17 +230,27 @@ VERIFY_TIMEOUT_MAX = 4 * 3600
 
 
 def verify_timeout(item, verify_id):
-    """The verify entry's timeout in seconds as the host advertised it for this target: `timeout` on the entry's
-    `verify_status` row, or on a `verify` list item sent as an object. None when the host did not say (remotea up
-    to PR #24 sends `verify` as plain ids and no timeout)."""
+    """The verify entry's timeout in seconds as the host advertised it for this target: `timeout_s` (remotea's wire
+    name) or `timeout` on the entry's `verify_status` row, or on a `verify` list item sent as an object. None when the
+    host did not say (remotea up to PR #24 sends `verify` as plain ids and no timeout)."""
+    return advertised_seconds(item, verify_id, ("timeout_s", "timeout"))
+
+
+def verify_notify_after(item, verify_id):
+    """The verify entry's soft threshold in seconds (`notify_after_s` or `notify_after`), when the host says it."""
+    return advertised_seconds(item, verify_id, ("notify_after_s", "notify_after"))
+
+
+def advertised_seconds(item, verify_id, names):
     if not isinstance(item, dict):
         return None
     for key in ("verify_status", "verify"):
         for v in item.get(key) or []:
             if isinstance(v, dict) and v.get("id") == verify_id:
-                value = v.get("timeout")
-                if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value <= VERIFY_TIMEOUT_MAX:
-                    return int(value)
+                for name in names:
+                    value = v.get(name)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value <= VERIFY_TIMEOUT_MAX:
+                        return int(value)
     return None
 
 
@@ -873,13 +886,32 @@ def approve(db, owner, run_id, body, *, actor):
     from . import agent_sync
     from .linear_sync import for_run
 
+    override = policy_override(db, run, body, actor)
     task = db.get(Task, run.task_id)
     with acting(Actor("human", credential_id=actor.credential_id, reason="approve")), for_run(run.id, "done") as outcome:
         execute(db, owner, f"run-approve:{run.id}", "task.complete", {"task_id": task.id, "expected_revision": task.revision})
     db.refresh(run)
+    if override:
+        # The run's journal says the human accepted the work without the policy's evidence, and why.
+        coordinator.note(run, "approve_override", **override)
+        completion = (run.sync_state or {}).get("completion") or {}
+        run.sync_state = {**(run.sync_state or {}), "completion": {**completion, "policy_override": override}}
     if outcome.get("status"):
         agent_sync.save(run, "done", outcome)
     return public_run(db, run)
+
+
+def policy_override(db, run, body, actor):
+    """What an approval overrides, or None: approving anything but awaiting_approval accepts the work without the
+    judge's met verdict under the completion policy (a required verify pass, a pull request)."""
+    if run.state == "awaiting_approval":
+        return None
+    fact = verification_fact(db, run) or {}
+    return {"state": run.state, "reason": run.state_reason, "note": (body.note or "").strip()[:2000],
+            "policy": run.completion_policy or "code_ready",
+            "verification": {"verify_id": fact.get("verify_id"), "status": fact.get("status"),
+                             "evidence": fact.get("evidence")} if fact else None,
+            "actor": actor.record()}
 
 
 def set_freestyle(db, owner, run_id, body, *, actor):
@@ -1227,6 +1259,9 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                              "retries")} or None,
         "base": base_info(db, run, host),
         "reason_detail": reason_detail(db, run),
+        # Why the run stopped for you, structured ({reason, headline, action, detail, last_output}; run_attention.py).
+        # Named apart from `attention` (the none/decision/paused/error kind) so existing readers keep working.
+        "attention_detail": None,
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
                    for k, v in ((run.sync_state or {}).get("linear") or {}).items() if isinstance(v, dict)},
@@ -1247,6 +1282,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # One plain-language line on what the agent is doing now (run_summaries.py); summary_stale: a newer one is due.
         **run_summaries.public(run),
     }
+    result["attention_detail"] = run_attention.attention(db, run, result["reason_detail"])
     if not run.plan_pending and (run.state_reason == "no_plan" or (run.sync_state or {}).get("coordination_failure")):
         result["summary"] = "Planning submission needs recovery; no questions or plan are awaiting your approval."
     from .agent_decisions import for_run

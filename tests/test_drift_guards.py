@@ -228,6 +228,21 @@ def test_every_needs_you_reason_has_text():
     assert used <= set(REASONS), sorted(used - set(REASONS))
 
 
+def test_every_needs_you_reason_has_a_headline():
+    """The run card and drawer lead with run_attention's headline and action; a reason without a row falls back to a
+    generic line. Covers every needs_you reason run_coordinator.py names and every stop reason in REASONS."""
+    from jarvis.run_attention import ATTENTION
+    from jarvis.run_coordinator import REASONS
+
+    source = (ROOT / "apps/api/jarvis/run_coordinator.py").read_text()
+    used = set(re.findall(r'transition\(db, run, "needs_you",[^)\n]*?reason="([a-z_]+)"', source))
+    assert used, "run_coordinator.py parser"
+    assert used <= set(ATTENTION), sorted(used - set(ATTENTION))
+    stops = list(REASONS)[:list(REASONS).index("start")]  # REASONS lists the stop reasons before the working states.
+    assert set(stops) - {"judge_met", "awaiting_integration", "integrated", "merged"} <= set(ATTENTION), \
+        sorted(set(stops) - set(ATTENTION))
+
+
 def test_every_control_tool_is_gated_on_remotea():
     """tools.py adds every control.* command to VOICE_MUTATIONS; tool_policy.CONTROL_TOOLS is what is dropped
     while remotea is off. A new control command missing from CONTROL_TOOLS would reach Dani with remotea off."""

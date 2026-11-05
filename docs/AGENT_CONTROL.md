@@ -237,14 +237,22 @@ A run starts only in a target the host lists in `~/.config/remotea/eridani.json`
   disposable `JARVIS_DATABASE_URL` pointing at a local test Postgres, and runs `uv sync --locked --group
   dev` first: managed worktrees get no dependency provisioning, and the suite must never touch the real
   database.
-- **A timeout that covers the suite.** The entry's `timeout` in seconds (`--verify-timeout`); the API
-  suite takes 470–670 s, so 600 is too tight (the reliability PRD asks for 1800). Eridani's own deadline for
-  a verify attempt (`run_coordinator.verify_deadline`, stored on the attempt as `deadline_at`, which the sweep
-  reads) is the entry's timeout **as the host advertises it** plus 120 s of grace, never less than 11 minutes
-  (`VERIFY_DEADLINE`); the attempt keeps the advertised value as `timeout_s`. A host advertises it as `timeout` on
-  the entry's `verify_status` row or on a `verify` item sent as an object `{id, timeout}`. remotea up to PR #24
-  sends `verify` as plain ids and no timeout, so until it does the deadline stays 11 minutes: an attempt still
-  running then is `timed_out` (a non-pass) and a later result is discarded as `late`.
+- **A timeout that covers the suite: the hard ceiling.** The entry's `timeout` in seconds (`--verify-timeout`).
+  Use **7200** (2 h) for jarvis: the full suite has run past 30 minutes on a loaded desktop (run ad1a1c02 was
+  killed at 1800 s at 94% with no failures), and a slow run now announces itself (below) instead of failing.
+  Eridani's own deadline for a verify attempt (`run_coordinator.verify_deadline`, stored on the attempt as
+  `deadline_at`, which the sweep reads) is the entry's timeout **as the host advertises it** plus 120 s of grace,
+  never less than 11 minutes (`VERIFY_DEADLINE`); the attempt keeps the advertised value as `timeout_s`. A host
+  advertises it as `timeout_s` (remotea's wire name) or `timeout` on the entry's `verify_status` row, or on a
+  `verify` item sent as an object `{id, timeout}`; values above 4 h are ignored. A host that does not advertise it
+  (remotea up to PR #24) keeps the 11-minute deadline: an attempt still running then is `timed_out` (a non-pass)
+  and a later result is discarded as `late`.
+- **A soft threshold (optional).** A verification still running after **1800 s** sends the owner one notice per
+  attempt ("Verification has been running for 30 min; it will stop at 2 h", category `agent_verify_slow`, opens the
+  run) and keeps running up to the ceiling (`run_coordinator.verify_slow_notices`, from the sweep). Per entry: an
+  advertised `notify_after_s` on the `verify_status` row (or `notify_after` on an object `verify` item); otherwise
+  the server setting `JARVIS_AGENT_VERIFY_NOTIFY_AFTER_SECONDS` (`agent_verify_notify_after_seconds`, default
+  1800). No notice when the ceiling is at or under the threshold.
 
 Targets are re-read on every use, so editing `eridani.json` needs no restart; the next connect's hello
 carries the change. Where bubblewrap works, remotea runs the command sandboxed (remotea PR #24); each result says
@@ -291,7 +299,7 @@ are; match the node path to the installed nvm version):
 "verify": [{
   "id": "full",
   "argv": ["./scripts/verify.sh"],
-  "timeout": 1800,
+  "timeout": 7200,
   "network": "loopback",
   "ports": [55432],
   "env": {
@@ -722,7 +730,11 @@ replanning` and `capped` (see "Planning and the loop" below). Rules:
   (`WALL_CLOCK_GRANT`, more if the run was further past its deadline) and to the token's expiry, recorded on the
   timeline as `{event: "wall_clock_extended", seconds}`, so it does not bounce straight back.
 - **Approve** completes the task as a human (`task.complete`); the run moves to `stopping` with
-  `stop_final: completed` and becomes `completed` once the agent is gone.
+  `stop_final: completed` and becomes `completed` once the agent is gone. From any state but `awaiting_approval`
+  (typically `needs_you`, e.g. `verify_infra` after a verification timed out) it overrides the completion policy:
+  the body's optional `note` and the state, reason, policy and latest verification are recorded on the timeline as
+  `{event: "approve_override", …}` and on `sync_state.completion.policy_override` (`agent_control.policy_override`).
+  The drawer asks first ("Verification has no passing run; approve anyway?") with a field for that note.
 
 ### Starting a run
 
@@ -954,6 +966,17 @@ a lost response (`NETWORK`, up to two retries); other errors are not retried.
 The page shows runs grouped by the next human action (below), **Unmerged work**, and a run drawer with the
 timeline, the questions card, the review packet and Message / Steer / Stop (**Stopping…**, then **Force stop**) /
 Approve.
+
+**Why it stopped (`attention_detail`).** A run in `needs_you` or `capped` carries `attention_detail: {reason,
+headline, action, detail, last_output}` on its read model (`run_attention.py`; null otherwise; the older `attention`
+string is unchanged). Every stop reason has a plain headline and action (`run_attention.ATTENTION`, guarded by
+`test_every_needs_you_reason_has_a_headline`); `verify_infra` is worded per category, e.g. "Verification timed out
+after 30 min at 94% of the suite, no failures." / "Raise the verify timeout or verify again.", and verification
+reasons add the last five output lines (each cut to 200 characters). The run list row shows the headline under
+the title; the drawer opens with a **Needs you** card (`RunStopCard`: headline, action, the output lines, the
+detail when it adds something) with **Approve** (a confirm step with a note when there is no passing verification),
+**Verify again** (`/judge`: verify, then judge) and **Send back to the agent** (a note, sent as a queued message,
+which resumes the run). Plan stops keep their own cards.
 
 **Attention-first grouping (E-Q5).** The topbar Runs panel and the remotea page list group runs with
 `remotea-model.ts` `attentionGroups(runs, pending, hosts, unmerged)` (pure; `attentionKey` decides one run), in this

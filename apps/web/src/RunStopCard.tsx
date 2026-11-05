@@ -1,0 +1,46 @@
+import { useState } from "react";
+import { Check } from "lucide-react";
+import { stopCard, type RunDetail } from "./remotea-model";
+
+/** What a parked run needs from you, first thing in the drawer: the headline and action from the run's
+ * attention_detail, the last lines of output, and the three ways on (stopCard). Approve asks first, with a note
+ * recorded on the override; Send back takes the note the agent gets. */
+export function RunStopCard({ run, disabled, onApprove, onVerifyAgain, onSendBack }: {
+  run: RunDetail; disabled: boolean; onApprove: (note: string) => void; onVerifyAgain: () => void; onSendBack: (note: string) => void;
+}) {
+  const [mode, setMode] = useState<"" | "approve" | "send">(""), [note, setNote] = useState("");
+  const card = stopCard(run);
+  if (!card) return null;
+  const close = () => { setMode(""); setNote(""); };
+  return <section className="remotea-question run-decision run-stop-card" aria-label="Needs you">
+    <p className="remotea-card-kicker">Needs you</p>
+    <p className="run-stop-headline"><strong>{card.headline}</strong></p>
+    <p className="run-stop-action">{card.action}</p>
+    {!!card.lines.length && <pre className="run-stop-output" aria-label="Last output">{card.lines.join("\n")}</pre>}
+    {card.detail && <p className="footnote run-stop-detail">{card.detail}</p>}
+    {!mode && <div className="remotea-control-row">
+      <button className="btn btn-sm btn-primary" disabled={disabled || !card.approve.enabled}
+        title="Accept the work as complete, without the recorded evidence" onClick={() => setMode("approve")}><Check size={14}/>Approve</button>
+      <button className="btn btn-sm" disabled={disabled || !card.verifyAgain.enabled} title={card.verifyAgain.reason || "Run the verification again, then judge"}
+        onClick={onVerifyAgain}>{card.verifyAgain.label}</button>
+      <button className="btn btn-sm" disabled={disabled || !card.sendBack.enabled} title={card.sendBack.reason || "Send the agent a note; the run resumes"}
+        onClick={() => setMode("send")}>Send back to the agent</button>
+    </div>}
+    {mode === "approve" && <div className="run-stop-form" role="group" aria-label="Approve anyway">
+      <p>{card.approve.confirm}</p>
+      <textarea aria-label="Why you approve" rows={2} placeholder="Why (optional; recorded with the approval)" value={note}
+        onChange={e => setNote(e.target.value)}/>
+      <div className="remotea-control-row">
+        <button className="btn btn-sm btn-primary" disabled={disabled} onClick={() => { onApprove(note.trim()); close(); }}><Check size={14}/>Approve anyway</button>
+        <button className="btn btn-sm btn-ghost" onClick={close}>Cancel</button>
+      </div>
+    </div>}
+    {mode === "send" && <div className="run-stop-form" role="group" aria-label="Send back to the agent">
+      <textarea aria-label="Note for the agent" rows={3} placeholder="What the agent should do next" value={note} onChange={e => setNote(e.target.value)}/>
+      <div className="remotea-control-row">
+        <button className="btn btn-sm btn-primary" disabled={disabled || !note.trim()} onClick={() => { onSendBack(note.trim()); close(); }}>Send back</button>
+        <button className="btn btn-sm btn-ghost" onClick={close}>Cancel</button>
+      </div>
+    </div>}
+  </section>;
+}

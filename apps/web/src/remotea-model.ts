@@ -169,6 +169,9 @@ export type Run = {
   freestyle?: boolean;
   /** The full text behind the current state (the judge's notes, the proposal summary); reason_text is the one-liner. */
   reason_detail?: string;
+  /** Why the run stopped for you, structured (run_attention.py): what happened, what to do, the last output lines.
+   * Present on needs_you and capped runs; null otherwise (older Eridani: absent). */
+  attention_detail?: AttentionDetail | null;
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */
   base?: RunBase | null;
@@ -201,6 +204,7 @@ export type PlanReviewRow = RoleSpec & {
 /** The run's latest verification as a decision fact (agent_control.verification_fact). `evidence`: `fresh` (this
  * turn, an unchanged workspace), `stale` (an older turn, or the checkout changed around it), `incomplete` (remotea's
  * fingerprint missed part of the workspace), `pending` (still running). */
+export type AttentionDetail = { reason: string; headline: string; action: string; detail: string; last_output: string[] };
 export type VerificationFact = {
   verify_id: string; status: string; at: string; evidence: "fresh" | "stale" | "incomplete" | "pending"; turn_seq?: number;
   isolated?: boolean | null; isolation_reason?: string | null; workspace_complete?: boolean | null; workspace_reasons?: string[];
@@ -299,7 +303,9 @@ export type HistoryEntry = { at: string; from?: string; to?: string; reason?: st
   kind?: string; state?: string; actor?: { kind: string; reason?: string }; text?: string;
   plan_revision?: number; proposals?: string; accepted?: string[]; kept?: string[];
   /** Hyperplan events: `review_blocked` (round), `handoff` (the worker's harness and model). */
-  round?: number; harness?: string; model?: string };
+  round?: number; harness?: string; model?: string;
+  /** `approve_override`: the approver's note (the reason they accepted the work without the policy's evidence). */
+  note?: string };
 export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
   multi: boolean; free_text: boolean };
 export type Interview = { id: string; run_id: string; generation: number; questions: InterviewQuestion[];
@@ -451,6 +457,42 @@ export function runControls(run: Run) {
     replan: { enabled: !terminal && started && ["executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"].includes(run.state),
       reason: !started ? "The agent has not started yet." : "Re-plan works while the run is working, waiting for you or awaiting approval." },
     offline,
+  };
+}
+
+// The stop reasons an approval can override, in words for the timeline (the run's own text is reason_text).
+const REASON_WORDS: Record<string, string> = { verify_infra: "verification could not run", verify_missing: "no verify command",
+  verify_incomplete: "incomplete verification", turn_cap: "turn cap", wall_clock: "wall clock", judge_needs_you: "the judge asked for you",
+  judge_unavailable: "no verdict", no_progress_gap: "the same gap repeated", pr_unknown: "pull request unknown" };
+
+/** The run row's line for a stopped run: the headline and the action (run_attention), else the one-line reason. */
+export function stopLine(run: Pick<Run, "attention_detail" | "reason_text">) {
+  const a = run.attention_detail;
+  return a ? `${a.headline} ${a.action}` : run.reason_text;
+}
+
+/** The drawer's "Needs you" card for a run parked in needs_you (plan stops and planning recovery keep their own
+ * cards): the headline, the action and the last output lines, with Approve (always offered: approving here overrides
+ * the completion policy, so it asks first), Verify again (/judge: verify, then judge) and Send back to the agent (a
+ * queued message, which resumes the run). Null when there is nothing to show. */
+export function stopCard(run: RunDetail) {
+  const a = run.attention_detail;
+  if (!a || run.state !== "needs_you" || PLAN_STOPS.includes(run.state_reason) || run.state_reason === "no_plan") return null;
+  const terminal = run.controller === "terminal";
+  const hasVerify = !!run.plan?.verify;
+  const passing = run.verification?.status === "passed" && run.verification.evidence === "fresh";
+  const judgeable = !run.freestyle && !!run.turn_seq && !!run.plan?.criteria.length;
+  const message = runControls(run).message;
+  return {
+    headline: a.headline, action: a.action, lines: a.last_output ?? [],
+    detail: a.detail && a.detail !== a.action && !a.headline.includes(a.detail) ? a.detail : "",
+    approve: { enabled: !terminal,
+      confirm: hasVerify && !passing ? "Verification has no passing run; approve anyway?"
+        : "The judge has not found the criteria met; approve anyway?" },
+    verifyAgain: { enabled: !terminal && judgeable, label: hasVerify ? "Verify again" : "Judge again",
+      reason: terminal ? "Terminal has control." : run.freestyle ? "Freestyle is on, so the judge is off."
+        : !run.turn_seq ? "The agent has not finished a turn yet." : !run.plan?.criteria.length ? "The plan has no success criteria." : "" },
+    sendBack: { enabled: message.enabled, reason: message.reason },
   };
 }
 
@@ -956,6 +998,11 @@ export function timeline(run: RunDetail): TimelineEntry[] {
       if (!blocked.has(key)) entries.push({ id, at: h.at, kind: "state", tone: "warn", who: "eridani", detail: h.detail ?? "",
         title: (h.event === "review_blocked" ? `Review ${h.round ?? ""} waiting` : "Handoff waiting") + ": the host is at its run limit; retrying" });
       blocked.add(key);
+      continue;
+    }
+    if (h.event === "approve_override") {
+      entries.push({ id, at: h.at, kind: "state", title: "Approved by you without the completion policy's evidence",
+        detail: [h.reason ? (REASON_WORDS[h.reason] ?? h.reason) : "", h.note ?? ""].filter(Boolean).join(" · "), tone: "attention", who: "you" });
       continue;
     }
     if (h.event === "plan_reviewed") {
