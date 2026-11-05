@@ -51,8 +51,9 @@ def normalize(db, owner, task, changes):
                 if linked.id == task.id:
                     raise DomainError("INVALID_ARGUMENT", "A step cannot link to its own task.")
             old = previous.get(step["id"])
-            core = {k: step.get(k) for k in ("title", "status", "note", "task_id")}
-            if old and all(old.get(k) == v for k, v in core.items()):
+            core = {k: step.get(k) for k in ("title", "status", "note", "phase", "task_id")}
+            # Steps saved before phases existed have no key: treat it as "" so they are not restamped.
+            if old and all(((old.get(k) or "") if k == "phase" else old.get(k)) == v for k, v in core.items()):
                 steps.append(old)
             else:
                 steps.append({**core, "id": step["id"], "by": actor(), "updated_at": now().isoformat(),

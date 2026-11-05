@@ -40,6 +40,8 @@ async function refresh() {
     await expect.poll(() => view.getAttribute("data-state-revision").then(value => Number(value))).toBeGreaterThanOrEqual(current.state_revision);
   }
 }
+/** Opens a Plan / Run / Verify section of the drawer when it is collapsed. */
+async function openStage(name) { const toggle = view.locator(`.run-stage-${name.toLowerCase()} .run-stage-toggle`); if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click(); }
 async function showChat() { const show = view.getByRole("button", { name: "Show chat", exact: true }); if (await show.isVisible()) await show.click(); await expect(composer()).toBeVisible(); }
 async function resumeAutomation(run) {
   await event(run, "consume"); await refresh();
@@ -156,14 +158,19 @@ try {
   await resumeAutomation(run);
   if ((await readRun(run)).state === "handing_off") await event(run, "attach");
   await refresh();
+  await expect(view.locator(".run-stage-run .run-stage-toggle")).toHaveAttribute("aria-expanded", "true");
+  await openStage("Plan");
   await expect(plan).toContainText("Latest plan");
   mark("plan_retained_after_followup_reload_and_explicit_paused_approval");
 
   await expect(composer()).toHaveCount(0);
   await expect(view.getByRole("button", { name: "Show chat", exact: true })).toBeVisible();
   await event(run, "step", { index: 0, status: "doing", note: "Inspect the measured bottleneck" }); await refresh();
-  await expect(plan.getByLabel("Plan progress")).toContainText("Working on");
-  await expect(plan.getByLabel("Plan progress")).toContainText("Inspect the measured bottleneck");
+  const activeStep = view.locator('.run-stage-run .run-step[aria-current="step"]');
+  await expect(activeStep).toContainText("Measure widget latency");
+  await expect(activeStep).toContainText("Inspect the measured bottleneck");
+  await expect(view.locator(".run-stage-run .run-stage-toggle")).toContainText("0 of 2 steps done, working on step 1a");
+  await expect(view.locator(".run-stage-run .run-phase-name")).toHaveText(["Measure", "Fix"]);
   await page.screenshot({ path: resolve(artifacts, "desktop-compact-plan.png"), fullPage: true });
   await event(run, "output", { message_id: "published-commentary", kind: "commentary", text: "I found the widget bottleneck.", sequence: 1, turn_id: "visible-turn", complete: false }); await refresh();
   await expect(composer()).toHaveCount(0);
@@ -192,6 +199,7 @@ try {
   await event(run, "state", { state: "awaiting_approval" }); await refresh();
   await expect(view.locator(".run-drawer-status")).toContainText("Ready for review");
   await expect(view.getByRole("region", { name: "Final acceptance", exact: true })).toBeVisible();
+  await expect(view.locator(".run-stage-verify .run-stage-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(composer()).toHaveCount(0);
   mark("compact_plan_live_published_chat_and_single_status");
   await showChat();
@@ -320,6 +328,7 @@ try {
   await expect.poll(async () => (await readRun(acceptance.id)).state).toBe("stopping");
   await event(acceptance.id, "finish"); await refresh();
   await expect(view.locator(".run-drawer-status")).toContainText("Complete");
+  await openStage("Plan");
   await expect(view.getByRole("region", { name: "Final plan approval", exact: true })).toContainText("Latest plan");
   expect((await api(`/tasks/${acceptanceTask.id}`)).status).toBe("completed");
   mark("final_acceptance_and_confirmed_complete");

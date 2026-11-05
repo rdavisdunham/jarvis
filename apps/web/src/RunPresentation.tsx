@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { durableStorageKey } from "./api";
-import { ago, isSettled, modelLabel, timeline, workflowAttention, workflowStage, type RunDetail, type TimelineEntry } from "./remotea-model";
+import { modelLabel, timeline, workflowAttention, workflowStage, type RunDetail, type TimelineEntry } from "./remotea-model";
+import type { SectionsView } from "./run-stages";
 
-type LocalView = { chat: boolean | null; resumeRevision: number | null };
-const initialView: LocalView = { chat: null, resumeRevision: null };
+/** `sections`: the Plan / Run / Verify sections opened or closed by hand, valid only for the stage they were set in. */
+type LocalView = { chat: boolean | null; resumeRevision: number | null; sections: SectionsView };
+const initialView: LocalView = { chat: null, resumeRevision: null, sections: null };
 function readView(id: string): LocalView {
   try { return { ...initialView, ...JSON.parse(localStorage.getItem(durableStorageKey("eri-run-view:" + id) ?? "") ?? "{}") }; }
   catch { return initialView; }
@@ -42,15 +44,4 @@ export function conversationEntries(run: RunDetail): TimelineEntry[] {
       ...(message.truncated ? { facts: [{ key: "published-excerpt", label: "Published excerpt · truncated", tone: "plain" }] } : {}) });
   }
   return entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
-}
-export function PlanProgress({ run }: { run: RunDetail }) {
-  const steps = run.plan?.steps ?? [], doing = steps.filter(step => step.status === "doing");
-  const next = steps.find(step => !["done", "skipped"].includes(step.status));
-  const shown = doing.length ? doing : next ? [next] : [];
-  return <div className="run-plan-progress" aria-label="Plan progress">
-    <p className="remotea-card-kicker">{doing.length ? isSettled(run) ? "Last reported step" : "Working on" : next ? "Next step" : steps.length ? "Steps complete" : "No steps reported"}</p>
-    {shown.map(step => <div key={step.id}><strong>{step.title}</strong>{step.note && <p>{step.note}</p>}
-      {step.updated_at && <small>Reported {ago(step.updated_at)}</small>}</div>)}
-    <small>{steps.filter(step => step.status === "done").length}/{steps.length} steps done</small>
-  </div>;
 }

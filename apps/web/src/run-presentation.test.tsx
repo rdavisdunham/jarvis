@@ -18,7 +18,7 @@ const fixture = (over: Partial<RunDetail> = {}): RunDetail => ({ id: "presentati
   execution_mode: "managed", direct_supported: true, structured_answers: true, session: null, created_at: "2026-11-03T10:00:00Z", history: [], turns: [], commands: [], questions: [],
   automation: { held: false, revision: 0, held_at: null, reason: null, releasing: false },
   plan: { revision: 1, title: "Widget plan", approval_status: "approved", prd_text: "Full detailed plan", criteria: [], steps: [
-    { id: "one", title: "Investigate widgets", status: "done" }, { id: "two", title: "Implement focused fix", status: "todo", note: "Preserve current behavior" }] }, ...over });
+    { id: "one", title: "Investigate widgets", status: "done", phase: "Investigate" }, { id: "two", title: "Implement focused fix", status: "todo", note: "Preserve current behavior", phase: "Fix" }] }, ...over });
 const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === label)!;
 const composer = () => host.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message the agent"]');
 async function mount() { await act(async () => { root.render(<RunDrawer id={current.id} preloaded={current} onClose={() => {}}/>); }); }
@@ -42,11 +42,17 @@ beforeEach(() => {
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
 describe("drawer view and automation boundaries", () => {
-  it("defaults approved work to one compact truthful plan; Show/Hide chat sends no control", async () => {
-    await mount(); expect(composer()).toBeNull(); expect(host.querySelectorAll(".remotea-plan-approval")).toHaveLength(1);
-    expect(host.textContent).toContain("Next step"); expect(host.textContent).not.toContain("Working on");
-    expect(host.textContent).toContain("1/2 steps done");
-    act(() => button("Show chat").click()); expect(composer()).not.toBeNull();
+  it("defaults approved work to the Run section with a truthful stepper; Show/Hide chat sends no control", async () => {
+    await mount(); expect(composer()).toBeNull(); expect(host.querySelectorAll(".run-stage")).toHaveLength(3);
+    const toggle = (name: string) => host.querySelector(`.run-stage-${name} .run-stage-toggle`)!;
+    expect([toggle("plan"), toggle("run"), toggle("verify")].map(t => t.getAttribute("aria-expanded"))).toEqual(["false", "true", "false"]);
+    expect(host.querySelector(".run-step.is-next")?.textContent).toContain("Implement focused fix");
+    expect(host.querySelector('.run-step[aria-current="step"]')).toBeNull();
+    expect([...host.querySelectorAll(".run-step-label")].map(l => l.textContent)).toEqual(["1a", "2a"]);
+    expect(toggle("run").textContent).toContain("1 of 2 steps done, next is step 2a");
+    expect(host.querySelector(".run-ring")?.getAttribute("aria-label")).toBe("50% of steps done");
+    act(() => button("Show chat").click()); expect(composer()).not.toBeNull(); expect(host.querySelectorAll(".run-stage")).toHaveLength(0);
+    expect(host.querySelector(".run-stage-track")).not.toBeNull();
     act(() => button("Hide chat").click()); expect(composer()).toBeNull(); expect(posts).toEqual([]);
   });
   it("sends Approved literally in direct mode and holds automation without pausing the worker", async () => {

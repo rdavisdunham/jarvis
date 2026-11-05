@@ -4,6 +4,8 @@ The `CI` workflow runs on pull requests to `main`, pushes to `main`, and manual
 runs. It must be pushed with the configurable planner implementation, including
 `scripts/validate_custom_planner.py` and its browser fixture. The workflow is active on GitHub. Current results are in the [Actions tab](https://github.com/rdavisdunham/jarvis/actions/workflows/ci.yml).
 
+For agent runs, a green result on the pull request is the final verification: see [how an agent run is verified](RUN_VERIFICATION.md).
+
 Three independent Linux jobs:
 
 - **Backend and migrations:** install the locked Python environment; check

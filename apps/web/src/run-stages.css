@@ -1,0 +1,170 @@
+/* The run drawer's sectioned body (RunStages.tsx): progress header, Plan / Run / Verify sections, the phased stepper
+   and the success criteria. Tokens only (theme.css); sentence case; the orbit appears only in the progress ring. */
+
+/* ---- Header: ring, status line, stage track ---------------------------------------------- */
+.run-stage-head { display: flex; align-items: center; gap: 12px; min-width: 0; padding-top: 4px; }
+.run-stage-head-text { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.run-ring { position: relative; flex: none; width: 44px; height: 44px; }
+.run-ring svg { display: block; overflow: visible; }
+.run-ring-track { stroke: var(--line); }
+.run-ring-value {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; line-height: 1; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.run-ring-value small { margin-left: 1px; font-size: 9px; font-weight: 500; color: var(--ink-3); }
+.run-stage-track {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; list-style: none;
+  font-size: 12px; line-height: 16px; font-weight: 500; color: var(--ink-3);
+}
+.run-stage-track li { display: inline-flex; align-items: center; gap: 5px; }
+.run-stage-track li + li::before { content: ""; width: 14px; height: 1px; margin-right: 1px; background: var(--line-strong); }
+.run-stage-track li.is-done + li::before { background: var(--done); }
+.run-stage-dot {
+  display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--surface); box-sizing: border-box;
+}
+.run-stage-track .is-done { color: var(--ink-2); }
+.run-stage-track .is-done .run-stage-dot { border-color: var(--done); background: var(--done); }
+.run-stage-track .is-current { color: var(--violet); font-weight: 600; }
+.run-stage-track .is-current .run-stage-dot { border-color: var(--violet); box-shadow: inset 0 0 0 2.5px var(--surface); background: var(--violet); }
+
+/* ---- Sections ---------------------------------------------------------------------------- */
+.run-stages { display: grid; gap: 8px; min-width: 0; }
+.run-stage { min-width: 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.run-stage.is-open { border-color: var(--line-strong); }
+.run-stage-title { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; }
+.run-stage-toggle {
+  width: 100%; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px;
+  border: 0; border-radius: var(--r-md); background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.run-stage-toggle:hover { background: var(--sunken); }
+.run-stage.is-open > .run-stage-title .run-stage-toggle { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.run-stage-chevron { flex: none; color: var(--ink-3); transition: transform 0.12s ease; }
+.run-stage.is-open .run-stage-chevron { transform: rotate(90deg); }
+.run-stage-name { flex: none; font-weight: 600; }
+.run-stage-flag {
+  flex: none; padding: 0 8px; border-radius: var(--r-pill); background: var(--violet-soft); color: var(--violet);
+  font-size: 12px; line-height: 20px; font-weight: 600;
+}
+.run-stage-summary {
+  flex: 1; min-width: 0; text-align: right; font-size: 13px; line-height: 18px; font-weight: 450; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums;
+}
+.run-stage-body { display: grid; gap: 12px; min-width: 0; padding: 12px; border-top: 1px solid var(--line); }
+.run-stage-body > * { min-width: 0; }
+.run-stage-body .run-drawer-decisions { display: grid; gap: 10px; }
+/* The plan for reference (not awaiting a decision) reads as content, not as a request card. */
+.run-stage .remotea-plan-approval.is-reference { padding: 0; border: 0; background: none; }
+.run-stage .remotea-plan-approval.is-reference > .remotea-card-kicker {
+  text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink-2);
+}
+
+/* ---- Stepper ----------------------------------------------------------------------------- */
+.run-steps, .run-phase-steps,
+.remotea-plan-approval .run-steps, .remotea-plan-approval .run-phase-steps { margin: 0; padding: 0; list-style: none; font-size: inherit; }
+.run-steps { display: grid; gap: 2px; }
+.run-phase { display: grid; }
+.run-phase-title {
+  position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
+  min-height: 32px; margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--ink);
+}
+.run-phase-index {
+  position: relative; z-index: 1; display: grid; place-items: center; width: 20px; height: 20px; border-radius: var(--r-sm);
+  background: var(--sunken); color: var(--ink-2); font-size: 11px; font-weight: 600;
+}
+.run-phase.is-current .run-phase-index { background: var(--violet-soft); color: var(--violet); }
+.run-phase.is-done .run-phase-index { background: var(--done-soft); color: var(--done); }
+.run-phase.is-done .run-phase-name { color: var(--ink-2); }
+.run-phase-count { color: var(--ink-3); font-size: 12px; font-weight: 500; }
+
+.run-step {
+  position: relative; display: grid; grid-template-columns: 20px auto minmax(0, 1fr) auto; align-items: start; column-gap: 10px;
+  min-height: 36px; padding: 8px 0 6px; font-size: 14px; line-height: 20px;
+}
+/* The rail: a segment above and below each marker, filled once the work behind it is settled. */
+.run-step::before, .run-step::after, .run-phase-title::before, .run-phase-title::after {
+  content: ""; position: absolute; left: 9px; width: 2px; background: var(--line);
+}
+.run-step::before { top: 0; height: 18px; }
+.run-step::after { top: 18px; bottom: 0; }
+.run-phase-title::before { top: 0; height: 50%; }
+.run-phase-title::after { top: 50%; bottom: 0; }
+.run-steps:not(.is-flat) > .run-phase:first-child > .run-phase-title::before,
+.run-steps.is-flat .run-step:first-child::before,
+.run-phase:last-child .run-step:last-child::after { display: none; }
+.run-step[data-prev-done]::before, .run-step.status-done::after, .run-step.status-skipped::after,
+.run-phase.is-done + .run-phase > .run-phase-title::before,
+.run-phase-title:has(+ .run-phase-steps > .run-step:first-child:is(.status-done, .status-skipped))::after { background: var(--done); }
+
+.run-step-marker {
+  position: relative; z-index: 1; display: grid; place-items: center; width: 20px; height: 20px; box-sizing: border-box;
+  border: 1.5px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--ink-3);
+  font-size: 13px; font-weight: 600; line-height: 1;
+}
+.status-done > .run-step-marker { border-color: var(--done); background: var(--done); color: var(--surface); }
+.status-doing > .run-step-marker { border-color: var(--violet); }
+.status-doing > .run-step-marker::after {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--violet);
+  animation: run-step-pulse 2.4s ease-in-out infinite;
+}
+.status-skipped > .run-step-marker { border-style: dashed; }
+.status-disputed > .run-step-marker { border-color: var(--danger); color: var(--danger); }
+.run-step.is-next > .run-step-marker { border-color: var(--violet); }
+@keyframes run-step-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--violet-soft); }
+  50% { box-shadow: 0 0 0 5px var(--violet-soft); }
+}
+
+.run-step-label { min-width: 2.4ch; color: var(--ink-3); font-size: 12px; line-height: 20px; font-weight: 600; }
+.run-step-title { min-width: 0; color: var(--ink); overflow-wrap: anywhere; }
+.status-done > .run-step-title, .status-skipped > .run-step-title {
+  color: var(--ink-3); text-decoration: line-through; text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--ink-3) 55%, transparent);
+}
+.status-disputed > .run-step-title { color: var(--danger); }
+.run-step.is-active > .run-step-title { font-weight: 600; }
+.run-step.is-active > .run-step-label, .run-step.is-next > .run-step-label { color: var(--violet); }
+.run-step-chip {
+  align-self: center; padding: 0 8px; border-radius: var(--r-pill); background: var(--violet-soft); color: var(--violet);
+  font-size: 12px; line-height: 20px; font-weight: 600; white-space: nowrap;
+}
+.run-step-chip.is-next { background: var(--sunken); color: var(--ink-2); }
+.run-step-note, .run-step-when { grid-column: 3 / -1; }
+.run-step-note {
+  margin: 4px 0 0; padding: 6px 10px; border-radius: var(--r-sm); background: var(--sunken);
+  color: var(--ink-2); font-size: 13px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.run-step-when { margin-top: 2px; color: var(--ink-3); font-size: 12px; line-height: 16px; }
+.run-steps.is-compact .run-step { min-height: 0; padding: 4px 0; font-size: 13px; line-height: 18px; }
+.run-steps.is-compact .run-step::before { height: 13px; }
+.run-steps.is-compact .run-step::after { top: 13px; }
+.run-steps.is-compact .run-step-marker { width: 18px; height: 18px; margin-left: 1px; }
+
+/* ---- Verify ------------------------------------------------------------------------------ */
+.run-verify { display: grid; gap: 10px; min-width: 0; }
+.run-outcome { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 15px; }
+.run-outcome small, .run-criteria-count small, .run-verify-last small { color: var(--ink-3); font-size: 12px; font-weight: 450; }
+.run-outcome-note { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 18px; }
+.run-outcome-note.kind-verified { color: var(--done); }
+.run-criteria-count { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 14px; }
+.run-criteria { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.run-criterion { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; align-items: start; font-size: 14px; line-height: 20px; }
+.run-criterion-marker {
+  display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; box-sizing: border-box;
+  border: 1.5px solid var(--line-strong); border-radius: 50%; color: var(--ink-3); font-size: 11px; font-weight: 700; line-height: 1;
+}
+.criterion-met .run-criterion-marker { border-color: var(--done); background: var(--done); color: var(--surface); }
+.criterion-not_met .run-criterion-marker { border-color: var(--danger); color: var(--danger); }
+.criterion-unclear .run-criterion-marker { border-color: var(--due-today); color: var(--due-today); }
+.criterion-pending .run-criterion-marker { border-style: dashed; }
+.run-criterion-text { min-width: 0; overflow-wrap: anywhere; }
+.run-criterion-text small { display: block; color: var(--ink-3); font-size: 12px; line-height: 16px; }
+.run-criterion p { grid-column: 2; margin: 2px 0 0; color: var(--ink-3); font-size: 13px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-verify-line, .run-verify-last { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.run-judge { display: grid; gap: 4px; padding: 8px 10px; border-radius: var(--r-md); background: var(--sunken); font-size: 13px; line-height: 18px; }
+.run-judge p { margin: 0; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (prefers-reduced-motion: reduce) {
+  .status-doing > .run-step-marker::after { animation: none; }
+  .run-stage-chevron { transition: none; }
+}

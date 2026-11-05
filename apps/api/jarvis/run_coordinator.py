@@ -2459,7 +2459,8 @@ def render_plan(db, run, plan, token=None):
         data.append("Steps:")
         marks = {"done": "x", "skipped": "-", "doing": "~", "disputed": "!"}
         for step in (task.steps if task else plan.steps):
-            data.append(f"- [{marks.get(step.get('status'), ' ')}] {step['id']}: {step['title']} (revision {step.get('revision', 0)})")
+            phase = f"[{step['phase']}] " if step.get("phase") else ""
+            data.append(f"- [{marks.get(step.get('status'), ' ')}] {phase}{step['id']}: {step['title']} (revision {step.get('revision', 0)})")
     if plan.criteria:
         data.append("Success criteria:")
         data += [f"- {c['id']}: {c['text']}" for c in plan.criteria]
