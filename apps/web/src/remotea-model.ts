@@ -1139,21 +1139,47 @@ export type SavedTarget = { id: string; host_id: string; host_target: string; na
 /** A target a host listed in hello. `harnesses` is what the target can start; null when the host did not say (older
  * remotea: its host-wide flags decide). `verify` is its verify ids (absent from older Eridani). */
 export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string;
-  harnesses?: string[] | null; verify?: string[] } & TargetFacts;
+  harnesses?: string[] | null; verify?: string[];
+  /** Whether the advertising host holds its lease now, and when it last said hello (absent from older Eridani). */
+  host_connected?: boolean; hello_at?: string | null } & TargetFacts;
 export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertised: AdvertisedTarget[];
   records: { id: string; title: string; type_id?: string }[] };
 export type UnmergedWork = { host_id: string; host_name: string; target: string | null; path: string | null; branch: string | null;
   base: string | null; ahead: number | null; behind: number | null; unpushed: number | null; uncommitted: number | null;
   untracked: number | null; merged: boolean | null; active: boolean | null; reasons: string[] | null };
 
-/** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. */
+/** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. A target
+ * saved for several records (one row per "Remember for") is offered once, preferring a row on a connected host that
+ * still lists it; saving re-binds by host and target anyway. Hosts are never retired, so when more than one host
+ * offers a target name each row names its host, and a row on a host that is not connected (or no longer lists the
+ * target) says so and sorts after the live ones. */
 export function targetOptions(need: NeedsTarget) {
   const detail = (base: string, t: { template?: TargetTemplate | null }) => [base, templateNote(t)].filter(Boolean).join(" · ");
-  const saved = need.candidates.map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target, detail: detail(t.repo, t), saved: t }));
+  const adverts = new Map(need.advertised.map(t => [`${t.host_id}:${t.host_target}`, t]));
+  const hosts = new Map(need.advertised.map(t => [t.host_id, t]));
+  const names = new Map<string, Set<string>>();
+  for (const t of [...need.candidates, ...need.advertised]) names.set(t.host_target, (names.get(t.host_target) ?? new Set()).add(t.host_id));
+  const live = (t: { host_id: string; host_target: string }) => adverts.get(`${t.host_id}:${t.host_target}`)?.host_connected !== false
+    && adverts.has(`${t.host_id}:${t.host_target}`);
+  const state = (t: { host_id: string; host_target: string }) => {
+    const advert = adverts.get(`${t.host_id}:${t.host_target}`);
+    const host = (names.get(t.host_target)?.size ?? 0) > 1 ? hosts.get(t.host_id)?.host_name || `host ${t.host_id.slice(0, 8)}` : "";
+    const note = !advert ? "not listed by its host" : advert.host_connected === false ? "host offline" : "";
+    return [host, note].filter(Boolean).join(", ");
+  };
+  const unique = new Map<string, SavedTarget>();
+  for (const t of need.candidates) {
+    const id = `${t.host_id}:${t.host_target}:${t.repo}`, seen = unique.get(id);
+    if (!seen || (!live(seen) && live(t))) unique.set(id, t);
+  }
+  const saved = [...unique.values()].map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target,
+    detail: [detail(t.repo, t), state(t)].filter(Boolean).join(" · "), saved: t, live: live(t) }));
   const known = new Set(need.candidates.map(t => `${t.host_id}:${t.host_target}`));
   const offered = need.advertised.filter(t => !known.has(`${t.host_id}:${t.host_target}`))
-    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: detail(t.repo || t.host_name, t), advertised: t }));
-  return [...saved, ...offered];
+    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target,
+      detail: [detail(t.repo || t.host_name, t), state(t)].filter(Boolean).join(" · "), advertised: t, live: live(t) }));
+  // Stable: live rows keep their order ahead of stale ones, so the picker's default (the first row) is a live target.
+  return [...saved.filter(o => o.live), ...offered.filter(o => o.live), ...saved.filter(o => !o.live), ...offered.filter(o => !o.live)];
 }
 
 /** The picker's default "Remember for": the nearest record that is not a task (usually the project), so the choice
