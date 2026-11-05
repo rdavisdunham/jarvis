@@ -201,6 +201,7 @@ export JARVIS_ENV_FILE="" JARVIS_DATABASE_URL=postgresql+psycopg://postgres:test
 uv run --no-sync python -m evals.context.lab import-file <slug>             # check the conversion, writes envelope.json
 uv run --no-sync python -m evals.context.lab import-granola <note_id> --slug <slug>   # needs GRANOLA_API_KEY
 uv run --no-sync python -m evals.context.lab run <slug>... --model luna|terra|sonnet-5.5 [--repeat N]
+# options: --facts-model P, --mode split|combined, --no-private-notes, --speakers auto|recorder|unknown
 uv run --no-sync python -m evals.context.lab score <slug>... [--run latest|all|<dir>] [--no-judge] [--out PATH]
 uv run --no-sync python -m evals.context.lab gold-sheet <slug>               # edit, then:
 uv run --no-sync python -m evals.context.lab gold-apply <slug> <sheet.md>

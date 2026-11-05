@@ -409,11 +409,31 @@ def check_model(model: str) -> str:
     return profile
 
 
-def model_label(actions: str, facts: str | None, private_notes: bool = True) -> str:
-    """How runs and score rows name a configuration: `terra`, `terra+luna` when the facts model differs, with
-    `-nonotes` when the owner's notes were left out."""
+def model_label(actions: str, facts: str | None, private_notes: bool = True, mode: str = "split") -> str:
+    """How runs and score rows name a configuration: `terra`, `terra+luna` when the facts model differs, then
+    `-combined` in combined extraction mode and `-nonotes` when the owner's notes were left out."""
     label = actions if not facts or facts == actions else f"{actions}+{facts}"
+    if mode == "combined":
+        label += "-combined"
     return label if private_notes else f"{label}-nonotes"
+
+
+EXTRACTION_MODES = ("split", "combined")
+
+
+@contextmanager
+def extraction_mode(mode: str):
+    """`native.extract.EXTRACTION_MODE` set to `mode` for the block, then restored."""
+    from jarvis.context.native import extract
+
+    if mode not in EXTRACTION_MODES:
+        raise ValueError(f"mode must be one of {', '.join(EXTRACTION_MODES)}")
+    saved = extract.EXTRACTION_MODE
+    extract.EXTRACTION_MODE = mode
+    try:
+        yield
+    finally:
+        extract.EXTRACTION_MODE = saved
 
 
 @contextmanager
@@ -594,7 +614,8 @@ def inferred_owner(payload: dict) -> bool:
 
 
 def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: str | None = None,
-                facts_profile: str | None = None, speakers: str = "auto", private_notes: bool = True) -> dict:
+                facts_profile: str | None = None, speakers: str = "auto", private_notes: bool = True,
+                mode: str = "split") -> dict:
     """One delivery of the meeting into the current database under a fresh owner, drained. Needs `live()` (or
     runner's `offline()` with the double engine) around it."""
     from jarvis.context import sources
@@ -607,15 +628,16 @@ def run_meeting(folder: Path, model: str, *, engine: str = "native", profile: st
     owner_actor = seed_owner(owner, user, engine=engine, timezone=zone,
                              others=[{"name": p.name, "email": p.email} for p in envelope.participants])
     started_at, started = datetime.now(UTC), time.monotonic()
-    with session_scope() as db:
-        received = sources.receive(db, owner, envelope)
-    errors = drain_all(owner)
+    with extraction_mode(mode):
+        with session_scope() as db:
+            received = sources.receive(db, owner, envelope)
+        errors = drain_all(owner)
     wall_ms = int((time.monotonic() - started) * 1000)
     data = collect(owner, received.source_id, owner_actor, user)
     return {"slug": folder.name, "model": model, "profile": profile, "engine": engine,
             "actions_model": profile, "facts_model": (facts_profile or profile) if profile else None,
             "owner_timezone": zone, "envelope_timezone": envelope.timezone, "envelope_path": built,
-            "private_notes_enabled": private_notes,
+            "private_notes_enabled": private_notes, "extraction_mode": mode,
             "started_at": started_at.isoformat(), "wall_ms": wall_ms, "errors": errors,
             "meeting": {"title": envelope.title, "note_id": envelope.external_id,
                         "segments": len(envelope.segments or []), "private_notes": bool(envelope.private_notes),
@@ -634,6 +656,7 @@ def report_md(run: dict) -> str:
     """The run as a readable page (meeting text included: it stays in the private lab folder)."""
     out = [f"# {run['slug']} · {run['model']}", "",
            f"Actions model {run.get('actions_model') or 'n/a'}, facts model {run.get('facts_model') or 'n/a'}, "
+           f"extraction mode {run.get('extraction_mode') or 'split'}, "
            f"owner timezone {run.get('owner_timezone') or 'n/a'} (meeting {run.get('envelope_timezone') or 'n/a'}). "
            f"Started {run['started_at']}, wall {run['wall_ms'] / 1000:.1f}s, cost ${run['cost_usd']:.4f}, "
            f"source {run['source_status']}, {run['meeting']['segments']} transcript segments, private notes "
@@ -675,6 +698,15 @@ def report_md(run: dict) -> str:
                        f"(segments {r.get('segment_seqs')})")
         if extract["refused"]:
             out += ["", "### Refused at admission", "", "```json", json.dumps(extract["refused"], indent=1), "```"]
+        combined = d.get("combined")
+        if combined:
+            out += ["", "### Combined call", "",
+                    (f"Mode {d.get('extraction_mode')}, model {combined.get('model')} ({combined.get('profile')}), "
+                     f"prompt {combined.get('prompt_version')}, status {combined.get('status')}, "
+                     f"{combined.get('calls')} calls, ${_f(combined.get('cost_usd')):.4f}, "
+                     f"{combined.get('latency_ms')} ms, {combined.get('assertions')} assertions, "
+                     f"{combined.get('action_items')} action items."),
+                    "", "```json", json.dumps(combined, indent=1, default=str)[:20000], "```"]
         actions = d.get("actions")
         if actions:
             out += ["", "### Action pass", "",
@@ -721,12 +753,13 @@ def save_run(folder: Path, run: dict, suffix: str = "") -> Path:
 
 def run_lab(slugs: list[str], model: str, *, repeat: int = 1, budget_usd: float = DEFAULT_BUDGET_USD,
             timeout_s: int = DEFAULT_TIMEOUT_S, speakers: str = "auto", facts_model: str | None = None,
-            private_notes: bool = True) -> list[Path]:
-    """`model` routes the action pass, `facts_model` (default: the same) the fact extraction. Without
-    `private_notes` the owner's notes are left out and the run name gets `-nonotes`."""
+            private_notes: bool = True, mode: str = "split") -> list[Path]:
+    """`model` routes the action pass (and the combined call), `facts_model` (default: the same) the fact
+    extraction. Without `private_notes` the owner's notes are left out (run name `-nonotes`); `mode` is the
+    extraction mode (`combined`: run name `-combined`)."""
     profile = check_model(model)
     facts = check_profile(facts_model) if facts_model else profile
-    label = model_label(profile, facts, private_notes)
+    label = model_label(profile, facts, private_notes, mode)
     folders = [meeting_dir(s) for s in slugs]
     for folder in folders:
         if not (folder / "meeting.json").exists() and not (folder / RAW_NOTE).exists():
@@ -737,7 +770,7 @@ def run_lab(slugs: list[str], model: str, *, repeat: int = 1, budget_usd: float 
         for folder in folders:
             for n in range(repeat):
                 run = run_meeting(folder, label, profile=profile, facts_profile=facts, speakers=speakers,
-                                  private_notes=private_notes)
+                                  private_notes=private_notes, mode=mode)
                 path = save_run(folder, run, f"-r{n + 1}" if repeat > 1 else "")
                 written.append(path)
                 print(f"{folder.name} {label} run {n + 1}/{repeat}: {len(run['proposals'])} proposals, "
@@ -1375,6 +1408,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--speakers", choices=SPEAKER_MODES, default="auto")
     p.add_argument("--facts-model", help="profile for fact extraction (context_extraction); default: --model")
     p.add_argument("--no-private-notes", action="store_true", help="leave the owner's notes out (run name -nonotes)")
+    p.add_argument("--mode", choices=EXTRACTION_MODES, default="split",
+                   help="extraction mode: split passes (default) or one combined call (run name -combined)")
     p = sub.add_parser("score", help="score runs and Granola against the answer keys")
     p.add_argument("slugs", nargs="+")
     p.add_argument("--run", default="latest", help="latest (default), all, or a run directory name")
@@ -1413,7 +1448,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.repeat < 1:
             parser.error("--repeat must be at least 1")
         run_lab(args.slugs, args.model, repeat=args.repeat, budget_usd=args.budget_usd, timeout_s=args.timeout,
-                speakers=args.speakers, facts_model=args.facts_model, private_notes=not args.no_private_notes)
+                speakers=args.speakers, facts_model=args.facts_model, private_notes=not args.no_private_notes,
+                mode=args.mode)
         return 0
     if args.command == "score":
         judge = None if args.no_judge else judge_call(args.judge)

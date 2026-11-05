@@ -842,3 +842,56 @@ def test_must_not_fallback_needs_near_identical_titles_and_the_same_owner():
     _, banned, _ = lab.judge_matches([], p, lambda payload: (json.dumps(answer), None), must_not["must_not"])
     assert banned == [("n2", "P2")]
     assert lab.score_meeting(g, p, [], people, banned)["must_not_checked"] == [("n2", "P2")]
+
+
+# ---------------------------------------------------------------- extraction mode
+
+
+def test_extraction_mode_is_set_around_the_drain_and_restored(lab_dir, monkeypatch):
+    from jarvis.context.native import extract
+
+    folder = lab_dir / "rubric-sync"
+    seen = []
+    real_drain = lab.drain_all
+
+    def watched(owner):
+        seen.append(extract.EXTRACTION_MODE)
+        return real_drain(owner)
+
+    monkeypatch.setattr(lab, "drain_all", watched)
+    before = extract.EXTRACTION_MODE
+    label = lab.model_label("terra", "luna", mode="combined")
+    with runner.offline():
+        run = lab.run_meeting(folder, label, engine="double", mode="combined")
+    assert seen == ["combined"] and extract.EXTRACTION_MODE == before
+    assert run["errors"] == [] and run["extraction_mode"] == "combined" and run["model"] == "terra+luna-combined"
+    assert run["proposals"]  # the rule-based extractor ran through the whole loop
+    assert "extraction mode combined" in lab.report_md(run)
+    with runner.offline():
+        split = lab.run_meeting(folder, "terra", engine="double")
+    assert split["extraction_mode"] == "split" and seen[-1] == "split" and extract.EXTRACTION_MODE == before
+    assert lab.model_label("terra", "luna", False, "combined") == "terra+luna-combined-nonotes"
+    with pytest.raises(ValueError, match="mode"), lab.extraction_mode("both"):
+        pass
+
+
+def test_report_renders_combined_diagnostics():
+    run = {"slug": "m", "model": "terra-combined", "extraction_mode": "combined",
+           "started_at": "2026-11-04T10:00:00+00:00", "wall_ms": 1000, "cost_usd": 0.02, "source_status": "ready",
+           "errors": [], "speakers": [], "runs": [], "assertions": [], "proposals": [],
+           "meeting": {"segments": 3, "private_notes": False},
+           "extract": {"diagnostics": {"model": "x", "extraction_mode": "combined", "combined": {
+               "prompt_version": "combined-1", "profile": "terra", "model": "gpt-5.6-terra", "status": "ok",
+               "calls": 2, "cost_usd": 0.0123, "latency_ms": 4567, "assertions": 7, "action_items": 3}},
+               "candidates": [], "actions": [], "refused": [], "admitted": 0}}
+    page = lab.report_md(run)
+    assert "### Combined call" in page
+    assert ("Mode combined, model gpt-5.6-terra (terra), prompt combined-1, status ok, 2 calls, $0.0123, "
+            "4567 ms, 7 assertions, 3 action items.") in page
+
+
+def test_run_cli_passes_the_mode(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(lab, "run_lab", lambda slugs, model, **kw: seen.update(kw))
+    assert lab.main(["run", "a", "--model", "terra", "--mode", "combined"]) == 0 and seen["mode"] == "combined"
+    assert lab.main(["run", "a", "--model", "terra"]) == 0 and seen["mode"] == "split"
