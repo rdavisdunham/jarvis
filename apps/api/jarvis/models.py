@@ -555,6 +555,8 @@ class LinearIssue(Base):
     pending_job_id: Mapped[str | None] = mapped_column(String(36))
     sync_state: Mapped[str] = mapped_column(String(30), default="synced")
     latest_remote: Mapped[dict | None] = mapped_column(JSONB)
+    # The issue's Linear comments, read-only (linear_sync.comment_row shape), oldest first (migration 0051).
+    comments: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
 
 
 class GoalProjectLink(Base):

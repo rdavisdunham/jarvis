@@ -17,6 +17,19 @@ assignee and project synchronize. Imported parent relationships link issues that
 are both in the selected scope. Linear labels appear in the source metadata;
 Eridani tags remain independent. Synced projects are marked “· Linear”.
 
+The task card links to the issue: its identifier in the card header (and **Open
+original** in the Source section) opens it in Linear. The description is the
+task's main text.
+
+**Comments** are copied read-only into a **Comments from Linear** section of the
+task card, with replies under their thread, authors and times. Reply in Linear.
+Each sync re-reads every comment of the issues it fetched, so an edit or a
+deletion there lands. Between daily full syncs it also picks up comments changed
+since the last sync on any in-scope issue, so a new comment arrives within one
+sync, even when the issue itself did not change. Each issue keeps its newest 200
+comments. If Linear cannot return comments, the issues still sync and the stored
+comments stay.
+
 Edit a linked task normally, or expand **Linear workflow** in task details for
 the exact Linear status, priority, assignee and project. **Publish to Linear**
 creates a new issue for an existing local task. Dani has the same read/write tools.

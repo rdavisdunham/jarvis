@@ -8,7 +8,7 @@ from . import linear_commands, linear_structure, linear_sync, planning
 from .auth import Identity, authenticate
 from .db import session_scope
 from .domain import DomainError, advisory, emit, owned
-from .models import Job, LinearConnection, PlanningEntry
+from .models import Job, LinearConnection, PlanningEntry, Task
 
 router = APIRouter()
 User = Annotated[Identity, Depends(authenticate)]
@@ -49,6 +49,20 @@ def linear_sync_now(user: User):
         if not job_id:
             raise DomainError("LINEAR_SCOPE", "Connect Linear and select a team first.", 409)
         return {"job_id": job_id, "status": "queued"}
+
+
+@router.get("/api/v1/integrations/linear/tasks/{task_id}/comments")
+def linear_comments(task_id: str, user: User):
+    """The Linear comments copied onto a synced task at the last sync (read-only; reply in Linear)."""
+    with session_scope() as db:
+        task = owned(db, Task, task_id, user.owner_id)
+        link = linear_sync.link_for_task(db, user.owner_id, task.id)
+        if not link:
+            raise DomainError("NOT_FOUND", "This task has no Linear issue.", 404)
+        conn = db.get(LinearConnection, user.owner_id)
+        snapshot = link.snapshot or {}
+        return {"identifier": snapshot.get("identifier"), "url": snapshot.get("url"), "comments": link.comments or [],
+                "synced_at": conn.last_sync_at.isoformat() if conn and conn.last_sync_at else None}
 
 
 @router.post("/api/v1/integrations/linear/disconnect")

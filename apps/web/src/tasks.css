@@ -838,3 +838,12 @@ button.row-title:hover {
 .scheduling-window .field {min-width:0}.scheduling-window input[type=time] {min-width:0;width:100%}
 .source-state {font-size:.65rem;opacity:.8}.cal-block .source-badge {font-size:.6rem;padding:0 .2rem;line-height:1.1}
 .cal-block.is-short .source-badge {max-width:5rem;overflow:hidden;text-overflow:ellipsis}
+/* Comments copied from a Linear issue (LinearComments.tsx): threads with indented replies, plain text bodies. */
+.linear-comment-list,.linear-comment-list ol{list-style:none;margin:0;padding:0}
+.linear-thread{padding:.5rem 0;border-top:1px solid var(--line)}
+.linear-thread:first-child{border-top:0}
+.linear-comment.is-reply{margin-left:1rem;padding-left:.75rem;border-left:2px solid var(--line);margin-top:.4rem}
+.linear-comment-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:.5rem;margin:0;font-size:.85rem;color:var(--ink-2)}
+.linear-comment-head strong{color:var(--ink)}
+.linear-comment-head a{color:var(--ink-3);align-self:center}
+.linear-comment-body{margin:.25rem 0 0;white-space:pre-wrap;overflow-wrap:anywhere}

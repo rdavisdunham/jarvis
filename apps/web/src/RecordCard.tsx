@@ -1,3 +1,4 @@
+import { LinearComments } from "./LinearComments";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import { z } from "zod";
 import { SourceDetails } from "./SourceDetails";
@@ -6,7 +7,7 @@ import { ContentsDialog } from "./ContentsDialog";
 import type {ContentsSummary} from "./structure-types";
 import { RecordTools } from "./record-links";
 import { useEditor } from "./editor-control";
-import { Link2, X } from "lucide-react";
+import { ExternalLink, Link2, X } from "lucide-react";
 import { api, command } from "./api";
 import { Dialog, priorityLabels } from "./ux";
 import { useStructureActions } from "./structure-actions";
@@ -112,6 +113,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
     <header className="detail-head">
       <span className="detail-kind">{t.name}</span>
       {home&&<span className="chip chip-home detail-path" title={home}>{home}</span>}
+      {row.source?.url&&/^https:\/\//i.test(row.source.url)&&<a className="chip detail-source-link" href={row.source.url} target="_blank" rel="noreferrer" title={"Open in "+(row.source.label||"the source")}>{row.source.identifier||"Open in "+(row.source.label||"source")}<ExternalLink size={12} aria-hidden="true"/></a>}
       <span className={"detail-save-state"+(busy?" busy":error?" attention":"")} aria-live="polite">{busy?"Saving…":error?"Changes need attention":canEdit?"Changes save automatically":"View only"}</span>
       <button className="btn-icon" aria-label="Close record" disabled={busy} onClick={close}><X size={20}/></button>
     </header>
@@ -127,6 +129,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
         <textarea aria-label="Record content" className="detail-body" value={body} disabled={locked} rows={4} placeholder="Add details" onChange={e=>setBody(e.target.value)} onBlur={()=>{if(body!==row.body)void save({body}).catch(()=>{});}}/>
         <details className="detail-section" aria-label={TASK_CARD_SECTIONS.localNotes}><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
         <SourceDetails source={row.source}/>
+        {row.task_id&&row.source?.provider==="linear"&&<LinearComments taskId={row.task_id}/>}
         <RecordTools kind="record" id={row.id}/>
         {row.task_id&&<BugReportDetails taskId={row.task_id} tags={host?.tasks.find(t=>t.id===row.task_id)?.tags??[]}/>}
         {row.task_id&&<TaskRun taskId={row.task_id} canEdit={canEdit&&!row.archived} onOpenRun={()=>{if(!busy)close();}}/>}

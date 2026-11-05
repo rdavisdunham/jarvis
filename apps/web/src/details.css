@@ -31,6 +31,17 @@
 .detail-kind svg {
   color: var(--ink-3);
 }
+/* The source item (a Linear issue): its identifier, linked to the original. */
+.detail-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.detail-source-link:hover {
+  text-decoration: underline;
+}
 .detail-path {
   min-width: 0;
   max-width: 340px;
