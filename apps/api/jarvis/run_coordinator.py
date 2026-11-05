@@ -180,6 +180,7 @@ REASONS = {
     "turn": "Checking the last turn against the success criteria.",
     "verify_late_result": "The host's verification result arrived after Eridani stopped waiting; judging it now.",
     "ci_pending": "The criteria are met on the quick check; waiting for GitHub CI on the pull request.",
+    "ci_passed": "GitHub CI passed on the pull request head; checking the turn against the success criteria.",
     "ci_failed": "GitHub CI failed on the pull request; the agent is fixing it.",
     "ci_push": "GitHub CI has not run on this work; the agent is pushing it and opening the pull request.",
     "not_met": "Not met yet; the agent is on the next turn.",

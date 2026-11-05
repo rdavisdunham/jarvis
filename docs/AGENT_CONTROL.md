@@ -245,7 +245,8 @@ A run starts only in a target the host lists in `~/.config/remotea/eridani.json`
   **600**; GitHub CI runs the full suite on the pull request and is the final verification ([CI as the final
   verification](#ci-as-the-final-verification)). An entry that runs the full suite locally (`./scripts/verify.sh`)
   needs **7200** (2 h): it has run past 30 minutes on a loaded desktop (run ad1a1c02 was killed at 1800 s at 94%
-  with no failures), and a slow run announces itself (below) instead of failing.
+  with no failures), and a slow run announces itself (below) instead of failing. remotea's `setup` and
+  `targets add` default `--verify-timeout` to 7200 from `feat/ci-status` on (600 before).
   Eridani's own deadline for a verify attempt (`run_coordinator.verify_deadline`, stored on the attempt as
   `deadline_at`, which the sweep reads) is the entry's timeout **as the host advertises it** plus 120 s of grace,
   never less than 11 minutes (`VERIFY_DEADLINE`); the attempt keeps the advertised value as `timeout_s`. A host
@@ -265,7 +266,8 @@ A run starts only in a target the host lists in `~/.config/remotea/eridani.json`
 - **A soft threshold (optional).** A verification still running after **1800 s** sends the owner one notice per
   attempt ("Verification has been running for 30 min; it will stop at 2 h", category `agent_verify_slow`, opens the
   run) and keeps running up to the ceiling (`run_coordinator.verify_slow_notices`, from the sweep). Per entry: an
-  advertised `notify_after_s` on the `verify_status` row (or `notify_after` on an object `verify` item); otherwise
+  advertised `notify_after_s` on the `verify_status` row (remotea sends the entry's `notifyAfter` from
+  `eridani.json`, from remotea `feat/ci-status` on; or `notify_after` on an object `verify` item); otherwise
   the server setting `JARVIS_AGENT_VERIFY_NOTIFY_AFTER_SECONDS` (`agent_verify_notify_after_seconds`, default
   1800). No notice when the ceiling is at or under the threshold.
 
@@ -1273,7 +1275,7 @@ stale), the previous verdict's per-criterion record, and the completion policy w
 (`pr_urls`, `merged`, and `pr_fresh` / `merged_fresh` with `as_of` times: whether the session's collector
 report and the host's worktrees report arrived after the turn). The verify evidence carries `category`, `action`
 and `infra` (true for an `infra_*` category), and remotea's `workspace_complete` / `workspace_reasons` (whether the
-host's fingerprint covered the whole workspace; `null` / `[]` when the host did not say). The prompt (`judge-v4`)
+host's fingerprint covered the whole workspace; `null` / `[]` when the host did not say). The prompt (`judge-v5`)
 tells the model to say so when a verification ran on an incomplete workspace, and says all of it is
 untrusted data and that **the agent's text is a claim**: evidence is the verify attempt, the host's worktree and
 PR record and the ticked steps. A gap may only ask for what the loop can check (make the verify command pass,
@@ -1300,7 +1302,7 @@ commit/push and open or update the PR, tick steps), never for pasted test output
 4. **Non-verdicts** (refusal, incomplete, timeout, budget, invalid output, unavailable) are retried twice
    (refusal and budget are not retried), then the attempt is `failed` and the run goes to
    `needs_you(judge_unavailable)`. A judge attempt still open after 15 minutes is a `timeout` non-verdict.
-5. The attempt keeps model, `prompt_version` (`judge-v4`), cost, latency, retries, the final verdict and the
+5. The attempt keeps model, `prompt_version` (`judge-v5`), cost, latency, retries, the final verdict and the
    completion evidence it used (`evidence.completion`).
 
 **Commit** (`run_coordinator.on_verdict`) only while the run is `judging` with the attempt's exact
@@ -1368,12 +1370,12 @@ login, in the run's worktree:
 | | |
 |---|---|
 | Command | `{t: "ci.status", command_id, run_id, generation, plan_revision, branch, turn_seq, log_lines: 40, expires_at}` (2 min). Read-only like `worktrees.scan`: no surface fence, sent whoever has control, not journaled on the run timeline. |
-| Host steps | `gh pr view <branch> --json number,url,headRefOid`; `gh pr checks <branch> --json name,state,bucket,link,workflow`; for each failed check whose link is a GitHub Actions job (at most 3), `gh run view <run> --log-failed`, last `log_lines` lines, redacted like other output; `git rev-parse HEAD` in the worktree. |
-| Outcome | `executed` with `result {pr: {number, url, head_sha} \| null, checks: [{name, state, bucket, link, workflow}], failed_logs: [{name, link, lines: [...]}], worktree_head}`; `failed` with the reason (`gh` missing or not logged in). |
+| Host steps | In the branch's worktree (`<worktreeRoot>/<branchDir>`, else a live session's folder for the run): `gh pr view <branch> --json number,url,headRefOid,state`; `gh pr checks <branch> --json name,state,bucket,link,workflow,startedAt,completedAt` (exit 1 or 8 still carries the JSON); for each failed check whose link is a GitHub Actions job (at most 3, read as soon as that job failed), `gh run view <run> --job <job> --log-failed`, last `log_lines` lines, redacted like other output; `git rev-parse HEAD` in the worktree. |
+| Outcome | `executed` with `result {pr: {number, url, head_sha, state} \| null, checks: [{name, state, bucket, link, workflow, startedAt?, completedAt?}], failed_logs: [{name, link, lines: [...]}], worktree_head}`; `failed` with the reason (`gh` missing or not logged in). |
 
-`run_ci.parse` folds the checks into one state: `passed` (every check `pass` or `skipping`), `failed` (all
-terminal, one `fail`), `pending` (any still running: CI is read until every check is terminal), `absent` (a PR
-without checks yet), `no_pr`, `unpushed` (the worktree's HEAD is not the PR head) and `cancelled`. Each answer is
+`run_ci.parse` folds the checks into one state: `passed` (every check `pass` or `skipping`), `failed` (any check
+`fail`, **even while others still run: fail fast**), `pending` (any still running), `absent` (a PR without checks
+yet), `no_pr`, `unpushed` (the worktree's HEAD is not the PR head) and `cancelled`. Each answer is
 recorded as an attempt of kind `ci` (`verify_id: github_ci`, `initiator: host`), one row per run tuple and head SHA
 (`workspace_fingerprint` holds the SHA), updated on every poll: `result {source: "github_ci", state, head_sha,
 pr_url, pr_number, run_url, checks, failed, log, worktree_head, polls, checked_at}`. It sits beside the local verify
@@ -1386,7 +1388,8 @@ clock. Then:
 - **Green** on the current head: `ci_passed` on the timeline and `judged_met` again, which goes on to
   `auto_complete` or `awaiting_approval` as before. No notice: the run completing (or asking for approval) is the
   notice.
-- **Red**: one `agent_ci_failed` notice per run and head SHA (dedup key `agent:agent_ci_failed:<run>:<sha>`), and the
+- **Red** (as soon as one check fails; when the host has no log for the failed job yet, Eridani asks again up to
+  twice, `LOG_WAITS`, then sends the gap without it): one `agent_ci_failed` notice per run and head SHA (dedup key `agent:agent_ci_failed:<run>:<sha>`), and the
   judge's gap to the agent (`ci_failed` above: the failed jobs, up to 40 log lines, the run link); the run goes back
   to `executing` (or `capped` at its turn cap). The same head failing again after that gap means no fix was pushed:
   `needs_you(ci_failed_again)`, with the log as the card's last output.
@@ -1396,6 +1399,14 @@ clock. Then:
   the run entered `awaiting_ci`): `needs_you(ci_timeout)` with a specific headline (`run_ci.timeout_text`: "CI on
   1a2b3c4 was still running after 1 h 30 min (Frontend and browser).", "No pull request for … so CI never ran.", "The
   host could not read CI …: gh: not logged in."), pushed with that headline.
+
+**Green CI un-parks a run**, as a late local pass does. While a run with a verify command sits in
+`needs_you(verify_infra)` (its local check could not run), `ci_timeout` or `ci_unavailable` on a host that reports CI,
+the sweep keeps asking (every 2 min for the CI wait, then every 10 min, for at most 24 h; `run_ci.parked_poll_due`).
+Green on the current head moves it on: `verify_infra` goes to the judge (`judging`, reason `ci_passed`), which counts
+green CI for the turn as a passing verification (evidence `ci`, rule `verify_by_ci`, prompt `judge-v5`) and never
+blames the host setup then; `ci_timeout` and `ci_unavailable` were met already and go on to approval or
+`auto_complete`. Red CI there changes nothing: the run is the owner's.
 
 A message (or a direct message) resumes `executing`; **Approve** from `awaiting_ci` is an override recorded as
 `approve_override` like any other. The read model's `ci` (`run_ci.public`) is `{state, current, head_sha, pr_url,

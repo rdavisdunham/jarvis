@@ -36,7 +36,9 @@ def answer(**values):
 
 def test_parse_folds_checks_into_one_state():
     assert run_ci.parse(answer())["state"] == "passed"
-    assert run_ci.parse(answer(checks=checks("pass", "pending", "fail")))["state"] == "pending"  # Wait for terminal.
+    assert run_ci.parse(answer(checks=checks("pass", "pending")))["state"] == "pending"
+    fast = run_ci.parse(answer(checks=checks("pass", "pending", "fail")))
+    assert fast["state"] == "failed" and fast["running"]  # Fail fast: one failed check is enough.
     assert run_ci.parse(answer(checks=checks("pass", "fail", "skipping")))["state"] == "failed"
     assert run_ci.parse(answer(checks=checks("pass", "cancel")))["state"] == "cancelled"
     assert run_ci.parse(answer(checks=[]))["state"] == "absent"
@@ -263,3 +265,84 @@ def test_the_read_model_shows_the_wait_and_the_checks(ci_host):
     assert ci["pr_url"] == PR["url"] and [c["bucket"] for c in ci["checks"]] == ["pass", "pending"]
     row = next(a for a in detail["attempts"] if a["kind"] == "ci")
     assert row["source"] == "github_ci" and row["head_sha"] == HEAD and row["status"] == "pending"
+
+
+def test_fail_fast_sends_the_gap_while_other_checks_still_run(ci_host):
+    run_id = planned(ci_host)
+    met(ci_host, run_id)
+    failing = {"checks": checks("fail", "pending"), "failed_logs": [{"name": "Backend and migrations", "lines": ["E boom"]}]}
+    assert report(run_id, **failing) == ("executing", "ci_failed")
+    assert "E boom" in inputs(run_id)[-1]
+
+
+def test_fail_fast_waits_a_little_for_the_failed_jobs_log(ci_host):
+    run_id = planned(ci_host)
+    met(ci_host, run_id)
+    no_log = {"checks": checks("fail", "pending")}
+    assert report(run_id, **no_log) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, **no_log) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, **no_log) == ("executing", "ci_failed")  # LOG_WAITS spent: the gap goes without a log.
+    assert "Backend and migrations" in inputs(run_id)[-1]
+
+
+def parked_infra(host, run_id):  # noqa: F811
+    """A turn whose quick check could not run on the host (a missing program): needs_you(verify_infra)."""
+    turn(run_id, 3)
+    result(host, run_id, attempts(run_id)[-1].id, exit_code=127, tail="bash: uv: command not found")
+    return judged(run_id, stub(verdict()))
+
+
+def poll(clock_minutes):
+    with session_scope() as db:
+        coordinator.sweep(db, now() + timedelta(minutes=clock_minutes))
+
+
+def test_green_ci_unparks_a_run_whose_local_check_could_not_run(ci_host):
+    run_id = planned(ci_host)
+    assert parked_infra(ci_host, run_id) == ("needs_you", "verify_infra")
+    poll(1)
+    assert len(ci_commands(run_id)) == 1
+    assert report(run_id, checks=checks("pass", "pending")) == ("needs_you", "verify_infra")  # Only green moves it.
+    assert report(run_id) == ("judging", "ci_passed")
+    assert judged(run_id, stub(verdict())) == ("awaiting_approval", "judge_met")
+    judge = attempts(run_id, "judge")[-1]
+    assert "verify_by_ci" in judge.result["rules"] and "verify_infra" not in judge.result["rules"]
+
+
+def test_green_ci_unparks_a_timed_out_or_unavailable_wait(ci_host):
+    run_id = planned(ci_host)
+    met(ci_host, run_id)
+    poll(91)
+    assert state(run_id) == ("needs_you", "ci_timeout")
+    poll(94)
+    assert report(run_id) == ("awaiting_approval", "judge_met")
+
+
+def test_a_host_upgraded_to_ci_status_unparks_ci_unavailable(verifying_host, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(run_ci, "quick_ids", lambda: {"tests"})
+    run_id = planned(verifying_host)
+    assert met(verifying_host, run_id) == ("needs_you", "ci_unavailable")
+    poll(3)
+    assert ci_commands(run_id) == []  # No cap, no question.
+    with session_scope() as db:
+        row = db.get(AgentHost, verifying_host.id)
+        row.caps = {**row.caps, "caps": [*row.caps["caps"], "ci.status"]}
+    poll(3)
+    assert report(run_id) == ("awaiting_approval", "judge_met")
+
+
+def test_parked_runs_are_polled_less_often_and_not_after_a_day(ci_host):
+    run_id = planned(ci_host)
+    parked_infra(ci_host, run_id)
+    poll(1)
+    report(run_id, checks=checks("pass", "pending"))  # Answers the question: nothing in flight.
+
+    def due(asked_minutes, at_minutes):
+        with session_scope() as db:
+            run = db.get(AgentRun, run_id)
+            run_ci.save(run, requested_at=(now() + timedelta(minutes=asked_minutes)).isoformat())
+            return run_ci.parked_poll_due(db, run, now() + timedelta(minutes=at_minutes))
+
+    assert due(0, 3) and not due(2, 3)  # Every 2 min during the CI wait…
+    assert not due(90, 95) and due(90, 101)  # …then every 10 min…
+    assert not due(0, 25 * 60)  # …and not after a day.

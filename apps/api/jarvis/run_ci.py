@@ -33,6 +33,15 @@ LOG_LINES = 40
 LINE_CHARS = 300
 CHECKS = 50
 PUSH_PROMPTS = 2  # "Push and open the pull request" at most this often per run; then the wait runs out.
+# Fail fast: a check that failed while others still run is a failure now. If the host has no log for it yet, wait at
+# most this many more polls for one before sending the gap without it.
+LOG_WAITS = 2
+# needs_you reasons a green CI run on the current head un-parks, as a late local pass does (verify_infra goes to the
+# judge, which counts green CI as the verification; the CI reasons were met already and go on to approval).
+UNPARK = ("verify_infra", "ci_timeout", "ci_unavailable")
+# Parked runs are asked less often after the first wait, and not at all after a day.
+PARKED_POLL = timedelta(minutes=10)
+PARKED_FOR = timedelta(hours=24)
 # gh's own buckets (`gh pr checks --json bucket`); `state` is folded onto them when an older gh has no bucket.
 BUCKETS = ("pass", "fail", "pending", "skipping", "cancel")
 PASS_STATES = {"SUCCESS", "NEUTRAL"}
@@ -40,7 +49,7 @@ SKIP_STATES = {"SKIPPED"}
 FAIL_STATES = {"FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 CANCEL_STATES = {"CANCELLED"}
 # What the run's CI looks like overall (`state` on the attempt result and on the read model's `ci`):
-# passed and failed are terminal; pending (some check still running), absent (a pull request without checks yet),
+# passed and failed are terminal (failed as soon as one check failed, even while others run: fail fast); pending (some check still running), absent (a pull request without checks yet),
 # no_pr (no pull request for the branch), unpushed (the worktree's HEAD is not the PR head) and cancelled (every
 # check finished, at least one was cancelled and none failed) keep the run waiting.
 STATES = ("passed", "failed", "pending", "absent", "no_pr", "unpushed", "cancelled")
@@ -114,10 +123,10 @@ def parse(result):
         state = "unpushed"
     elif not checks:
         state = "absent"
-    elif "pending" in buckets:
-        state = "pending"
     elif "fail" in buckets:
         state = "failed"
+    elif "pending" in buckets:
+        state = "pending"
     elif "cancel" in buckets:
         state = "cancelled"
     else:
@@ -127,7 +136,7 @@ def parse(result):
     run_url = next((m.group(1) for c in failing if c["link"] and (m := _RUN_URL.match(c["link"]))), None) or \
         (runs[0] if runs else None)
     pr_url = url((pr or {}).get("url"))
-    return {"state": state, "head_sha": head, "pr_url": pr_url,
+    return {"state": state, "head_sha": head, "pr_url": pr_url, "running": "pending" in buckets,
             "pr_number": (pr or {}).get("number") if isinstance((pr or {}).get("number"), int) else None,
             "run_url": run_url or (f"{pr_url}/checks" if pr_url else None), "checks": checks,
             "failed": [{"name": c["name"], "link": c["link"]} for c in failing],
@@ -236,6 +245,29 @@ def sweep(db, clock):
         asked = stamp(ci_state(run).get("requested_at"))
         if (asked is None or clock - asked >= POLL) and not in_flight(db, run, clock):
             request(db, run, clock)
+    for run in db.scalars(select(AgentRun).where(AgentRun.state == "needs_you", AgentRun.state_reason.in_(UNPARK))
+                          .with_for_update(skip_locked=True)):
+        if not parked_poll_due(db, run, clock):
+            continue
+        request(db, run, clock)
+
+
+def parked_poll_due(db, run, clock):
+    """A run parked on a reason green CI can clear is asked every POLL for the CI wait, then every PARKED_POLL, for
+    PARKED_FOR. Only plans with a verify command, on a host that reports CI, with a turn to check."""
+    if run.paused or automation.blocked(run) or not run.turn_seq or not run.branch:
+        return False
+    if not coordinator.host_cap(db, run.host_id, COMMAND):
+        return False
+    plan = coordinator.frozen(db, run)
+    if plan is None or not (plan.verify or {}).get("verify_id") or not plan.criteria:
+        return False
+    parked = clock - (run.state_since or clock)
+    if parked >= PARKED_FOR:
+        return False
+    asked = stamp(ci_state(run).get("requested_at"))
+    every = POLL if parked < timedelta(seconds=wait_seconds()) else PARKED_POLL
+    return (asked is None or clock - asked >= every) and not in_flight(db, run, clock)
 
 
 def timeout_text(db, run, clock):
@@ -278,17 +310,37 @@ def on_outcome(db, run, row, state, detail="", result=None):
     attempt = record(db, run, tuple_, facts, clock)
     save(run, error=None, answered_at=clock.isoformat())
     emit(db, run.owner_id, "agent.changed", run.id)
-    if run.state != "awaiting_ci" or tuple_ != (run.generation, run.turn_seq, run.plan_revision) \
-            or run.paused or automation.blocked(run):
+    if tuple_ != (run.generation, run.turn_seq, run.plan_revision) or run.paused or automation.blocked(run):
+        return attempt
+    if run.state == "needs_you" and run.state_reason in UNPARK:
+        return unpark(db, run, attempt, facts)
+    if run.state != "awaiting_ci":
         return attempt
     if facts["state"] == "passed":
         coordinator.note(run, "ci_passed", attempt_id=attempt.id, head_sha=facts["head_sha"])
         return coordinator.judged_met(db, run, coordinator.frozen(db, run), coordinator.judge_actor(run))
     if facts["state"] == "failed":
+        waits = dict(ci_state(run).get("log_waits") or {})
+        if not facts["log"] and facts["running"] and waits.get(facts["head_sha"], 0) < LOG_WAITS:
+            # Failed already, but the host has no log for the failed job yet: ask again for it before the gap.
+            save(run, log_waits={**waits, facts["head_sha"]: waits.get(facts["head_sha"], 0) + 1})
+            return attempt
         return failed(db, run, attempt, facts)
     if facts["state"] in ("no_pr", "unpushed"):
         return push_prompt(db, run, facts)
     return attempt
+
+
+def unpark(db, run, attempt, facts):
+    """Green CI on the current head while the run is parked on a reason it clears: verify_infra (the local check could
+    not run) goes to the judge, which counts the green CI record as the verification (agent_judge.ci_evidence);
+    ci_timeout and ci_unavailable were met already and go on to approval or auto_complete. Anything else waits."""
+    if facts["state"] != "passed":
+        return attempt
+    coordinator.note(run, "ci_passed", attempt_id=attempt.id, head_sha=facts["head_sha"], unparked=run.state_reason)
+    if run.state_reason == "verify_infra":
+        return coordinator.to_judging(db, run, None, reason="ci_passed")
+    return coordinator.judged_met(db, run, coordinator.frozen(db, run), coordinator.judge_actor(run))
 
 
 def failed(db, run, attempt, facts):
