@@ -209,6 +209,8 @@ export type VerificationFact = {
   verify_id: string; status: string; at: string; evidence: "fresh" | "stale" | "incomplete" | "pending"; turn_seq?: number;
   isolated?: boolean | null; isolation_reason?: string | null; workspace_complete?: boolean | null; workspace_reasons?: string[];
   deadline_at?: string | null;
+  /** While running: other runs verifying on the same host at once (no queue; they share the machine). */
+  alongside?: string[];
 };
 /** A command whose effect is not known yet: `pending` (the host has not taken it) or `uncertain` (it could not tell). */
 export type PendingCommand = { kind: string; status: "pending" | "uncertain"; mode?: string | null; at: string };
@@ -855,7 +857,8 @@ export function freshnessFacts(run: Run, host?: Pick<Host, "connected" | "last_s
   if (v) {
     if (v.evidence === "pending") {
       const late = !!v.deadline_at && new Date(v.deadline_at).getTime() < now;
-      facts.push({ key: "verify", label: `verify ${v.verify_id} running for ${elapsed(v.at, now)}${late ? " (past its deadline)" : ""}`, tone: late ? "warn" : "plain" });
+      const beside = v.alongside?.length ? ` · ${v.alongside.length} other run${v.alongside.length === 1 ? "" : "s"} verifying on this host` : "";
+      facts.push({ key: "verify", label: `verify ${v.verify_id} running for ${elapsed(v.at, now)}${late ? " (past its deadline)" : ""}${beside}`, tone: late ? "warn" : "plain" });
     } else {
       facts.push({ key: "verify", label: `verify ${v.verify_id} ${VERIFY_TEXT[v.status] ?? v.status} ${ago(v.at, now)} · ${EVIDENCE_TEXT[v.evidence]}`,
         tone: v.evidence === "fresh" && v.status === "passed" ? "ok" : "warn" });

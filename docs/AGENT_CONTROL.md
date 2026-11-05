@@ -245,8 +245,17 @@ A run starts only in a target the host lists in `~/.config/remotea/eridani.json`
   never less than 11 minutes (`VERIFY_DEADLINE`); the attempt keeps the advertised value as `timeout_s`. A host
   advertises it as `timeout_s` (remotea's wire name) or `timeout` on the entry's `verify_status` row, or on a
   `verify` item sent as an object `{id, timeout}`; values above 4 h are ignored. A host that does not advertise it
-  (remotea up to PR #24) keeps the 11-minute deadline: an attempt still running then is `timed_out` (a non-pass)
-  and a later result is discarded as `late`.
+  (remotea up to PR #24) keeps the 11-minute deadline. An attempt still running at its deadline is `timed_out` (a
+  non-pass) with `swept: true`; the host may still be running it. When the host's result arrives later it replaces
+  the swept outcome (`run_coordinator.late_result`; the timeline gets `verify_late_result`, the result keeps
+  `swept: {at, deadline_at}`), and a pass for the current turn of a run parked in `needs_you(verify_infra)` goes to
+  the judge again. Any further copy is discarded as `late`. The run card says which side gave up: "Eridani stopped
+  waiting for verification after 11 min (…)" or "The host stopped verification after 30 min (its timeout: 30 min)
+  at 94% of the suite, no failures."
+- **Concurrency.** Neither remotea nor Eridani queues verifications: remotea runs one attempt per session, sessions
+  in parallel, so runs in one repo verify at once on one machine and test database server
+  (README "Known limits"). `verification.alongside` lists the other runs verifying on the same host; the slow
+  notice says how many.
 - **A soft threshold (optional).** A verification still running after **1800 s** sends the owner one notice per
   attempt ("Verification has been running for 30 min; it will stop at 2 h", category `agent_verify_slow`, opens the
   run) and keeps running up to the ceiling (`run_coordinator.verify_slow_notices`, from the sweep). Per entry: an
@@ -970,8 +979,9 @@ Approve.
 **Why it stopped (`attention_detail`).** A run in `needs_you` or `capped` carries `attention_detail: {reason,
 headline, action, detail, last_output}` on its read model (`run_attention.py`; null otherwise; the older `attention`
 string is unchanged). Every stop reason has a plain headline and action (`run_attention.ATTENTION`, guarded by
-`test_every_needs_you_reason_has_a_headline`); `verify_infra` is worded per category, e.g. "Verification timed out
-after 30 min at 94% of the suite, no failures." / "Raise the verify timeout or verify again.", and verification
+`test_every_needs_you_reason_has_a_headline`); `verify_infra` is worded per category, e.g. "The host stopped
+verification after 30 min (its timeout: 30 min) at 94% of the suite, no failures." / "Raise the verify timeout or
+verify again." (or "Eridani stopped waiting …" when Eridani's deadline ran out first), and verification
 reasons add the last five output lines (each cut to 200 characters). The run list row shows the headline under
 the title; the drawer opens with a **Needs you** card (`RunStopCard`: headline, action, the output lines, the
 detail when it adds something) with **Approve** (a confirm step with a note when there is no passing verification),

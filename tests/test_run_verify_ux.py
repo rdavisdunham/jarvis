@@ -17,7 +17,7 @@ from test_agent_plan import HUMAN, turn, verifying_host  # noqa: F401 - fixture
 from test_agent_runs import OWNER, quiet, state  # noqa: F401 - fixture
 from test_agent_runs import host as host  # noqa: F401 - pytest fixture
 
-HEADLINE_30 = "Verification timed out after 30 min at 94% of the suite, no failures."
+HEADLINE_30 = "The host stopped verification after 30 min (its timeout: 30 min) at 94% of the suite, no failures."
 PROGRESS = "\n".join([*(f"{'.' * 70} [{p:3d}%]" for p in range(80, 95, 2)), "...................... [ 94%]"])
 
 
@@ -133,7 +133,7 @@ def test_a_timed_out_verification_leads_with_a_headline_and_action(verifying_hos
         public = control.public_run(db, db.get(AgentRun, run_id))
     shown = public["attention_detail"]
     assert shown["reason"] == "verify_infra"
-    assert shown["headline"] == "Verification timed out after 30 min at 94% of the suite, no failures."
+    assert shown["headline"] == HEADLINE_30
     assert shown["action"] == "Raise the verify timeout or verify again."
     assert shown["last_output"][-1] == "...................... [ 94%]" and len(shown["last_output"]) == 5
     assert public["attention"] == "error" and public["reason_text"] == coordinator.REASONS["verify_infra"]  # Kept.
@@ -149,7 +149,7 @@ def test_the_headline_counts_failures_and_falls_back_to_the_last_line():
     assert run_attention.progress_of("collecting ...\n2 failed, 1 error in 3s") == (None, 2)
     attempt = AgentAttempt(created_at=now() - timedelta(minutes=12), updated_at=now())
     assert run_attention.timeout_headline(attempt, {"tail": "building web\nvite v5 compiling"}) == \
-        "Verification timed out after 12 min at “vite v5 compiling”, no failures."
+        "The host stopped verification after 12 min at “vite v5 compiling”, no failures."
     long = run_attention.tail_lines("x" * 500)
     assert len(long[0]) == run_attention.LINE_CHARS and long[0].endswith("…")
 
@@ -230,3 +230,62 @@ def test_approve_route_takes_the_note(verifying_host, client):  # noqa: F811
     with session_scope() as db:
         assert [h["note"] for h in db.get(AgentRun, run_id).history if h.get("event") == "approve_override"] == \
             ["Approved anyway"]
+
+
+# ---------------------------------------------------------------- Eridani's deadline vs the host's result
+
+
+def swept_run(host):
+    """A host that advertises no timeout: Eridani gives up at 11 minutes while the host is still running."""
+    run_id = planned(host)
+    turn(run_id, 3)
+    with session_scope() as db:
+        db.get(AgentHost, host.id).lease_until = now() + timedelta(days=1)
+        coordinator.sweep(db, now() + timedelta(minutes=12))
+    assert attempts(run_id)[0].status == "timed_out" and attempts(run_id)[0].result["swept"] is True
+    assert judged(run_id, stub(verdict("met"))) == ("needs_you", "verify_infra")
+    return run_id
+
+
+def test_the_headline_says_eridani_stopped_waiting_and_why(verifying_host):  # noqa: F811
+    run_id = swept_run(verifying_host)
+    with session_scope() as db:
+        shown = control.public_run(db, db.get(AgentRun, run_id))["attention_detail"]
+    assert shown["headline"] == ("Eridani stopped waiting for verification after 11 min (its 11-minute default: the host "
+                                 "did not advertise the verify entry's timeout); the host had not reported a result.")
+    assert shown["action"].startswith("Verify again.")
+
+
+def test_a_late_pass_is_recorded_and_judged_again(verifying_host):  # noqa: F811
+    run_id = swept_run(verifying_host)
+    attempt_id = attempts(run_id)[0].id
+    out = result(verifying_host, run_id, attempt_id, exit_code=0, tail="1450 passed in 1790s", duration_ms=1_790_000)
+    assert out == {"attempt": attempt_id, "status": "passed", "late": True}
+    [attempt] = attempts(run_id)
+    assert attempt.status == "passed" and attempt.result["swept"]["deadline_at"] and "category" not in attempt.result
+    assert state(run_id) == ("judging", "verify_late_result")
+    assert judged(run_id, stub(verdict("met"))) == ("awaiting_approval", "judge_met")
+
+
+def test_a_late_host_timeout_replaces_the_swept_outcome_without_moving_the_run(verifying_host):  # noqa: F811
+    run_id = swept_run(verifying_host)
+    result(verifying_host, run_id, attempts(run_id)[0].id, exit_code=None, timed_out=True, duration_ms=1_800_000,
+           tail=PROGRESS)
+    assert state(run_id) == ("needs_you", "verify_infra")
+    with session_scope() as db:
+        shown = control.public_run(db, db.get(AgentRun, run_id))["attention_detail"]
+    assert shown["headline"] == "The host stopped verification after 30 min at 94% of the suite, no failures."
+    # A second copy of the result is late in the ordinary way: kept on the attempt, nothing else changes.
+    assert result(verifying_host, run_id, attempts(run_id)[0].id, exit_code=0)["discarded"] == "late"
+
+
+def test_parallel_verifications_on_one_host_are_named_not_queued(verifying_host):  # noqa: F811
+    advertise(verifying_host, timeout_s=7200)
+    first, second = planned(verifying_host, title="First"), planned(verifying_host, title="Second")
+    turn(first, 3)
+    turn(second, 3)
+    assert attempts(first)[0].status == attempts(second)[0].status == "running"  # No lane: both run at once.
+    with session_scope() as db:
+        assert control.public_run(db, db.get(AgentRun, first))["verification"]["alongside"] == [second]
+        coordinator.sweep(db, now() + timedelta(minutes=31))
+    assert "1 other verification" in slow_notices(first)[0].body

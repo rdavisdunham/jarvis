@@ -71,7 +71,7 @@ def test_a_turn_binds_a_verify_attempt_and_sends_the_command(verifying_host):  #
         assert db.scalar(select(Job).where(Job.kind == "agent_judge")).payload == {"attempt": judge.id}
 
 
-def test_deadline_times_out_and_a_late_result_is_discarded(verifying_host):  # noqa: F811
+def test_deadline_times_out_and_a_late_result_is_kept_on_the_attempt(verifying_host):  # noqa: F811
     run_id = planned(verifying_host)
     turn(run_id, 3)
     [attempt] = attempts(run_id)
@@ -82,8 +82,13 @@ def test_deadline_times_out_and_a_late_result_is_discarded(verifying_host):  # n
         db.get(AgentHost, verifying_host.id).lease_until = now() + timedelta(days=1)
         coordinator.sweep(db, now() + timedelta(minutes=12))
     assert attempts(run_id)[0].status == "timed_out" and state(run_id)[0] == "judging"
+    # The host's real result after Eridani stopped waiting replaces the swept outcome (run_coordinator.late_result);
+    # the run is already being judged, so it does not move. A second copy is late and discarded.
+    assert result(verifying_host, run_id, attempt.id) == {"attempt": attempt.id, "status": "passed", "late": True}
+    assert attempts(run_id)[0].status == "passed" and attempts(run_id)[0].result["swept"]["at"]
+    assert state(run_id)[0] == "judging"
     assert result(verifying_host, run_id, attempt.id)["discarded"] == "late"
-    assert attempts(run_id)[0].status == "timed_out" and attempts(run_id)[0].result["late"]
+    assert attempts(run_id)[0].result["late"]
 
 
 def test_failing_stale_and_refused_results_are_non_passes(verifying_host):  # noqa: F811

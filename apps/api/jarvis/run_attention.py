@@ -107,22 +107,45 @@ def verify_headline(attempt, result, fallback_action):
     if category != "infra_timeout":
         return VERIFY_HEADLINES.get(category, ATTENTION["verify_infra"][0]), f"{action.rstrip('.')}. Or verify again."
     if not result.get("timed_out") and not result.get("tail"):
-        return ("No verification result came back in time.",
-                "Check the remotea server is online, then verify again.")
+        return swept_headline(attempt, result), ("Verify again. If it happens again, check the remotea server is online "
+                                                 "and that it advertises the verify entry's timeout.")
     return timeout_headline(attempt, result), "Raise the verify timeout or verify again."
 
 
+def swept_headline(attempt, result):
+    """Eridani's own deadline ran out before the host reported: say how long it waited and where that came from."""
+    waited = minutes((attempt.deadline_at - attempt.created_at).total_seconds()) \
+        if attempt.deadline_at and attempt.created_at else None
+    timeout = result.get("timeout_s")
+    source = (f"the host's {span(timeout)} timeout plus 2 min" if timeout
+              else "its 11-minute default: the host did not advertise the verify entry's timeout")
+    return (f"Eridani stopped waiting for verification after {waited} min ({source}); the host had not reported "
+            "a result." if waited else "Eridani stopped waiting for verification; the host had not reported a result.")
+
+
 def timeout_headline(attempt, result):
-    """"Verification timed out after 30 min at 94% of the suite, no failures." from the attempt's facts and tail."""
+    """"The host stopped verification after 30 min (its timeout: 30 min) at 94% of the suite, no failures." """
     seconds = (result.get("duration_ms") or 0) / 1000 or result.get("timeout_s") or (
         (attempt.updated_at - attempt.created_at).total_seconds() if attempt.updated_at and attempt.created_at else 0)
-    minutes = max(1, round(seconds / 60)) if seconds else None
+    ran = minutes(seconds) if seconds else None
+    timeout = result.get("timeout_s")
     progress, failures = progress_of(str(result.get("tail") or ""))
     lines = tail_lines(result.get("tail"), 1)
     where = f"at {progress}% of the suite" if progress is not None else (f"at “{lines[0][:80]}”" if lines else "")
     failed = "no failures" if not failures else f"{failures} failure{'s' if failures != 1 else ''}"
-    parts = ["Verification timed out" + (f" after {minutes} min" if minutes else ""), where]
+    parts = ["The host stopped verification" + (f" after {ran} min" if ran else "")
+             + (f" (its timeout: {span(timeout)})" if timeout else ""), where]
     return " ".join(p for p in parts if p) + f", {failed}."
+
+
+def minutes(seconds):
+    return max(1, round(seconds / 60))
+
+
+def span(seconds):
+    from .run_coordinator import span as spoken
+
+    return spoken(seconds)
 
 
 def progress_of(tail):

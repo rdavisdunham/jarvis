@@ -165,6 +165,7 @@ REASONS = {
     "plan_frozen": "The plan is frozen; the agent is working on it.",
     "plan_reviewed": "You reviewed the plan; the agent is working on it.",
     "turn": "Checking the last turn against the success criteria.",
+    "verify_late_result": "The host's verification result arrived after Eridani stopped waiting; judging it now.",
     "not_met": "Not met yet; the agent is on the next turn.",
     "queue": "Your message is queued for the agent.",
     "steer": "You steered the agent.",
@@ -1717,9 +1718,20 @@ def verify_slow_notices(db, clock):
             continue
         attempt.result = {**result, "slow_notice_at": clock.isoformat()}
         stop = f"; it will stop at {span(ceiling)}" if ceiling else ""
+        others = len(running_alongside(db, run, attempt))
+        beside = (f" {others} other verification{'s are' if others != 1 else ' is'} running on the same host."
+                  if others else "")
         notify(db, run, "agent_verify_slow", "Verification is still running",
-               f"Verification has been running for {span(after)}{stop}. Nothing is needed from you yet.",
+               f"Verification has been running for {span(after)}{stop}.{beside} Nothing is needed from you yet.",
                key=attempt.id)
+
+
+def running_alongside(db, run, attempt):
+    """Ids of other runs verifying on the same host right now. Neither remotea nor Eridani queues verifications
+    (remotea runs one attempt per session, sessions in parallel), so these compete for the machine, not for a lane."""
+    return list(db.scalars(select(AgentAttempt.run_id).join(AgentRun, AgentRun.id == AgentAttempt.run_id).where(
+        AgentAttempt.kind == "verify", AgentAttempt.status == "running", AgentAttempt.id != attempt.id,
+        AgentRun.host_id == run.host_id, AgentRun.id != run.id)))
 
 
 def current(run, attempt):
@@ -1932,11 +1944,41 @@ def verify_result(db, host_id, frame):
             (frame.generation, frame.turn_seq, frame.plan_revision, frame.verify_id):
         return {"discarded": "tuple mismatch"}
     attempt.workspace_fingerprint = frame.workspace_fingerprint[:200]
+    if swept(attempt):
+        return late_result(db, run, attempt, verify_status(frame), facts)
     if not settle_verify(db, run, attempt, verify_status(frame), facts):
         late = (attempt.result or {}).get("late", [])[-4:]
         attempt.result = {**attempt.result, "late": [*late, {"at": now().isoformat(), "exit_code": frame.exit_code}]}
         return {"discarded": "late"}
     return {"attempt": attempt.id, "status": attempt.status}
+
+
+SWEPT_DETAIL = "No result within the deadline."
+
+
+def swept(attempt):
+    """The attempt was settled by Eridani's own deadline (the sweep), not by a result from the host."""
+    result = attempt.result or {}
+    return attempt.status == "timed_out" and (result.get("swept") is True or (
+        result.get("detail") == SWEPT_DETAIL and result.get("exit_code") is None and not result.get("tail")))
+
+
+def late_result(db, run, attempt, status, facts):
+    """The host's real result for an attempt Eridani had stopped waiting for: it replaces the swept outcome (kept as
+    `swept: {at, deadline_at}`). A pass for the run's current turn while it is parked on that timeout
+    (needs_you(verify_infra)) goes to the judge again, so the run moves on by itself."""
+    kept = {k: v for k, v in (attempt.result or {}).items() if k not in ("detail", "category", "action", "swept")}
+    gave_up = attempt.updated_at or now()
+    attempt.status, attempt.updated_at = status, now()
+    attempt.result = {**kept, **facts, "swept": {"at": gave_up.isoformat(),
+                                                 "deadline_at": attempt.deadline_at.isoformat() if attempt.deadline_at else None}}
+    categorize(db, run, attempt)
+    note(run, "verify_late_result", attempt_id=attempt.id, status=status)
+    emit(db, run.owner_id, "agent.changed", run.id)
+    if status == "passed" and run.state == "needs_you" and run.state_reason == "verify_infra" and current(run, attempt) \
+            and not run.freestyle and not run.paused:
+        to_judging(db, run, attempt, reason="verify_late_result")
+    return {"attempt": attempt.id, "status": status, "late": True}
 
 
 def to_judging(db, run, verify_attempt, *, reason="turn", actor=None):
@@ -2754,7 +2796,8 @@ def sweep(db, clock=None):
             continue
         if attempt.kind == "verify":
             # timed_out is its own non-pass; a result that arrives later is discarded.
-            settle_verify(db, run, attempt, "timed_out", {"detail": "No result within the deadline."})
+            # `swept`: Eridani stopped waiting, the host may still be running it (late_result keeps what it sends).
+            settle_verify(db, run, attempt, "timed_out", {"detail": SWEPT_DETAIL, "swept": True})
         else:
             attempt.status, attempt.updated_at = "failed", clock
             attempt.result = {**(attempt.result or {}), "non_verdict": "timeout"}

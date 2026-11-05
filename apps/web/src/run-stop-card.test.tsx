@@ -9,7 +9,7 @@ import { stopCard, stopLine, type RunDetail } from "./remotea-model";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const HEADLINE = "Verification timed out after 30 min at 94% of the suite, no failures.";
+const HEADLINE = "The host stopped verification after 30 min (its timeout: 30 min) at 94% of the suite, no failures.";
 const ACTION = "Raise the verify timeout or verify again.";
 const OUTPUT = ["....... [ 86%]", "....... [ 88%]", "....... [ 90%]", "....... [ 92%]", "....... [ 94%]"];
 

@@ -1086,7 +1086,9 @@ def verification_fact(db, run):
     return {"verify_id": attempt.verify_id, "status": attempt.status, "at": attempt.updated_at, "evidence": evidence,
             "turn_seq": attempt.turn_seq, "isolated": result.get("isolated"),
             "isolation_reason": result.get("isolation_reason"), "workspace_complete": result.get("workspace_complete"),
-            "workspace_reasons": result.get("workspace_reasons") or [], "deadline_at": attempt.deadline_at}
+            "workspace_reasons": result.get("workspace_reasons") or [], "deadline_at": attempt.deadline_at,
+            # While running: other runs verifying on the same host at once (they share its CPU and test database).
+            "alongside": coordinator.running_alongside(db, run, attempt) if attempt.status == "running" else []}
 
 
 def pending_controls(db, run):

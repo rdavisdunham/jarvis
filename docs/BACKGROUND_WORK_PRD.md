@@ -156,6 +156,10 @@ is delivered; unrecognized speech must remain visible as unresolved input.
 
 ## Queue, concurrency and corrections
 
+Agent-run verification (remotea, on the owner's machine) is a separate limit: verifications are neither queued nor
+laned, so runs in one repo verify in parallel on one machine and test database server. See the README's
+[Known limits](../README.md#known-limits).
+
 - Parallel workers are bounded executions of the existing selected backend
   profile (Luna or Gemini), not a new agent framework or additional vendor.
   No recursive child-agent spawning in the first release.
