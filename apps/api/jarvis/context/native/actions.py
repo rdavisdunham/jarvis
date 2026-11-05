@@ -33,6 +33,7 @@ items also become commitment assertions so open loops and briefs keep working.
 
 import hashlib
 import json
+import logging
 import re
 import time
 from collections.abc import Callable
@@ -40,6 +41,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ... import model_map
+from ...config import get_settings
 from .. import settings as context_settings
 from ..identity import OWNER_ACTOR_NAME
 from ..schema import (
@@ -73,6 +75,8 @@ from .validate import (
     ungrounded_tokens,
 )
 
+log = logging.getLogger(__name__)
+
 JOB = "context_actions"
 WHOLE_MEETING_TOKENS = 60_000
 CHUNK_TOKENS, CONTEXT_TOKENS = 20_000, 1_000
@@ -99,13 +103,40 @@ RECOMMIT = re.compile(r"\b(i'll|i will|i can(?!'t|not| not)|i'm going to|i am go
 NAMED_PROMISE = r"\b{}\b\s*(?:'ll|will|is going to|can|agreed to|to)\b"
 
 
+KEYS = {"anthropic_messages": "anthropic_api_key", "openai_responses": "openai_api_key",
+        "openai_chat": "openai_api_key"}
+_warned: set[tuple[str, str]] = set()
+
+
 def route(prompt_tokens: int = 0) -> model_map.Route:
     """The job's route: an in-process MODEL_MAP override (the meeting lab) wins, then the `actions_model`
-    setting, then the model map's default."""
+    setting (Sonnet 5.5 by default), then the model map's default (see `fallback`)."""
+    return choose(prompt_tokens)[0]
+
+
+def fallback() -> dict[str, str] | None:
+    """When the `actions_model` setting can't be used: {"from", "to", "reason"} for diagnostics, else None."""
+    return choose()[1]
+
+
+def choose(prompt_tokens: int = 0) -> tuple[model_map.Route, dict[str, str] | None]:
+    """The route and, when the configured profile is unknown or its provider key is missing, the fallback to the
+    model map's route (Luna), warned once per profile and reason. A failure at call time is not a fallback: the
+    pass fails and the source stays partial."""
     configured = context_settings.current().actions_model
-    if configured and model_map.MODEL_MAP.get(JOB) == model_map.DEFAULTS[JOB]:
-        return model_map.route(JOB, prompt_tokens, model_map={**model_map.MODEL_MAP, JOB: configured})
-    return model_map.route(JOB, prompt_tokens)
+    if not configured or model_map.MODEL_MAP.get(JOB) != model_map.DEFAULTS[JOB]:
+        return model_map.route(JOB, prompt_tokens), None
+    spec = model_map.PROFILES.get(configured)
+    reason = "unknown_profile" if spec is None else \
+        "missing_key" if not getattr(get_settings(), KEYS.get(spec.api, ""), "x") else None
+    if reason is None:
+        return model_map.route(JOB, prompt_tokens, model_map={**model_map.MODEL_MAP, JOB: configured}), None
+    chosen = model_map.route(JOB, prompt_tokens)
+    if (configured, reason) not in _warned:
+        _warned.add((configured, reason))
+        log.warning("context_actions_model %r is unusable (%s); the action pass runs on %s", configured, reason,
+                    chosen.profile)
+    return chosen, {"from": configured, "to": chosen.profile, "reason": reason}
 
 
 # ---------------------------------------------------------------- the meeting as the model sees it
@@ -647,6 +678,7 @@ class ActionRun:
     status: str = "ok"  # ok | failed | skipped
     reason: str = ""
     mode: str = "whole"
+    fallback: dict[str, str] | None = None  # the configured profile couldn't be used (see `choose`)
     profile: str | None = None
     model: str | None = None
     calls: int = 0
@@ -659,7 +691,8 @@ class ActionRun:
 
     def diagnostics(self, meeting: Meeting) -> dict[str, Any]:
         return {"model": self.model, "profile": self.profile, "prompt_version": PROMPT_VERSION,
-                "status": self.status, "reason": self.reason, "mode": self.mode, "recorded_by": meeting.recorder,
+                "status": self.status, "reason": self.reason, "mode": self.mode, "fallback": self.fallback,
+                "recorded_by": meeting.recorder,
                 "items": [d.describe(meeting) for d in self.drafts], "rejected": self.rejected,
                 "calls": self.calls, "cost_usd": round(self.cost, 6), "latency_ms": self.latency_ms,
                 "usage": {"prompt_tokens": self.prompt_tokens, "completion_tokens": self.completion_tokens}}
