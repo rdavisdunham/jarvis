@@ -422,6 +422,9 @@ def test_criteria_that_ask_for_tests_get_the_targets_verify_by_default(verifying
     assert agent_plan.needs_evidence([{"text": "CI is green"}]) and agent_plan.needs_evidence([{"text": "x", "kind": "verify"}])
     assert not agent_plan.needs_evidence([{"text": "The drawer shows the base branch"}])
     assert agent_plan.pick_verify({"lint", "tests", "web"}) == "tests" and agent_plan.pick_verify({"b", "a"}) == "a"
+    # The quick pre-push check is the default whenever the target offers it: GitHub CI is the final verification.
+    assert agent_plan.pick_verify({"quick", "full", "lint"}) == "quick"
+    assert agent_plan.pick_verify({"quick", "full"}, {"quick": False}) == "full"  # Unless the host says it is not ready.
     # A manual start (no interview) on a task whose criteria mention tests but set no verify.
     created = task("Planned without verify", success_criteria=[{"id": "c1", "text": "pytest passes"}], notes="Do it.")
     result = start(verifying_host, created["id"], interview=False)

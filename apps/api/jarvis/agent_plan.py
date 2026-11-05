@@ -498,7 +498,9 @@ POLICY_ORDER = ("code_ready", "pr_open", "pr_merged")
 # A criterion that asks for test evidence: without a verify command the judge can never see it (run 75661a23).
 EVIDENCE = re.compile(r"\b(tests?|test suite|suites?|pytest|vitest|ci|lint|typecheck|type-check|compiles?|builds?)\b", re.IGNORECASE)
 # Verify ids a host commonly names for "the whole suite"; the first one offered wins, else the alphabetically first.
-PREFERRED_VERIFY = ("all", "full", "tests", "test", "check", "ci")
+# `quick` first: the local check is a pre-push check and GitHub CI on the pull request is the final verification
+# (run_ci.py, docs/AGENT_CONTROL.md "CI as the final verification"). A human or the agent may still name `full`.
+PREFERRED_VERIFY = ("quick", "all", "full", "tests", "test", "check", "ci")
 
 
 def needs_evidence(criteria):
@@ -512,7 +514,8 @@ def needs_evidence(criteria):
 
 
 def pick_verify(offered, ready=None):
-    """The verify id Eridani names by default. `ready` ({id: bool}, the host's hello `verify_status`) narrows the
+    """The verify id Eridani names by default: the quick pre-push check when the target offers one (GitHub CI is then
+    the final verification), else the fullest local entry. `ready` ({id: bool}, the host's hello `verify_status`) narrows the
     choice to the ids that are ready when at least one is; ids the host did not report count as ready. When none is
     ready the choice is today's (the preflight says why: agent_control.target_readiness)."""
     ready = ready or {}

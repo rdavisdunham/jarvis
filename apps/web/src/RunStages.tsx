@@ -29,7 +29,7 @@ export function ProgressRing({ done, total }: { done: number; total: number }) {
 
 /** Above every view: the ring, the one status line, and where the run is in Plan, Run, Verify. */
 export function StageHeader({ run, status }: { run: RunDetail; status: ReactNode }) {
-  const steps = run.plan?.steps ?? [], { done, total } = stepProgress(steps);
+  const steps = run.plan?.steps ?? [], { done, total } = stepProgress(steps, run);
   const stage = runStage(run), at = RUN_STAGES.indexOf(stage), complete = run.state === "completed";
   return <div className="run-stage-head">
     <ProgressRing done={done} total={total}/>
