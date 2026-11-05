@@ -448,7 +448,8 @@ def live(profile: str | None, *, facts_profile: str | None = None, budget_usd: f
 
     settings = get_settings()
     saved_settings = {k: getattr(settings, k) for k in
-                      ("context_enabled", "context_source_budget_usd", "context_model_timeout_s")}
+                      ("context_enabled", "context_source_budget_usd", "context_model_timeout_s",
+                       "context_actions_model")}
     saved_fns = memory_learning.embeddings, memory_learning.query_embedding
     saved_map = dict(model_map.MODEL_MAP)
     memory_learning.embeddings = lambda owner, texts, timeout=20: [fake_vector(t) for t in texts]
@@ -457,6 +458,7 @@ def live(profile: str | None, *, facts_profile: str | None = None, budget_usd: f
         for job, chosen in zip(LAB_JOBS, (profile, facts_profile or profile), strict=True):
             if job in model_map.JOBS:
                 model_map.MODEL_MAP[job] = chosen
+        settings.context_actions_model = profile  # the setting wins over MODEL_MAP for the action pass
     settings.context_enabled = True
     settings.context_source_budget_usd, settings.context_model_timeout_s = budget_usd, timeout_s
     try:
