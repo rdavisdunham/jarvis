@@ -1136,10 +1136,19 @@ export type UnmergedWork = { host_id: string; host_name: string; target: string 
   base: string | null; ahead: number | null; behind: number | null; unpushed: number | null; uncommitted: number | null;
   untracked: number | null; merged: boolean | null; active: boolean | null; reasons: string[] | null };
 
-/** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. */
+/** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. A target
+ * saved for several records (one row per "Remember for") is offered once, preferring a row its host still lists;
+ * saving re-binds by host and target anyway. A saved target its host no longer lists says so. */
 export function targetOptions(need: NeedsTarget) {
   const detail = (base: string, t: { template?: TargetTemplate | null }) => [base, templateNote(t)].filter(Boolean).join(" · ");
-  const saved = need.candidates.map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target, detail: detail(t.repo, t), saved: t }));
+  const listed = new Set(need.advertised.map(t => `${t.host_id}:${t.host_target}`));
+  const unique = new Map<string, SavedTarget>();
+  for (const t of need.candidates) {
+    const id = `${t.host_id}:${t.host_target}:${t.repo}`, seen = unique.get(id);
+    if (!seen || (!listed.has(`${seen.host_id}:${seen.host_target}`) && listed.has(`${t.host_id}:${t.host_target}`))) unique.set(id, t);
+  }
+  const saved = [...unique.values()].map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target,
+    detail: [detail(t.repo, t), listed.has(`${t.host_id}:${t.host_target}`) ? "" : "not listed by its host"].filter(Boolean).join(" · "), saved: t }));
   const known = new Set(need.candidates.map(t => `${t.host_id}:${t.host_target}`));
   const offered = need.advertised.filter(t => !known.has(`${t.host_id}:${t.host_target}`))
     .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: detail(t.repo || t.host_name, t), advertised: t }));

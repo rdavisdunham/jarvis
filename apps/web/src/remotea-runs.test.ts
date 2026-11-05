@@ -107,6 +107,17 @@ describe("run drawer model", () => {
 describe("execution target picker", () => {
   const need = (records: NeedsTarget["records"]): NeedsTarget => ({ task_id: "t1", candidates: [], advertised: [], records });
 
+  it("offers a target saved for several records once, preferring the row its host still lists", () => {
+    const saved = (id: string, host_id: string, record_id: string) =>
+      ({ id, host_id, host_target: "jarvis", name: "jarvis", repo: "/r/jarvis", worktree_root: "", record_id });
+    const options = targetOptions({ task_id: "t1", records: [],
+      candidates: [saved("old", "h", "projA"), saved("dup", "h", "projB"), saved("gone", "stale", "projC")],
+      advertised: [{ host_id: "h", host_name: "desk", host_target: "jarvis", repo: "/r/jarvis", worktree_root: "" }] });
+    expect(options.map(o => o.key)).toEqual(["saved:old", "saved:gone"]);
+    expect(options[0].detail).toBe("/r/jarvis");
+    expect(options[1].detail).toBe("/r/jarvis · not listed by its host");
+  });
+
   it("remembers the choice for the nearest record that is not a task, so sibling tasks share it", () => {
     expect(defaultScope(need([{ id: "task-rec", title: "Fix login", type_id: "task" },
       { id: "proj", title: "Eridani roadmap", type_id: "project" }, { id: "client", title: "Acme", type_id: "client" }]))).toBe("proj");

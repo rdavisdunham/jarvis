@@ -566,6 +566,24 @@ def role_spec(spec):
             **({"permission_profile": spec.permission_profile} if spec.permission_profile else {})}
 
 
+def managed_missing(host, host_target, harnesses):
+    """(harness, launcher version) for the first of `harnesses` a managed-sessions host cannot run managed on
+    `host_target` (its hello launch probe, else the host-wide flag), or None. remotea gates managed runs on launcher
+    versions it has verified, so a launcher that auto-updated past them turns this off until remotea catches up."""
+    for harness in harnesses:
+        launch = (target_launch(hello_target(host, host_target)) or {}).get(harness, {})
+        wide = ((host.caps or {}).get("harnesses") or {}).get(harness) or {}
+        if not launch.get("managed", wide.get("managed", False)):
+            return harness, launch.get("version") or wide.get("version")
+    return None
+
+
+def managed_message(harness, version=None):
+    name = HARNESS_LABELS.get(harness, harness)
+    return (f"{name}{' ' + version if version else ''} on this target is not a launcher version remotea supports for "
+            f"managed runs; update remotea (or use a supported {name} version), choose another harness, or start freestyle.")
+
+
 def run_roles(body):
     """The run's `roles` from a StartInput, or None for a classic run (no reviewer, and no worker that differs from
     the planner)."""
@@ -616,12 +634,10 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     check_host(owner, task, host, body.harness, target.host_target,
                roles={"reviewer": roles["reviewer"], "worker": roles["worker"]} if roles else None)
     if coordinator.host_cap(db, host.id, "managed.sessions") and not body.freestyle:
-        for harness in [body.harness, *[s.harness for s in (body.reviewer, body.worker) if s]]:
-            launch = (target_launch(hello_target(host, target.host_target)) or {}).get(harness, {})
-            managed = launch.get("managed", ((host.caps or {}).get("harnesses", {}).get(harness) or {}).get("managed", False))
-            if not managed:
-                raise DomainError("MANAGED_UNAVAILABLE", "This target's launcher does not support managed runs; update its launcher.", 409,
-                                  data={"harness": harness, "host_target": target.host_target})
+        missing = managed_missing(host, target.host_target, [body.harness, *[s.harness for s in (body.reviewer, body.worker) if s]])
+        if missing:
+            raise DomainError("MANAGED_UNAVAILABLE", managed_message(*missing), 409,
+                              data={"harness": missing[0], "version": missing[1], "host_target": target.host_target})
         planner = role_spec(RoleInput(harness=body.harness, model=body.model, effort=body.effort,
                                       permission_profile=body.permission_profile))
         roles = roles or {"planner": planner, "reviewer": None, "worker": None, "rounds": 0, "approve_final": True}
@@ -1794,6 +1810,12 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None, *,
             elif wanted in HARNESSES and not harnesses.get(wanted, False):
                 out["problems"].append({"code": "HARNESS_UNAVAILABLE", "role": role, "blocking": True,
                                         "message": f"{role.capitalize()}: " + (reasons.get(wanted) or "unavailable")})
+        if host is not None and host.owner_id == owner and coordinator.host_cap(db, host.id, "managed.sessions"):
+            missing = managed_missing(host, target.host_target, [harness, *[h for h in (reviewer_harness, worker_harness) if h]])
+            if missing:
+                # start_run refuses this (MANAGED_UNAVAILABLE) unless the run is freestyle; say so before Start.
+                out["problems"].append({"code": "MANAGED_UNAVAILABLE", "blocking": True, "freestyle_ok": True,
+                                        "message": managed_message(*missing)})
     except DomainError:
         pass
     return {**out, "task": {"id": task.id, "title": task.title},
