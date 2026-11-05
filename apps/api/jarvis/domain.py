@@ -80,6 +80,8 @@ class PlanStep(Args):
     title: str = Field(min_length=1, max_length=500)
     status: Literal["todo", "doing", "done", "skipped", "disputed"] = "todo"
     note: str = Field(default="", max_length=2000)
+    # A short group label; the UI groups consecutive steps that share one (1a, 1b, 2a …).
+    phase: str = Field(default="", max_length=120)
     task_id: str | None = Field(default=None, max_length=36)
 
 

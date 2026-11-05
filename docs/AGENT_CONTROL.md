@@ -76,12 +76,26 @@ paused it or held automation.
 
 ### Run progress, chat, and automation hold
 
-The drawer has one stage/model status and one plan card. During approved execution, the card shows steps
-the agent has explicitly marked `doing`, their latest progress notes and when they were reported. If no
-step is marked `doing`, the card labels the first unfinished step **Next step**. A completed checklist does
-not imply verification or the whole run has finished. **Expand plan** reveals the full plan and criteria
-in place. Pending questions and approvals remain beside the plan even when chat is hidden. Technical
-identifiers, worktree/base facts, detailed verification and diagnostics live under **Details**.
+The drawer's header holds one stage/model status line, a **Plan → Run → Verify** track and a ring with the
+percent of steps settled (done or skipped). With chat hidden, the body is three collapsible sections, one
+per stage; only the section the run is in opens by itself (`run-stages.ts` `runStage`), each collapsed
+section shows a one-line summary, and any section can be opened by hand. A choice made by hand lasts until the
+stage changes or a new card needs you.
+
+- **Plan** holds the interview, plan review, planning recovery and the full plan (PRD, steps, criteria,
+  previous revisions, review history), with Approve while the plan waits for it.
+- **Run** is the plan in flight: steps grouped by phase and numbered 1a, 1b, 2a (flat 1..N when no step has
+  a phase). Done and skipped steps stay in place, dimmed; the step the agent marked `doing` is highlighted
+  with its latest note and when it was reported, otherwise the first unfinished step is marked **Next**.
+- **Verify** lists each success criterion with the latest judge's status and evidence, the verify command,
+  the latest verification and judge notes, GitHub CI on the pull request (the chip, or the Awaiting CI card),
+  the Final acceptance card, and the outcome once the run settles. `awaiting_ci` and `needs_you` stops on
+  judge, verify or CI reasons (`ci_timeout`, `ci_failed_again`, `ci_unavailable`) open Verify.
+
+A finished checklist does not imply verification or that the run has finished. Agent questions, control
+requests and a parked run's Needs you card appear in the section of the current stage, even when chat is
+hidden; so does the CI card while it has news (a failed CI card sits in Run while the agent fixes it). Technical identifiers,
+worktree/base facts, Edit criteria, Judge again, Re-plan and diagnostics live under **Details**.
 
 The top-right **X** closes the run drawer. The arrow on its left edge collapses it to a status rail
 (or an edge pill on phones); select that rail to reopen it. These controls never pause, cancel, send a
@@ -720,13 +734,17 @@ wording.
 ## Task plan fields (migration 0026)
 
 Tasks gain `steps` (ordered, stable `id`s; each `{id, title, status: todo|doing|done|skipped|disputed,
-note, task_id?, by, updated_at, revision}`), `prd_note_id` (a note in the same workspace),
+note, phase, task_id?, by, updated_at, revision}`), `prd_note_id` (a note in the same workspace),
 `success_criteria` (`[{id, text, kind: text|verify, verify_id?}]`), `verify` (`{target_id, verify_id}`),
 `turn_cap` (default 15), `execution_target_id` (foreign key arrives with `execution_targets` in 0028) and
 the server-managed `plan_revision`. They are edited through `task.update` (browser, Dani, bots), normalized
 by `task_plan.normalize`: missing ids are assigned, unchanged steps keep their stamp, changed steps record
 who changed them, and `plan_revision` advances only when the plan actually changes. Plan fields never
 queue a Linear write. A run freezes a plan revision when it starts; agents tick steps with `task_step` (below).
+`phase` (at most 120 characters, default "") is a short group label such as Investigate, Fix or Ship. The run
+drawer groups consecutive steps that share one and numbers them 1a, 1b, 2a; `render_plan` shows it as a `[Phase]`
+prefix on each step line. Changing a phase restamps the step like any other edit; steps saved before phases
+existed have no key and are treated as "" (not restamped).
 
 ## Runs (stage C, migration 0028)
 
@@ -1172,7 +1190,7 @@ spawning → interviewing → planning → executing → verifying → judging �
   then stop") and moves the run to `planning`. The run is `interviewing`, or `needs_you` on `wall_clock` or
   `no_progress` with the interview open for its current generation (the page shows the form there too); answering
   from `wall_clock` grants the 2 h described under the needs_you reasons.
-- **`submit_plan {run_token, prd, steps[], success_criteria[≥1: {id?, text, kind: text|verify,
+- **`submit_plan {run_token, prd, steps[{id?, title, note?, phase?, task_id?}], success_criteria[≥1: {id?, text, kind: text|verify,
   verify_id?}], verify?: {target_id, verify_id}, migration?: bool, expected_plan_revision}`** (interviewing, planning or
   replanning; else `PLAN_LOCKED`): `expected_plan_revision` is the task's `plan_revision` from
   `task_plan` (`REVISION_CONFLICT`); `verify` must name the run's execution target and a verify id from
@@ -1349,6 +1367,8 @@ Limits: the wall clock (6 h) now also covers interviewing, planning, verifying a
 no-progress timer still applies to executing.
 
 ### CI as the final verification
+
+An overview of the whole flow, quick check, judge and CI, is in [how an agent run is verified](RUN_VERIFICATION.md).
 
 Davis's decision (2026-11-04): running the full suite locally after every turn and again on GitHub is waste, so the
 local verify entry is a quick pre-push check (`scripts/verify-quick.sh`, [above](#jarvis-scriptsverify-quicksh-after-every-turn-scriptsverifysh-on-request))

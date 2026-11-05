@@ -76,6 +76,9 @@ class PlanStepInput(BaseModel):
     id: str | None = Field(default=None, pattern=PLAN_ID)
     title: str = Field(min_length=1, max_length=500)
     note: str = Field(default="", max_length=2000)
+    phase: str = Field(default="", max_length=120,
+                       description="Short group label for consecutive steps (2–5 phases per plan, e.g. Investigate, Fix, "
+                                   "Ship); same spelling for every step of a phase.")
     task_id: str | None = Field(default=None, max_length=36)
 
 
@@ -233,7 +236,7 @@ def task_plan(db, bot, body):
     result = {
         "task_id": task.id, "title": task.title, "status": task.status, "revision": task.revision,
         "plan_revision": task.plan_revision, "prd": note.content if note and not note.archived else task.notes,
-        "steps": [{k: s.get(k) for k in ("id", "title", "status", "note", "task_id", "revision")} for s in task.steps or []],
+        "steps": [{k: s.get(k) for k in ("id", "title", "status", "note", "phase", "task_id", "revision")} for s in task.steps or []],
         "success_criteria": task.success_criteria or [], "completion_policy": run.completion_policy if run else task.completion_policy,
         "actor": actor.record(),
     }
@@ -443,13 +446,13 @@ def seeded_steps(db, task, steps, kids):
                               data={"task_id": step.task_id})
         sid = step.id or (by_child.get(step.task_id) or {}).get("id")
         old = previous.get(sid) or {}
-        result.append({"id": sid, "title": step.title, "note": step.note, "task_id": step.task_id,
+        result.append({"id": sid, "title": step.title, "note": step.note, "phase": step.phase, "task_id": step.task_id,
                        "status": old.get("status", "todo")})
         seen.add(step.task_id)
     for child in kids:
         if child.id not in seen:
             old = by_child.get(child.id) or {}
-            result.append({"id": old.get("id"), "title": child.title[:500], "note": "", "task_id": child.id,
+            result.append({"id": old.get("id"), "title": child.title[:500], "note": "", "phase": "", "task_id": child.id,
                            "status": old.get("status", "todo")})
     return [{k: v for k, v in s.items() if v is not None} for s in result]
 
