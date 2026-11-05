@@ -8,6 +8,8 @@
 export const TASK_CARD_SECTIONS = {
   /** `SourceDetails`; only when the task has a source. */
   source: "Source",
+  /** `LinearComments`: the Linear issue's comments, read-only; only for tasks synced from Linear. */
+  linearComments: "Linear comments",
   /** Eridani-only notes (the task record's `local_notes`). */
   localNotes: "Local notes",
   /** `RecordTools`: Copy record link and Previous record. */

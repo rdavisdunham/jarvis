@@ -1661,6 +1661,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/integrations/linear/tasks/{task_id}/comments",
+      "handler": "linear_comments",
+      "source": "apps/api/jarvis/integration_routes.py",
+      "feature": "linear_sync"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/jobs/{job_id}",
       "handler": "job",
       "source": "apps/api/jarvis/api.py",

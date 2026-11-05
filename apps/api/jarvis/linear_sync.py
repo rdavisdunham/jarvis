@@ -1,5 +1,6 @@
 """Owner-scoped Linear synchronization through durable jobs and stable issue identities."""
 
+import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import date, datetime, timedelta
@@ -327,6 +328,59 @@ def apply_remote(db, conn, link, remote, force=False):
     external_state(db, link)
 
 
+# Linear comments copied onto each synced issue link (LinearIssue.comments), read-only in Eridani. Each sync reads
+# every comment of the issues it fetched (replacing what was stored, so deletions there land) and, between daily
+# full syncs, comments changed since the last sync on the other in-scope issues (merged by id).
+COMMENTS_KEPT = 200
+COMMENT_ISSUES_PER_QUERY = 50
+
+
+def comment_row(c):
+    author = ((c.get("user") or {}).get("name") or (c.get("externalUser") or {}).get("name")
+              or (c.get("botActor") or {}).get("name") or "Linear")
+    return {"id": c["id"], "issue_id": c.get("issueId"), "parent_id": c.get("parentId"), "author": author,
+            "body": c.get("body") or "", "url": c.get("url"), "created_at": c.get("createdAt"),
+            "updated_at": c.get("updatedAt"), "edited_at": c.get("editedAt"), "resolved_at": c.get("resolvedAt")}
+
+
+def fetch_comments(client, remote_rows, teams, only_mine, viewer, since):
+    """(replaced, changed): all comments of the issues in remote_rows, by issue id; and, when `since` is set,
+    comments changed since then on other in-scope issues."""
+    ids = list(dict.fromkeys(r["id"] for r in remote_rows))
+    replaced = {rid: [] for rid in ids}
+    for index in range(0, len(ids), COMMENT_ISSUES_PER_QUERY):
+        for c in client.comment_list({"issue": {"id": {"in": ids[index : index + COMMENT_ISSUES_PER_QUERY]}}}):
+            if c.get("issueId") in replaced:
+                replaced[c["issueId"]].append(comment_row(c))
+    changed = []
+    if since:
+        scope = {"team": {"id": {"in": teams}}}
+        if only_mine:
+            scope["assignee"] = {"id": {"eq": viewer}}
+        changed = [comment_row(c) for c in client.comment_list({"issue": scope, "updatedAt": {"gte": since}})
+                   if c.get("issueId") and c.get("issueId") not in replaced]
+    return replaced, changed
+
+
+def ordered_comments(rows):
+    return sorted(rows, key=lambda c: c.get("created_at") or "")[-COMMENTS_KEPT:]
+
+
+def store_comments(existing, replaced, changed):
+    for rid, rows in replaced.items():
+        link = existing.get(rid)
+        if link and link.sync_state != "unlinked":
+            link.comments = ordered_comments(rows)
+    by_issue = {}
+    for row in changed:
+        by_issue.setdefault(row["issue_id"], []).append(row)
+    for rid, rows in by_issue.items():
+        link = existing.get(rid)
+        if link and link.sync_state != "unlinked":
+            merged = {c["id"]: c for c in link.comments or []} | {c["id"]: c for c in rows}
+            link.comments = ordered_comments(merged.values())
+
+
 def process_sync(job_id):
     with session_scope() as db:
         job = db.get(Job, job_id)
@@ -349,8 +403,9 @@ def process_sync(job_id):
         filter = {"team": {"id": {"in": teams}}}
         if full and only_mine:
             filter["assignee"] = {"id": {"eq": viewer}}
-        if not full and conn.last_sync_at:
-            filter["updatedAt"] = {"gte": (conn.last_sync_at - timedelta(minutes=2)).isoformat()}
+        since = (conn.last_sync_at - timedelta(minutes=2)).isoformat() if not full and conn.last_sync_at else None
+        if since:
+            filter["updatedAt"] = {"gte": since}
         known = (
             set(
                 db.scalars(
@@ -376,6 +431,11 @@ def process_sync(job_id):
         missing = sorted(known - {r["id"] for r in remote_rows})
         for index in range(0, len(missing), 100):
             remote_rows += client.issues({"id": {"in": missing[index : index + 100]}})
+        try:
+            comments = fetch_comments(client, remote_rows, teams, only_mine, viewer, since)
+        except Exception:  # noqa: BLE001 - comments are an extra: never fail the issue sync over them.
+            logging.getLogger(__name__).warning("Linear comments not read; stored comments kept", exc_info=True)
+            comments = None  # The issues still sync; stored comments stay until a later sync reads them.
         with session_scope() as db:
             advisory(db, f"workspace:{owner}")
             job = db.get(Job, job_id)
@@ -432,6 +492,8 @@ def process_sync(job_id):
                         external_state(db, link)
                     continue
                 apply_remote(db, conn, link, remote)
+            if comments:
+                store_comments(existing, *comments)
             if full:
                 for rid, link in existing.items():
                     if rid not in seen and not link.pending_job_id and link.sync_state != "unlinked":

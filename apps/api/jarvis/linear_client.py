@@ -45,6 +45,13 @@ COMMENTS_QUERY = (
     " pageInfo{hasNextPage endCursor}}}}"
 )
 
+# Comments copied onto synced tasks (linear_sync.sync_comments): read-only, by issue ids or changed since a time.
+COMMENT_LIST_QUERY = (
+    "query EriCommentList($filter:CommentFilter,$after:String){comments(first:100,after:$after,filter:$filter){nodes{"
+    "id url body createdAt updatedAt editedAt resolvedAt parentId issueId user{id name} externalUser{name} "
+    "botActor{name}} pageInfo{hasNextPage endCursor}}}"
+)
+
 
 class LinearClient:
     def __init__(self, key):
@@ -154,6 +161,9 @@ class LinearClient:
 
     def issues(self, filter):
         return self.pages(ISSUES_QUERY, "issues", {"filter": filter})
+
+    def comment_list(self, filter, max_pages=20):
+        return self.pages(COMMENT_LIST_QUERY, "comments", {"filter": filter}, max_pages=max_pages)
 
     def projects(self):
         return self.pages(PROJECTS_QUERY, "projects", max_pages=20)

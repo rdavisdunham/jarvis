@@ -1,3 +1,4 @@
+import { LinearComments } from "./LinearComments";
 import {QuickListDetail} from "./QuickLists";
 import { SourceDetails, SourceNotes, useInlineGuard } from "./SourceDetails";
 import { RecordTools } from "./record-links";
@@ -463,6 +464,7 @@ function StandardTaskDetails(p: Props) {
               {text("title", "Task", "text", "title", "Add a title")}
               {text("notes", "Description", "textarea", "body", "Add details")}
               <SourceDetails source={task.source}/><SourceNotes kind="task" id={p.id} canEdit={p.canEdit!==false} onGuard={annotation.update}/>
+              {task.source?.provider==="linear"&&<LinearComments taskId={p.id}/>}
               <RecordTools kind="task" id={p.id}/>
               <BugReportDetails taskId={p.id} tags={task.tags ?? []}/>
               {p.remotea && p.onOpenRun && <TaskRun taskId={p.id} canEdit={p.canEdit !== false} onOpenRun={p.onOpenRun}/>}

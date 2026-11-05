@@ -45,6 +45,9 @@ class Fake:
         self.lost = False
         self.fail_sync = False
         self.filters = []
+        self.comments = []
+        self.comment_filters = []
+        self.fail_comments = False
 
     def close(self):
         pass
@@ -74,6 +77,17 @@ class Fake:
 
     def issue(self, id):
         return copy.deepcopy(self.rows.get(id))
+
+    def comment_list(self, filter):
+        # Linear's root comments query: by issue ids, or changed since a time on in-scope issues.
+        self.comment_filters.append(filter)
+        if self.fail_comments:
+            raise LinearFailure("unavailable")
+        ids = filter["issue"].get("id", {}).get("in")
+        if ids is not None:
+            return copy.deepcopy([c for c in self.comments if c["issueId"] in ids])
+        since = filter["updatedAt"]["gte"]
+        return copy.deepcopy([c for c in self.comments if c["updatedAt"] >= since])
 
     def query(self, query, variables):
         create = "issueCreate" in query
@@ -736,3 +750,79 @@ def test_changing_the_team_scope_after_a_sync_saves(linear):
     saved = run("linear.select", expected_revision=revision, team_ids=["team"], only_mine=False)
     assert saved["only_mine"] is False and saved["team_ids"] == ["team"]
     assert isinstance(saved["last_sync_at"], str)
+
+def comment(id, issue_id="remote", body="Looks good", created="2026-09-12T10:05:00Z", **extra):
+    return {"id": id, "issueId": issue_id, "parentId": None, "body": body, "url": f"https://linear.app/c/{id}",
+            "createdAt": created, "updatedAt": created, "editedAt": None, "resolvedAt": None,
+            "user": {"id": "u", "name": "Teammate"}, "externalUser": None, "botActor": None, **extra}
+
+
+def sync_now(full=False):
+    with session_scope() as db:
+        if full:
+            db.get(LinearConnection, "davin").full_sync_at = None
+        jid = sync.queue_sync(db, "davin", force=True)
+    sync.process_sync(jid)
+
+
+def stored_comments(remote_id="remote"):
+    with session_scope() as db:
+        return db.scalar(select(LinearIssue).where(LinearIssue.remote_id == remote_id)).comments
+
+
+def test_comments_copy_onto_the_task_and_follow_edits_and_deletions(linear, client):
+    linear.comments = [comment("c2", created="2026-09-12T11:00:00Z", body="Second", parentId="c1"),
+                       comment("c1", body="First")]
+    sync_now(full=True)
+    rows = stored_comments()
+    assert [c["id"] for c in rows] == ["c1", "c2"]  # oldest first
+    assert rows[0] == {"id": "c1", "issue_id": "remote", "parent_id": None, "author": "Teammate", "body": "First",
+                       "url": "https://linear.app/c/c1", "created_at": "2026-09-12T10:05:00Z",
+                       "updated_at": "2026-09-12T10:05:00Z", "edited_at": None, "resolved_at": None}
+    assert rows[1]["parent_id"] == "c1"
+    # The issues this sync read have every comment re-read: an edit lands and a deleted comment goes.
+    linear.comments = [comment("c1", body="First, edited", editedAt="2026-09-12T12:00:00Z")]
+    sync_now()
+    assert [(c["id"], c["body"]) for c in stored_comments()] == [("c1", "First, edited")]
+    task_id, _ = imported()
+    shown = client.get(f"/api/v1/integrations/linear/tasks/{task_id}/comments").json()
+    assert shown["identifier"] == "ERI-1" and shown["url"] == "https://linear.app/test/issue/ERI-1"
+    assert [c["body"] for c in shown["comments"]] == ["First, edited"] and shown["synced_at"]
+
+
+def test_comments_on_issues_this_sync_did_not_read_merge_by_change_time(linear, monkeypatch):
+    other = {**issue("other"), "identifier": "ERI-2", "title": "Other"}
+    linear.rows["other"] = other
+    linear.comments = [comment("o1", "other", body="Old")]
+    sync_now(full=True)
+    assert [c["body"] for c in stored_comments("other")] == ["Old"]
+    # Between full syncs only changed issues come back; a new comment on an unchanged issue still arrives.
+    monkeypatch.setattr(linear, "issues", lambda _filter: [copy.deepcopy(linear.rows["remote"])])
+    linear.comments.append(comment("o2", "other", body="New", created="2099-01-01T00:00:00Z"))
+    sync_now()
+    assert [c["body"] for c in stored_comments("other")] == ["Old", "New"]
+    scoped = linear.comment_filters[-1]
+    assert scoped["issue"] == {"team": {"id": {"in": ["team"]}}, "assignee": {"id": {"eq": "me"}}}
+
+
+def test_a_comment_read_failure_keeps_stored_comments_and_the_issue_sync(linear):
+    linear.comments = [comment("c1")]
+    sync_now(full=True)
+    linear.fail_comments = True
+    linear.rows["remote"] = {**linear.rows["remote"], "title": "Renamed", "updatedAt": "2026-09-12T12:00:00Z"}
+    sync_now()
+    task_id, _ = imported()
+    with session_scope() as db:
+        assert db.get(Task, task_id).title == "Renamed"
+        assert db.get(LinearConnection, "davin").status == "ready"
+    assert [c["id"] for c in stored_comments()] == ["c1"]
+
+
+def test_comments_route_is_owner_scoped_and_needs_a_linear_task(linear, client):
+    with session_scope() as db:
+        local = Task(owner_id="davin", title="Local only")
+        db.add(local)
+        db.flush()
+        local_id = local.id
+    assert client.get(f"/api/v1/integrations/linear/tasks/{local_id}/comments").status_code == 404
+    assert client.get(f"/api/v1/integrations/linear/tasks/{uuid4()}/comments").status_code == 404
