@@ -34,3 +34,11 @@ def test_only_and_no_sync_narrow_the_plan_and_a_bad_only_is_refused():
     assert "vitest run" in web.stdout
     bad = dry_run("--only", "nope")
     assert bad.returncode == 2 and "--only takes api or web" in bad.stderr
+
+
+def test_throwaway_database_provides_vector_like_ci_and_compose():
+    out = dry_run("--no-sync")
+    assert out.returncode == 0, out.stderr
+    assert "docker run" in out.stdout
+    assert "pgvector/pgvector:0.8.6-pg16-bookworm" in out.stdout
+    assert "postgres:16-alpine" not in out.stdout

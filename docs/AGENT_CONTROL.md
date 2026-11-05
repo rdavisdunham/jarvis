@@ -261,8 +261,9 @@ own. [`scripts/verify.sh`](../scripts/verify.sh) `[--dry-run] [--no-sync] [--onl
 2. **Test database.** Exports `JARVIS_ENV_FILE=""` (never the developer's `.env`). Uses the caller's
    `JARVIS_DATABASE_URL` as given: the pytest session creates and drops its own `jarvis_test_<uuid>` database
    on that server (`tests/conftest.py`), so one standing test server serves concurrent runs. Without it the
-   script starts a throwaway `postgres:16-alpine` container on a free loopback port (`-p 127.0.0.1::5432`),
-   waits for it over TCP and removes it on exit (an `EXIT` trap; `INT`/`TERM` exit through it).
+   script starts a throwaway `pgvector/pgvector:0.8.6-pg16-bookworm` container (matching CI) on a free
+   loopback port (`-p 127.0.0.1::5432`), waits for it over TCP and removes it on exit (an `EXIT` trap;
+   `INT`/`TERM` exit through it).
 3. **API.** `uv sync --locked --group dev`, then `.venv/bin/python -m pytest -q --tb=short` from the
    repository root (`tests/`); extra arguments go to pytest (`-x`, `-k agent`, a test file).
 4. **Web.** In `apps/web`: `npm ci --no-audit --no-fund` when `node_modules` is missing, `npx tsc -b`,
@@ -303,7 +304,10 @@ are; match the node path to the installed nvm version):
 ```
 
 The standing test server, once: `docker run -d --restart unless-stopped --name jarvis-verify-pg -e
-POSTGRES_PASSWORD=verify -p 127.0.0.1:55432:5432 postgres:16-alpine`. Until the host runs a remotea build
+POSTGRES_PASSWORD=verify -p 127.0.0.1:55432:5432 pgvector/pgvector:0.8.6-pg16-bookworm`. The standing
+server must provide the `vector` extension required by the test models. Existing plain PostgreSQL test
+servers need to be replaced with this image before running `full`; changing the wrapper's throwaway
+image does not change a server selected by `JARVIS_DATABASE_URL`. Until the host runs a remotea build
 with `prepare` (remotea branch `target-templates`), drop `prepare` and `JARVIS_VERIFY_SYNC` and set
 `"isolation": "none"` on the entry instead: the script then runs as the server user with the network and
 docker, syncs dependencies itself and may start its own throwaway Postgres (drop `JARVIS_DATABASE_URL`,
