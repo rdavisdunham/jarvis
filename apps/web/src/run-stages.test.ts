@@ -49,6 +49,11 @@ describe("progress and the active step", () => {
     expect(stepProgress([step("a", "done"), step("b", "skipped"), step("c")])).toEqual({ done: 2, total: 3, percent: 67 });
     expect(stepProgress([])).toEqual({ done: 0, total: 0, percent: 0 });
   });
+  it("fills the ring for a completed run even when a step was left open (approved from needs-you)", () => {
+    const steps = [step("a", "done"), step("b", "done"), step("c", "done"), step("d")];
+    expect(stepProgress(steps, { state: "completed" })).toEqual({ done: 4, total: 4, percent: 100 });
+    expect(stepProgress(steps, { state: "needs_you" })).toEqual({ done: 3, total: 4, percent: 75 });
+  });
   it("prefers the most recently reported doing step, else the first unfinished one", () => {
     const steps = [step("a", "doing", "P", { updated_at: "2026-11-04T09:00:00Z" }), step("b", "doing", "P", { updated_at: "2026-11-04T10:00:00Z" })];
     expect(activeStep(steps)).toMatchObject({ kind: "doing", label: "1b", step: { id: "b" } });
@@ -102,8 +107,10 @@ describe("summaries", () => {
     expect(runSummary(run())).toBe("1 of 3 steps done, working on step 2a");
     expect(runSummary(run({ plan: plan([step("a", "done"), step("b")]) }))).toBe("1 of 2 steps done, next is step 2");
     expect(runSummary(run({ plan: plan([step("a", "done")]) }))).toBe("1 of 1 steps done, every step finished");
+    expect(runSummary(run({ state: "completed", state_reason: "approved", plan: plan([step("a", "done"), step("b")]) }))).toBe("1 of 2 steps done, the rest accepted with your approval");
+    expect(runSummary(run({ state: "completed", state_reason: "judge_met", plan: plan([step("a", "done"), step("b")]) }))).toBe("1 of 2 steps done, the rest settled when the run completed");
     expect(runSummary(run({ state: "planning", stage: "planning", plan_pending: true, plan: plan([], { approval_status: "pending" }) }))).toBe("Starts once the plan is approved");
-    expect(runSummary(run({ state: "completed", stage: "completed", plan: plan([step("a", "done"), step("b")]) }))).toBe("1 of 2 steps done");
+    expect(runSummary(run({ state: "completed", stage: "completed", plan: plan([step("a", "done"), step("b")]) }))).toBe("1 of 2 steps done, the rest settled when the run completed");
   });
   it("summarizes verification and the outcome", () => {
     const judged = [judge([{ id: "c1", status: "met", evidence: "" }, { id: "c2", status: "not_met", evidence: "" }])];
