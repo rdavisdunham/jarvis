@@ -724,3 +724,15 @@ def test_recent_changes_newest_twenty_outgoing_only_and_batched(linear, monkeypa
     assert all(j["task_id"] == tid for j in changes)
     # One connection, jobs, links and tasks query regardless of number of rows.
     assert len(statements) == 4
+
+
+def test_changing_the_team_scope_after_a_sync_saves(linear):
+    # A synced connection has a last_sync_at; linear.select returns the summary, which the command receipt stores as
+    # JSON. A raw datetime there failed the whole save ("Selection was not saved") on every change after a sync.
+    with session_scope() as db:
+        conn = db.get(LinearConnection, "davin")
+        assert conn.last_sync_at is not None
+        revision = conn.revision
+    saved = run("linear.select", expected_revision=revision, team_ids=["team"], only_mine=False)
+    assert saved["only_mine"] is False and saved["team_ids"] == ["team"]
+    assert isinstance(saved["last_sync_at"], str)
