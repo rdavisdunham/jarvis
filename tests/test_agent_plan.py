@@ -8,7 +8,7 @@ from jarvis import agent_plan
 from jarvis import run_coordinator as coordinator
 from jarvis.agent_actor import Actor
 from jarvis.db import session_scope
-from jarvis.domain import DomainError
+from jarvis.domain import DomainError, PlanStep
 from jarvis.models import Note, Notification, Task
 from jarvis.session_models import AgentCommand, AgentHost, AgentInterview, AgentRun, AgentRunPlan
 from sqlalchemy import select
@@ -66,7 +66,8 @@ def inputs(run_id):
             AgentCommand.run_id == run_id, AgentCommand.kind == "input").order_by(AgentCommand.created_at))]
 
 
-PLAN = {"prd": "Make the widget fast.", "steps": [{"title": "Profile"}, {"title": "Fix the hot loop"}],
+PLAN = {"prd": "Make the widget fast.", "steps": [{"title": "Profile", "phase": "Investigate"},
+                                                  {"title": "Fix the hot loop", "phase": "Fix"}],
         "success_criteria": [{"text": "p95 under 50 ms"}], "expected_plan_revision": 0}
 
 
@@ -126,10 +127,12 @@ def test_interview_answers_planning_and_execution_after_settle(host):  # noqa: F
         assert row.state == "needs_you" and row.plan_pending  # Visible and awaiting approval before turn end.
         assert prd.title == "PRD: Speed up widgets" and "prd" in prd.tags and refreshed.prd_note_id == prd.id
         assert frozen.revision == 1 and frozen.criteria[0]["text"] == "p95 under 50 ms" and len(frozen.steps) == 2
+        assert [s["phase"] for s in frozen.steps] == ["Investigate", "Fix"]
         assert frozen.task_plan_revision == refreshed.plan_revision
     assert turn(run_id, 2) == ("needs_you", "plan_approval")
     approve_plan(run_id)
     assert "Your plan is frozen" in inputs(run_id)[-1]
+    assert "] [Investigate] " in inputs(run_id)[-1] and "] [Fix] " in inputs(run_id)[-1]  # render_plan shows phases.
     with session_scope() as db:
         row = db.get(AgentRun, run_id)
         assert row.turn_count == 0 and not row.plan_pending  # Interview and planning turns never count.
@@ -258,9 +261,11 @@ def test_children_seed_linked_steps_and_are_frozen_as_required(host):  # noqa: F
              **{**PLAN, "steps": [{"title": "x", "task_id": parent["id"]}]})
     assert foreign.value.code == "INVALID_ARGUMENT"
     plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, result["id"],
-                **{**PLAN, "steps": [{"title": "Do child two first", "task_id": second["id"]}, {"title": "Plain step"}]})
+                **{**PLAN, "steps": [{"title": "Do child two first", "task_id": second["id"], "phase": "Children"},
+                                     {"title": "Plain step", "phase": "Wrap up"}]})
     linked = [s.get("task_id") for s in plan["steps"]]
     assert linked == [second["id"], None, first["id"]]  # The agent's order, then the children it left out.
+    assert [s["phase"] for s in plan["steps"]] == ["Children", "Wrap up", ""]  # An appended child has no phase.
     with session_scope() as db:
         frozen = db.scalar(select(AgentRunPlan).where(AgentRunPlan.run_id == result["id"]))
         assert set(frozen.required_children) == {first["id"], second["id"]}
@@ -482,3 +487,28 @@ def test_setting_verify_on_a_parked_run_resumes_it(verifying_host, client):  # n
     assert r.status_code == 200, r.text
     assert state(run_id) == ("executing", "verify_set")
     assert any("verify command" in text for text in inputs(run_id))
+
+
+def test_phase_round_trips_through_task_plan_task_step_and_the_run_detail(host):  # noqa: F811
+    created, run_id = interviewing(host, "Phased widgets")
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **PLAN)
+    assert [s["phase"] for s in plan["steps"]] == ["Investigate", "Fix"]
+    read = call(agent_plan.task_plan, agent_plan.PlanQuery, run_id)
+    assert [s["phase"] for s in read["steps"]] == ["Investigate", "Fix"]
+    first = read["steps"][0]
+    assert turn(run_id, 1) == ("needs_you", "plan_approval")
+    approve_plan(run_id)
+    ticked = call(agent_plan.task_step, agent_plan.StepInput, run_id, task_id=created["id"], step_id=first["id"],
+                  status="doing", note="Profiling", expected_revision=first["revision"])
+    assert ticked["step"]["phase"] == "Investigate" and ticked["step"]["status"] == "doing"
+    with session_scope() as db:
+        detail = control.public_run(db, db.get(AgentRun, run_id), detail=True)
+        assert [(s["phase"], s["status"]) for s in detail["plan"]["steps"]] == [("Investigate", "doing"), ("Fix", "todo")]
+
+
+@pytest.mark.parametrize("model", [agent_plan.PlanStepInput, PlanStep])
+def test_phase_is_stripped_and_bounded(model):
+    assert model(title="x", phase=" Ship ").phase == "Ship"
+    assert model(title="x").phase == ""
+    with pytest.raises(ValueError):
+        model(title="x", phase="p" * 121)

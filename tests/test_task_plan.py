@@ -62,3 +62,28 @@ def test_plan_edits_never_queue_a_linear_write(linear):  # noqa: F811
         assert db.scalar(select(func.count()).select_from(Job).where(Job.kind.like("linear%"))) == before
         assert db.get(Task, tid).plan_revision == 1
     assert linear.writes == []
+
+
+def test_a_phase_change_alone_restamps_the_step_and_advances_the_plan():
+    task, updated = plan(steps=[{"id": "a", "title": "Read", "phase": " Investigate "}, {"id": "b", "title": "Fix"}])
+    first, second = updated["steps"]
+    assert first["phase"] == "Investigate" and second["phase"] == ""
+    moved = run("task.update", task_id=task["id"], expected_revision=updated["revision"],
+                steps=[first, {**second, "phase": "Fix"}])
+    assert moved["steps"][0] == first
+    assert moved["steps"][1]["phase"] == "Fix" and moved["steps"][1]["revision"] == 2 and moved["steps"][1]["by"] == "user"
+    assert moved["plan_revision"] == updated["plan_revision"] + 1
+    same = run("task.update", task_id=task["id"], expected_revision=moved["revision"], steps=moved["steps"])
+    assert same["steps"] == moved["steps"] and same["plan_revision"] == moved["plan_revision"]
+
+
+def test_legacy_steps_without_a_phase_are_not_restamped():
+    task, updated = plan(steps=[{"id": "old", "title": "Old step"}])
+    legacy = {k: v for k, v in updated["steps"][0].items() if k != "phase"}
+    with session_scope() as db:
+        row = db.get(Task, task["id"])
+        row.steps = [legacy]  # Saved before phases existed: no key at all.
+        revision = row.revision
+    again = run("task.update", task_id=task["id"], expected_revision=revision, steps=[{"id": "old", "title": "Old step"}])
+    assert again["steps"][0]["revision"] == legacy["revision"] and again["steps"][0]["updated_at"] == legacy["updated_at"]
+    assert again["plan_revision"] == updated["plan_revision"]

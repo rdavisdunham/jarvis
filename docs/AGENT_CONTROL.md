@@ -720,13 +720,17 @@ wording.
 ## Task plan fields (migration 0026)
 
 Tasks gain `steps` (ordered, stable `id`s; each `{id, title, status: todo|doing|done|skipped|disputed,
-note, task_id?, by, updated_at, revision}`), `prd_note_id` (a note in the same workspace),
+note, phase, task_id?, by, updated_at, revision}`), `prd_note_id` (a note in the same workspace),
 `success_criteria` (`[{id, text, kind: text|verify, verify_id?}]`), `verify` (`{target_id, verify_id}`),
 `turn_cap` (default 15), `execution_target_id` (foreign key arrives with `execution_targets` in 0028) and
 the server-managed `plan_revision`. They are edited through `task.update` (browser, Dani, bots), normalized
 by `task_plan.normalize`: missing ids are assigned, unchanged steps keep their stamp, changed steps record
 who changed them, and `plan_revision` advances only when the plan actually changes. Plan fields never
 queue a Linear write. A run freezes a plan revision when it starts; agents tick steps with `task_step` (below).
+`phase` (at most 120 characters, default "") is a short group label such as Investigate, Fix or Ship. The run
+drawer groups consecutive steps that share one and numbers them 1a, 1b, 2a; `render_plan` shows it as a `[Phase]`
+prefix on each step line. Changing a phase restamps the step like any other edit; steps saved before phases
+existed have no key and are treated as "" (not restamped).
 
 ## Runs (stage C, migration 0028)
 
@@ -1172,7 +1176,7 @@ spawning → interviewing → planning → executing → verifying → judging �
   then stop") and moves the run to `planning`. The run is `interviewing`, or `needs_you` on `wall_clock` or
   `no_progress` with the interview open for its current generation (the page shows the form there too); answering
   from `wall_clock` grants the 2 h described under the needs_you reasons.
-- **`submit_plan {run_token, prd, steps[], success_criteria[≥1: {id?, text, kind: text|verify,
+- **`submit_plan {run_token, prd, steps[{id?, title, note?, phase?, task_id?}], success_criteria[≥1: {id?, text, kind: text|verify,
   verify_id?}], verify?: {target_id, verify_id}, migration?: bool, expected_plan_revision}`** (interviewing, planning or
   replanning; else `PLAN_LOCKED`): `expected_plan_revision` is the task's `plan_revision` from
   `task_plan` (`REVISION_CONFLICT`); `verify` must name the run's execution target and a verify id from
