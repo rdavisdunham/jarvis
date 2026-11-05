@@ -291,7 +291,8 @@ def test_judge_matches_keep_known_pairs_and_parts():
             {"gold_id": "g1", "prediction_id": "P1", "parts": [2]},
             {"gold_id": "g1", "prediction_id": "P3", "parts": [1, 2]}]}), 0.001
 
-    matches, cost = lab.judge_matches(g, p, call)
+    matches, banned, cost = lab.judge_matches(g, p, call)
+    assert banned == []
     assert matches == [{"gold": "g2", "pred": "P2", "parts": []}, {"gold": "g1", "pred": "P1", "parts": [1]},
                        {"gold": "g1", "pred": "P3", "parts": [0, 1]}] and cost == 0.001
     key = json.loads(seen["payload"]["messages"][1]["content"])["answer_key"]
@@ -788,16 +789,56 @@ def test_names_compare_without_spaces_dots_or_hyphens():
 
 def test_checked_must_not_items_are_printed(lab_dir):
     folder = lab_dir / "rubric-sync"
-    key = {**gold(), "must_not": [{"id": "n1", "title": "Cancel the pilot", "notes": "hypothetical"}]}
+    key = {**gold(), "must_not": [{"id": "n1", "title": "Cancel the pilot", "owner": "Robin Vale",
+                                   "notes": "hypothetical"}]}
     lab.write_json(folder / "gold.json", key)
     save_fake_run(folder, "terra", [
-        {"title": "Cancel the pilot program", "responsible": "Robin Vale (you)", "mine": True, "checked": True},
+        {"title": "Cancel the whole pilot", "responsible": "Robin Vale (you)", "mine": True, "checked": True},
         {"title": "Cancel the pilot", "responsible": "Kai Moreno", "mine": False, "checked": False}],
         0.01, "20261104T100000")
-    result = lab.score(["rubric-sync"], echo=lambda line: None)
+
+    def judge(payload):
+        data = json.loads(payload["messages"][1]["content"])
+        assert data["must_not"] == [{"id": "n1", "title": "Cancel the pilot", "owner": "Robin Vale",
+                                     "notes": "hypothetical"}]
+        return json.dumps({"matches": [], "must_not_matches": [{"must_not_id": "n1", "prediction_id": "P1"},
+                                                                {"must_not_id": "n1", "prediction_id": "P2"}]}), 0.0
+
+    result = lab.score(["rubric-sync"], models=["terra"], judge=judge, echo=lambda line: None)
     run = result["meetings"][0]["systems"]["terra"][0]
-    assert run["checked_must_not"] == 1 and run["must_not_checked"] == [("n1", "P1")]
+    assert run["method"] == "judge" and run["checked_must_not"] == 1 and run["must_not_checked"] == [("n1", "P1")]
     lines = []
     lab.print_score(result, echo=lines.append)
-    assert "   MUST-NOT CHECKED Cancel the pilot <- Cancel the pilot program" in lines
-    assert not any("MUST-NOT" in line for line in lines if "Kai" in line)
+    assert "   MUST-NOT CHECKED Cancel the pilot <- Cancel the whole pilot" in lines
+    assert sum("MUST-NOT CHECKED" in line for line in lines) == 1  # the unchecked match stays silent
+
+
+def test_must_not_fallback_needs_near_identical_titles_and_the_same_owner():
+    user = {**ME, "aliases": ["R. Vale"]}
+    people = [user, {"name": "Kai Moreno", "email": "kai@client.example"}]
+    must_not = lab.gold_with_ids({"items": [], "must_not": [
+        {"id": "n1", "title": "Fix the sticky-note app UI", "owner": "Robin Vale", "notes": "done in the meeting"},
+        {"id": "n2", "title": "Revoke the trainers' central doc access", "owner": "Robin Vale", "notes": "rejected"},
+        {"id": "n3", "title": "Run the data sync from the earliest state", "owner": "Robin Vale",
+         "notes": "rejected: only from February onward"},
+        {"id": "n4", "title": "Send Kai the full call archive", "owner": "Kai Moreno", "notes": "hypothetical"}]})
+    rows = [("Share the sticky note app with the wider team", "Robin Vale (you)", True, True),
+            ("Sweep central docs to remove duplicated information", "Robin Vale (you)", True, True),
+            ("Run the data sync for February 2026 onward", "Robin Vale (you)", True, True),
+            ("Fix the sticky note app UI", "Robin Vale (you)", True, True),  # the same action: a hit
+            ("Send Kai the full call archive", "Robin Vale (you)", True, True)]  # same title, wrong owner
+    p = preds(*rows)
+    assert lab.must_not_pairs(must_not["must_not"], p, people, user) == [("n1", "P4")]
+    g = {"lab_user": user, "items": [], "must_not": must_not["must_not"]}
+    counts = lab.score_meeting(g, p, [], people)
+    assert counts["checked_must_not"] == 1 and counts["must_not_checked"] == [("n1", "P4")]
+    # Kai's own hypothetical, proposed for Kai, is the same owner.
+    kai = preds(("Send Kai the full call archive", "Kai Moreno", False, True))
+    assert lab.must_not_pairs(must_not["must_not"], kai, people, user) == [("n4", "P1")]
+    # The judge's pairs replace the fallback; unknown IDs and repeated predictions are dropped.
+    answer = {"matches": [], "must_not_matches": [{"must_not_id": "n2", "prediction_id": "P2"},
+                                                  {"must_not_id": "n9", "prediction_id": "P1"},
+                                                  {"must_not_id": "n3", "prediction_id": "P2"}]}
+    _, banned, _ = lab.judge_matches([], p, lambda payload: (json.dumps(answer), None), must_not["must_not"])
+    assert banned == [("n2", "P2")]
+    assert lab.score_meeting(g, p, [], people, banned)["must_not_checked"] == [("n2", "P2")]

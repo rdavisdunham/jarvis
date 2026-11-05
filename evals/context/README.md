@@ -246,8 +246,10 @@ and `granola.json` (Granola's next steps, same item shape). `import-granola` als
   two participants share), `inferred_owner_share` (matched proposals whose owner the engine inferred without
   proof: owned for recall and owner accuracy, right when unchecked), checked accuracy (mine checked, waiting unchecked), `checked_precision` (checked
   proposals that are the user's real todos, unmatched ones included), `unmatched_checked`, checked `must_not`
-  items and cost per meeting, per meeting and pooled, and the plan's ship gate on verified keys only. The terminal shows the
-  match tables; `--out` (default `evals/context/reports/actions-lab-<date>.md`) gets numbered aggregates only.
+  items and cost per meeting, per meeting and pooled, and the plan's ship gate on verified keys only. A `must_not`
+  item matches only the same action with the same scope and owner its note rejected (judged in the same call;
+  the fallback needs title Jaccard of at least 0.8 and the same owner), and each checked one is printed as
+  `MUST-NOT CHECKED`. The terminal shows the match tables; `--out` (default `evals/context/reports/actions-lab-<date>.md`) gets numbered aggregates only.
 - **`gold-sheet` / `gold-apply`** round-trip the answer key (parts and owner emails included) through a
   markdown worksheet; `verified` becomes true
   only when its box is ticked.
