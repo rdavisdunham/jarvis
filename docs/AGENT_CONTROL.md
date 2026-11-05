@@ -1368,6 +1368,8 @@ no-progress timer still applies to executing.
 
 ### CI as the final verification
 
+An overview of the whole flow, quick check, judge and CI, is in [how an agent run is verified](RUN_VERIFICATION.md).
+
 Davis's decision (2026-11-04): running the full suite locally after every turn and again on GitHub is waste, so the
 local verify entry is a quick pre-push check (`scripts/verify-quick.sh`, [above](#jarvis-scriptsverify-quicksh-after-every-turn-scriptsverifysh-on-request))
 and a green GitHub CI run on the pull request head is what completes a run. Code:

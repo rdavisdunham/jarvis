@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { RunCiCard, RunCiChip } from "./RunCiCard";
 import { RunRow } from "./RunsPanel";
-import { attentionKey, ciCard, ciChip, runLabel, stopCard, workflowStage, type CiCheck, type Run, type RunCi, type RunDetail } from "./remotea-model";
+import { attemptTitle, attemptTone, attentionKey, ciCard, ciChip, runLabel, stopCard, timeline, workflowStage, type Attempt, type CiCheck, type Run, type RunCi, type RunDetail } from "./remotea-model";
 
 const HEAD = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b";
 const RUN = "https://github.com/davis/jarvis/actions/runs/777";
@@ -84,5 +84,18 @@ describe("GitHub CI as the final verification", () => {
     expect(html.indexOf("</button>")).toBeLessThan(html.indexOf("run-row-ci-link"));  // Never a link inside the button.
     const settled = renderToStaticMarkup(<RunRow run={run({ state: "completed", ci: ci({ state: "passed" }) })} onOpen={() => {}} now={NOW}/>);
     expect(settled).not.toContain("run-ci-chip");
+  });
+  it("titles CI attempts as GitHub CI in the timeline, never as a judge result", () => {
+    const attempt = (status: string, state: RunCi["state"], failed: { name: string; link: string | null }[] = []): Attempt => ({
+      id: "ci-" + status, kind: "ci", status, generation: 1, turn_seq: 3, plan_revision: 1, verify_id: "github_ci", initiator: "host",
+      verdict: null, gap: null, summary: null, criteria: null, rules: null, non_verdict: null, exit_code: null, tail: null, on_demand: null,
+      created_at: "2026-11-04T10:50:00Z", updated_at: "2026-11-04T10:58:00Z", source: "github_ci", state, head_sha: HEAD, failed });
+    expect(attemptTitle(attempt("passed", "passed"))).toBe("GitHub CI on 1a2b3c4 · passing");
+    expect(attemptTitle(attempt("pending", "no_pr"))).toBe("GitHub CI on 1a2b3c4 · no pull request");
+    expect([attemptTone(attempt("passed", "passed")), attemptTone(attempt("failed", "failed")), attemptTone(attempt("pending", "pending"))]).toEqual(["good", "warn", "plain"]);
+    const entry = timeline({ ...run(), history: [], turns: [], commands: [], questions: [],
+      attempts: [attempt("failed", "failed", [{ name: "Backend and migrations", link: null }])] } as unknown as RunDetail).find(e => e.kind === "attempt")!;
+    expect(entry.title).toBe("GitHub CI on 1a2b3c4 · failing");
+    expect(entry.detail).toBe("Failed: Backend and migrations");
   });
 });

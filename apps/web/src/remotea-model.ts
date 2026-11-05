@@ -329,7 +329,7 @@ export type Interview = { id: string; run_id: string; generation: number; questi
 export type Criterion = { id: string; text: string; kind?: "text" | "verify"; verify_id?: string };
 export type CriterionVerdict = { id: string; status: "met" | "not_met" | "unclear"; evidence: string };
 export type Attempt = {
-  id: string; kind: "verify" | "judge"; status: string; generation: number; turn_seq: number; plan_revision: number;
+  id: string; kind: "verify" | "judge" | "ci"; status: string; generation: number; turn_seq: number; plan_revision: number;
   verify_id: string; initiator: string; verdict: "met" | "not_met" | "needs_you" | null; gap: string | null; summary: string | null;
   criteria: CriterionVerdict[] | null; rules: string[] | null; non_verdict: string | null; exit_code: number | null;
   tail: string | null; on_demand: boolean | null; created_at: string; updated_at: string;
@@ -338,6 +338,10 @@ export type Attempt = {
   isolated?: boolean | null; isolation?: "bwrap" | "none" | null; isolation_reason?: string | null;
   workspace_complete?: boolean | null; workspace_reasons?: string[] | null; timeout_s?: number | null;
   stale_workspace?: boolean | null; deadline_at?: string | null;
+  /** CI only (run_ci.py, verify_id `github_ci`): GitHub CI on one pull request head, updated on every poll. `status` is
+   * passed, failed or pending; `state` is the finer RunCi state (absent, no_pr, unpushed, cancelled …). */
+  source?: "github_ci"; state?: RunCi["state"]; head_sha?: string | null; pr_url?: string | null; run_url?: string | null;
+  checks?: CiCheck[]; failed?: { name: string; link: string | null }[]; checked_at?: string | null;
   /** Why a verification did not pass (run_coordinator.classify_verify) and the one-line fix; null when it passed. */
   category?: VerifyCategory | null; action?: string | null;
   /** How long the verify command ran (null from older Eridani). */
@@ -723,7 +727,10 @@ const VERIFY_TEXT: Record<string, string> = { running: "running", passed: "passe
   refused: "not run (refused)", uncertain: "result uncertain", stale: "stale: code changed during the run", canceled: "canceled",
   error: "error", superseded: "superseded" };
 const VERDICT_TEXT: Record<string, string> = { met: "criteria met", not_met: "not met yet", needs_you: "needs you" };
+const CI_ATTEMPT_TEXT: Record<string, string> = { passed: "passing", failed: "failing", pending: "running", requested: "running",
+  absent: "not started", no_pr: "no pull request", unpushed: "not pushed", cancelled: "cancelled" };
 export function attemptTitle(a: Attempt) {
+  if (a.kind === "ci") return `GitHub CI${a.head_sha ? " on " + a.head_sha.slice(0, 7) : ""} · ${CI_ATTEMPT_TEXT[a.state ?? a.status] ?? a.status}`;
   if (infraAttempt(a)) return `Verification could not run · ${a.action || VERIFY_TEXT[a.status] || a.status}${a.on_demand ? " (on demand)" : ""}`;
   if (a.kind === "verify") return `Verification ${a.verify_id} · ${VERIFY_TEXT[a.status] ?? a.status}${a.on_demand ? " (on demand)" : ""}`;
   if (a.status === "done" && a.verdict) return "Judge · " + VERDICT_TEXT[a.verdict];
@@ -731,6 +738,7 @@ export function attemptTitle(a: Attempt) {
   return "Judge · " + a.status;
 }
 export function attemptTone(a: Attempt): TimelineEntry["tone"] {
+  if (a.kind === "ci") return a.status === "passed" ? "good" : a.status === "failed" ? "warn" : "plain";
   if (infraAttempt(a)) return "setup";
   if (a.kind === "verify") return a.status === "passed" ? "good" : a.status === "running" ? "plain" : "warn";
   return a.verdict === "met" ? "good" : a.verdict === "needs_you" || a.status === "failed" ? "attention" : "plain";
@@ -967,7 +975,9 @@ export function timeline(run: RunDetail): TimelineEntry[] {
   for (const q of run.questions) entries.push({ id: "question:" + q.id, at: q.created_at, kind: "question", title: "Question · " + QUESTION_TEXT[q.status],
     detail: q.items.map(i => i.text).join(" / "), tone: q.status === "open" || q.status === "timed_out" ? "attention" : q.status === "accepted" ? "good" : "plain", who: "agent" });
   for (const a of run.attempts ?? []) entries.push({ id: "attempt:" + a.id, at: a.updated_at, kind: "attempt", title: attemptTitle(a),
-    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani",
+    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "")
+      : a.kind === "ci" ? (a.status === "failed" ? "Failed: " + ((a.failed ?? []).map(f => f.name).join(", ") || "a check") : "")
+      : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani",
     ...(attemptFacts(a).length ? { facts: attemptFacts(a) } : {}) });
   for (const i of run.interviews ?? []) entries.push({ id: "interview:" + i.id, at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
     detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain", who: "agent" });
