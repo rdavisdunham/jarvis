@@ -65,9 +65,12 @@ export function stepLabels(steps: PlanStep[]): Map<string, string> {
   return new Map(groupSteps(steps).groups.flatMap(g => g.steps.map(s => [s.step.id, s.label] as const)));
 }
 
-/** Skipped steps count toward completion: they are settled, just not worked. */
-export function stepProgress(steps: PlanStep[]): { done: number; total: number; percent: number } {
-  const done = steps.filter(finished).length, total = steps.length;
+/**
+ * Skipped steps count toward completion: they are settled, just not worked. A completed run settles every step
+ * (the work was accepted, by the judge or by the person), so its ring is full even when the agent left a step open.
+ */
+export function stepProgress(steps: PlanStep[], run?: Pick<RunDetail, "state">): { done: number; total: number; percent: number } {
+  const total = steps.length, done = run?.state === "completed" ? total : steps.filter(finished).length;
   return { done, total, percent: total ? Math.round(done / total * 100) : 0 };
 }
 
@@ -146,6 +149,7 @@ export function runSummary(run: RunDetail): string {
   if (!run.plan || runStage(run) === "plan" && run.plan.approval_status !== "approved") return "Starts once the plan is approved";
   if (!steps.length) return "No steps in this plan";
   const { done, total } = stepProgress(steps), active = activeStep(steps);
+  if (run.state === "completed" && active) return `${done} of ${total} steps done, the rest ${run.state_reason === "approved" ? "accepted with your approval" : "settled when the run completed"}`;
   if (isSettled(run)) return `${done} of ${total} steps done` + (active ? "" : ", every step finished");
   const where = !active ? "every step finished" : `${active.kind === "doing" ? "working on" : "next is"} step ${active.label}`;
   return `${done} of ${total} steps done, ${where}`;

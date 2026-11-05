@@ -1465,7 +1465,8 @@ the chip with the wait and a "View checks on GitHub" link beside the row.
 A criterion that asks for test evidence (`kind: verify`, or text naming tests, a suite, pytest, vitest, CI, lint,
 typecheck, compile or build: `agent_plan.EVIDENCE`) can only be judged from a recorded verification. When a plan is
 frozen without a verify command and such a criterion exists, Eridani names the execution target's verify command
-itself (`agent_plan.default_verify`: `all`/`full`/`tests`/`test`/`check`/`ci` if offered, else the first id;
+itself (`agent_plan.default_verify`: `quick` if offered, so GitHub CI stays the final verification, else
+`all`/`full`/`tests`/`test`/`check`/`ci`, else the first id;
 stored with `by: default`, which is not a human floor and may be replaced). When the host's `verify_status` says
 some ids are ready and others not, only the ready ones (and ids it did not report) are considered
 (`pick_verify(offered, ready)`); when none is ready the choice is as before and the preflight lists
