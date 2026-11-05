@@ -82,7 +82,8 @@ def summary(db, owner):
         "states": row.directory.get("states", []),
         "users": row.directory.get("users", []),
         "projects": row.directory.get("projects", []),
-        "last_sync_at": row.last_sync_at,
+        # ISO text, not a datetime: linear.select returns this summary and the command receipt stores it as JSON.
+        "last_sync_at": row.last_sync_at.isoformat() if row.last_sync_at else None,
         "status": row.status,
         "error": row.error,
         "recent_changes": recent_changes(db, owner, jobs),
