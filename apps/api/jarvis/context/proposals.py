@@ -19,7 +19,11 @@ Matching existing work (similarity never authorizes mutation):
 2. reversible candidates: an open task whose title shares most content words becomes an unchecked link proposal.
 
 Recommendation (plan section 7 table): a clear unfinished action of the user's own with no match is a checked
-`create`; someone else's work, or unclear ownership, an unchecked `create` with its reason; covered work a `link`;
+`create`, unless the action pass marked it `implied_by_discussion` ("Implied by the discussion", unchecked) or its
+checker did not confirm it (unchecked; basis and `verified` come from the extract run's
+`diagnostics["actions"]["items"]` by action index); someone else's work an unchecked "Waiting on <name>"
+`create`; an owner the action pass inferred but could not prove (`inferred`) an unchecked "Likely yours" /
+"Likely <name>" `create`; unclear ownership an unchecked `create` with its reason; covered work a `link`;
 changed existing work (due date or assignee differ from the task) an unchecked `update` with `before` and `after`;
 an engine `suggestion` stays a separate unchecked suggestion and is never recorded as a promise. Hypothetical,
 proposed, negated and question commitments, completed work and retracted interpretations stay context only.
@@ -134,6 +138,8 @@ class Draft:
     after: dict | None = None
     reason: str = ""
     preselected: bool = False
+    basis: str | None = None  # the action pass's owner_basis; None for older runs and bare commitments
+    verified: bool | None = None  # the action pass's checker confirmed the item (None: it did not answer)
 
     @property
     def responsible_key(self) -> str:
@@ -177,17 +183,17 @@ def _task_for(db, owner: str, entity_type: str | None, entity_id: str | None) ->
     return None
 
 
-def _responsible_links(db, owner: str, ids: list[str]) -> dict[str, list[tuple[str | None, str]]]:
-    """assertion ID -> [(actor ID or None, mention)] from responsible links, decided ones first."""
+def _responsible_links(db, owner: str, ids: list[str]) -> dict[str, list[tuple[str | None, str, bool]]]:
+    """assertion ID -> [(actor ID or None, mention, confirmed)] from responsible links, decided ones first."""
     link = ContextEntityLink
-    out: dict[str, list[tuple[str | None, str]]] = {}
+    out: dict[str, list[tuple[str | None, str, bool]]] = {}
     rows = db.execute(select(link.assertion_id, link.target_id, link.target_type, link.status, link.mention)
                       .where(link.owner_id == owner, link.assertion_id.in_(ids),
                              link.role.in_(("responsible", "responsible_mention")))
                       .order_by(link.status != "confirmed", link.created_at, link.id)).all()
     for assertion_id, target_id, target_type, status, mention in rows:
         actor = target_id if target_type == "actor" and status in views.LINKED else None
-        out.setdefault(assertion_id, []).append((actor, mention))
+        out.setdefault(assertion_id, []).append((actor, mention, status == "confirmed"))
     return out
 
 
@@ -206,11 +212,14 @@ def _assertion_evidence(db, owner: str, ids: list[str], revision_id: str) -> dic
     return out
 
 
-def _who(responsible: list[dict], links: list[tuple[str | None, str]]) -> tuple[str | None, str | None]:
-    actor = next((a for a, _ in links if a), None)
+def _who(responsible: list[dict], links: list[tuple[str | None, str, bool]]) -> tuple[str | None, str | None]:
+    """The responsible actor: a human-confirmed link, else the actor the engine resolved by name, else a linked
+    actor. The engine's name match comes before inferred links because a recorder's speaker label links to the
+    user's own actor even when someone else recorded the meeting."""
     named = next((r for r in responsible if r.get("entity_type") == "actor"), {}) if responsible else {}
-    actor = actor or named.get("entity_id")
-    mention = named.get("mention") or next((m for _, m in links if m), None)
+    confirmed = next((a for a, _, sure in links if a and sure), None)
+    actor = confirmed or named.get("entity_id") or next((a for a, _, _ in links if a), None)
+    mention = named.get("mention") or next((m for _, m, _ in links if m), None)
     return actor, mention
 
 
@@ -224,7 +233,7 @@ def _drafts(db, owner: str, source: ContextSource, revision: ContextSourceRevisi
             ContextEvidence.assertion_id == a.id, ContextEvidence.revision_id == revision.id))))}
     links = _responsible_links(db, owner, [*live, *(r.supersedes_id for r in live.values() if r.supersedes_id)])
 
-    def linked(row: ContextAssertion) -> list[tuple[str | None, str]]:
+    def linked(row: ContextAssertion) -> list[tuple[str | None, str, bool]]:
         """A Changed successor keeps its predecessor's resolved responsibility."""
         return links.get(row.id) or links.get(row.supersedes_id or "", [])
 
@@ -258,7 +267,8 @@ def _drafts(db, owner: str, source: ContextSource, revision: ContextSourceRevisi
             collective=bool(mention) and mention.casefold().strip() in views.COLLECTIVE, due=_local_date(due_at, tz),
             due_at=due_at, project_id=project_of(rows), assertion_ids=[r.id for r in rows], evidence=evidence,
             target=target, match="stable" if target else None,
-            work=f"task:{target}" if target and action.kind in ("update", "link") else None))
+            work=f"task:{target}" if target and action.kind in ("update", "link") else None, basis=item.get("basis"),
+            verified=item.get("verified")))
     for row in live.values():
         if row.id in covered or row.kind != "commitment" or not usable(row):
             continue
@@ -322,6 +332,23 @@ def _iso(value) -> str | None:
     return value.isoformat() if value else None
 
 
+MINE = {
+    "stated_promise": "You said you would do this, and no task covers it yet.",
+    "accepted_request": "You agreed to do this when asked, and no task covers it yet.",
+    "self_assigned_intent": "You said you mean to do this, and no task covers it yet.",
+    "assigned_by_other": "This was handed to you in the meeting, and no task covers it yet.",
+}
+IMPLIED = "Implied by the discussion. Check it if it is yours to do."
+UNCONFIRMED = "The checker did not confirm this one. Check it if it is yours."
+INFERRED_MINE = "Likely yours, inferred from the discussion. Check it if so."
+
+
+def _name(db, owner: str, draft: Draft) -> str:
+    if draft.mention:
+        return draft.mention
+    return (views.entity_name(db, owner, "actor", draft.responsible) if draft.responsible else None) or "someone"
+
+
 def _recommend(db, owner: str, draft: Draft, me: str | None) -> Draft:
     if draft.kind == "suggestion" and draft.match != "candidate":
         draft.target = draft.match = None
@@ -352,11 +379,17 @@ def _recommend(db, owner: str, draft: Draft, me: str | None) -> Draft:
     unclear = not (draft.responsible or draft.mention) or (draft.mention or "").casefold().strip() in UNCLEAR
     if draft.collective or (unclear and not draft.responsible):
         draft.reason = "Who owns this is unclear."
+    elif draft.basis == "inferred":  # a likely owner the lines can't prove (unseparated speakers): never checked
+        draft.reason = INFERRED_MINE if draft.responsible and draft.responsible == me else \
+            f"Likely {_name(db, owner, draft)}, inferred from the discussion."
     elif draft.responsible and draft.responsible == me:
-        draft.preselected = True
-        draft.reason = "You said you would do this, and no task covers it yet."
+        # Action-pass items are checked only when the checker confirmed them; older runs carry no basis.
+        unconfirmed = draft.basis is not None and draft.verified is not True
+        draft.preselected = draft.basis != "implied_by_discussion" and not unconfirmed
+        draft.reason = IMPLIED if draft.basis == "implied_by_discussion" else UNCONFIRMED if unconfirmed else \
+            MINE.get(draft.basis or "", MINE["stated_promise"])
     else:
-        draft.reason = "Someone else's work. Track it only if you need to."
+        draft.reason = f"Waiting on {_name(db, owner, draft)}. Track it only if you need to."
     return draft
 
 
@@ -506,6 +539,14 @@ def _upsert(db, owner: str, source: ContextSource, revision: ContextSourceRevisi
     return counts, used
 
 
+def _bases(run: ContextRun | None) -> dict[int, dict]:
+    """action index -> {basis, verified} from the extract run's action-pass diagnostics."""
+    result = ((run.stage_results or {}).get("result") or {}) if run else {}
+    items = ((result.get("diagnostics") or {}).get("actions") or {}).get("items") or []
+    return {i["action_index"]: {"basis": i["owner_basis"], "verified": i.get("verified")} for i in items
+            if isinstance(i.get("action_index"), int) and i.get("owner_basis")}
+
+
 def generate(db, owner: str, source_id: str, revision_id: str, *, complete: bool | None = None) -> dict:
     """Create or revise the source's proposals from the revision's extraction (see the module docstring).
     `complete` (default: the extract run succeeded) allows superseding proposals the revision no longer supports."""
@@ -518,6 +559,8 @@ def generate(db, owner: str, source_id: str, revision_id: str, *, complete: bool
         ContextRun.status.in_(("succeeded", "partial"))).order_by(ContextRun.finished_at.desc().nulls_last(),
                                                                  ContextRun.created_at.desc()).limit(1))
     actions = list((run.stage_results or {}).get("actions") or []) if run else []
+    bases = _bases(run)
+    actions = [{**item, **bases.get(i, {})} for i, item in enumerate(actions)]
     if complete is None:
         complete = run is not None and run.status == "succeeded"
     me = views.me(db, owner)

@@ -156,6 +156,13 @@ is delivered; unrecognized speech must remain visible as unresolved input.
 
 ## Queue, concurrency and corrections
 
+Agent-run verification (remotea, on the owner's machine) is a separate limit: verifications are neither queued nor
+laned, so runs in one repo verify in parallel on one machine and test database server. Since 2026-11-04 the check
+after each turn is the quick pre-push one (`scripts/verify-quick.sh`, the tests related to the change) and GitHub CI
+on the pull request head is the final verification (`awaiting_ci`, read through the host's `gh`; red CI goes back to
+the agent, no green within 90 min needs the owner), so the full suite no longer runs locally per turn. See the
+README's [Known limits](../README.md#known-limits) and [agent control](AGENT_CONTROL.md#ci-as-the-final-verification).
+
 - Parallel workers are bounded executions of the existing selected backend
   profile (Luna or Gemini), not a new agent framework or additional vendor.
   No recursive child-agent spawning in the first release.

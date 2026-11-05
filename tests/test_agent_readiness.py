@@ -45,6 +45,8 @@ def test_verify_timeout_reads_the_hosts_advert():
     assert control.verify_timeout(item, "lint") is None and control.verify_timeout(item, "huge") is None  # Malformed.
     assert control.verify_timeout({"verify": ["tests"]}, "tests") is None  # Plain ids: the host did not say.
     assert control.verify_timeout(None, "tests") is None
+    # remotea's wire name (launch-caps.ts verifyStatus): `timeout_s` on the status row.
+    assert control.verify_timeout({"verify_status": [{"id": "full", "ready": True, "timeout_s": 7200}]}, "full") == 7200
     assert control.target_verify_status(item)[0] == {"id": "tests", "ready": True, "timeout": 1800}
 
 
@@ -286,3 +288,22 @@ def test_freshness_text_names_each_fact_for_eri():
         "last turn 2 min ago; in awaiting approval for 4 min; steer sent 40 s ago, delivery uncertain")
     silent = {"state": "executing", "host": {"connected": False, "last_seen_at": (clock - timedelta(minutes=4)).isoformat()}}
     assert control.freshness_text(silent, clock) == "host silent for 4 min"
+
+
+def test_a_launcher_past_remoteas_managed_versions_blocks_start_in_preflight(host, client):  # noqa: F811
+    """Claude Code auto-updated past the versions remotea verified for managed runs (2026-11-05: 2.1.318): the Run
+    dialog says so before Start, naming the version, instead of start_run's 409 being the first word of it."""
+    with session_scope() as db:
+        row = db.get(AgentHost, host.id)
+        row.caps = {**row.caps, "caps": [*row.caps["caps"], "managed.sessions"]}
+    target_facts(host, launch={"claude": {"ready": True, "version": "2.1.318", "managed": False},
+                               "codex": {"ready": True, "version": "0.166.0", "managed": True}})
+    created = task("Managed gate")
+    url = f"/api/v1/remotea/runs/preflight?task_id={created['id']}&execution_target_id={host.target_id}"
+    pre = client.get(url + "&harness=claude").json()
+    gate = next(p for p in pre["problems"] if p["code"] == "MANAGED_UNAVAILABLE")
+    assert gate["blocking"] and gate["freestyle_ok"] and "Claude Code 2.1.318" in gate["message"]
+    assert not any(p["code"] == "MANAGED_UNAVAILABLE" for p in client.get(url + "&harness=codex").json()["problems"])
+    with pytest.raises(DomainError) as refused:
+        start(host, created["id"])
+    assert refused.value.code == "MANAGED_UNAVAILABLE" and refused.value.data["version"] == "2.1.318"

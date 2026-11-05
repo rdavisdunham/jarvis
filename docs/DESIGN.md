@@ -3,7 +3,7 @@
 Eridani is a personal planner, task tracker, linked notebook and calendar with a conversational assistant (Dani). People open it to see what today holds, capture something quickly, or find and change a piece of their work. The interface should feel calm and legible like a well-kept paper planner, with one distinctive touch taken from the brand mark: the iridescent orbit (lavender → sky → mint → blush) around a small central star.
 
 **Spend the boldness in one place.** The iridescent orbit appears only in three spots:
-- the day ring on Today,
+- the day ring on Today, and its smaller sibling, the progress ring in the run drawer's header,
 - Dani: the chat launcher's pastel gradient and the assistant avatar orb in the chat panel,
 - the brand mark.
 

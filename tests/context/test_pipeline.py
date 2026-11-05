@@ -6,6 +6,7 @@ worker would."""
 import json
 from datetime import timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -17,13 +18,14 @@ from jarvis.context.native import embed as embedding
 from jarvis.context.schema import Segment, SourceEnvelope
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, enqueue_job, execute
-from jarvis.models import Actor, Job, now
+from jarvis.models import Actor, GoogleIdentity, Job, now
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from .fixtures.extraction import long_meeting
 
 OWNER = "davin"
+ACTION_PASS = ["context_actions", "context_actions_verify"]
 RECORDED = json.loads((Path(__file__).parent / "fixtures/extraction/pilot_meeting.json").read_text())
 STAGES = ["context_ingest", "context_extract", "context_link", "context_reconcile", "context_embed"]
 BRIEF_FORMAT = "context_brief"
@@ -136,8 +138,9 @@ def recorded(body):
                  "output": [{"type": "message", "content": [{"type": "output_text", "text": text}]}]}
 
 
+# Marco's checklist was assigned to him, not promised: an action without a commitment assertion.
 NATIVE = {"The pilot covers 40 clinics in the first wave.", "The pilot launches on Postgres with pgvector.",
-          "Priya sends the revised budget by 2026-11-20.", "Marco drafts the rollout checklist."}
+          "Priya will send the revised budget by 2026-11-20."}
 
 
 # ---------------------------------------------------------------- the happy path
@@ -145,6 +148,8 @@ NATIVE = {"The pilot covers 40 clinics in the first wave.", "The pilot launches 
 
 def test_receipt_flows_through_every_stage(envelope, vectors):
     use_doubles()
+    with session_scope() as db:  # the note's owner (davin@example.com) is the signed-in user: "Davin" is them
+        db.add(GoogleIdentity(owner_id=OWNER, subject="sub-davin", email="davin@example.com"))
     receipt = receive(envelope)
     after = [*STAGES, "context_proposals", "context_brief"]  # Priya's brief: her commitment links to her actor
     assert drain() == after
@@ -241,10 +246,10 @@ def test_crash_after_model_calls_resumes_without_repeating_them(envelope, provid
     with pytest.raises(RuntimeError):
         pipeline.perform(extract_job)
     assert jobs("context_extract")[0][1] == "retrying" and assertions() == {}
-    assert sent == ["context_detect", "context_enrich", "context_verify"]
+    assert sent == [*ACTION_PASS, "context_detect", "context_enrich", "context_verify"]
     pipeline.perform(extract_job)  # DBOS retries the step
     drain()
-    assert sent == ["context_detect", "context_enrich", "context_verify"]
+    assert sent == [*ACTION_PASS, "context_detect", "context_enrich", "context_verify"]
     assert set(assertions()) == NATIVE
 
 
@@ -267,7 +272,7 @@ def test_crash_between_chunks_resumes_from_saved_chunks(provider, vectors):
     with pytest.raises(RuntimeError):
         pipeline.perform(job)
     saved = runs("extract")[0][3]["chunks"]
-    assert sorted(saved) == ["0", "1"]
+    assert sorted(saved) == ["0", "1", "actions"]  # the action pass runs first and is saved too
     detected_before = model.calls.count("context_detect")
     pipeline.perform(job)
     chunks = len(runs("extract")[0][3]["result"]["diagnostics"]["chunks"])
@@ -299,7 +304,7 @@ def test_a_new_revision_during_the_model_call_makes_the_result_stale(envelope, p
     extract_runs = runs("extract")
     assert [(status, error) for _, status, error, *_ in extract_runs] == [("stale", "stale: revision"),
                                                                         ("succeeded", None)]
-    assert len(sent) == 6 and set(assertions()) == NATIVE
+    assert len(sent) == 10 and set(assertions()) == NATIVE  # 2 action-pass and 3 chunk calls per revision
     with session_scope() as db:
         cited = set(db.scalars(select(m.ContextEvidence.revision_id)))
         assert first.revision_id not in cited and len(cited) == 1
@@ -316,12 +321,12 @@ def test_pause_rejects_outstanding_results_and_resume_continues_without_new_call
     receive(envelope)
     drain()
     assert runs("extract")[0][1:3] == ("stale", "stale: paused") and assertions() == {}
-    assert len(sent) == 3 and jobs("context_link") == []
+    assert len(sent) == 5 and jobs("context_link") == []
     with session_scope() as db:
         assert pipeline.schedule_due(db)["continued"] == 0  # still paused (and the flag is off)
         assert pipeline.resume(db, OWNER)["continued"] == 1
     drain()
-    assert len(sent) == 3, "the completed chunk was reused"
+    assert len(sent) == 5, "the completed action pass and chunk were reused"
     assert set(assertions()) == NATIVE
     with session_scope() as db:
         assert pipeline.resume(db, OWNER)["continued"] == 0  # each interruption continues once
@@ -339,7 +344,26 @@ def test_a_decision_during_the_model_call_requeues_and_reuses_the_chunks(envelop
     assert [(status, error) for _, status, error, *_ in runs("extract")] == [("stale", "stale: decisions"),
                                                                            ("succeeded", None)]
     assert jobs("context_extract")[1][2]["requeues"] == 1
-    assert len(sent) == 3 and set(assertions()) == NATIVE
+    assert len(sent) == 5 and set(assertions()) == NATIVE
+
+
+def test_a_meeting_without_a_timezone_extracts_in_the_owners(envelope, provider, vectors, monkeypatch):
+    """Day-precision dues resolve in the zone proposals show them in: the meeting's, else the owner's."""
+    provider(recorded)
+    monkeypatch.setattr(get_settings(), "timezone", "America/Chicago")
+    seen = []
+    original = pipeline.run_extractor
+
+    def watch(engine, request, *args, **kwargs):
+        seen.append(request.timezone)
+        return original(engine, request, *args, **kwargs)
+    monkeypatch.setattr(pipeline, "run_extractor", watch)
+    receive(envelope.model_copy(update={"timezone": None}))
+    drain()
+    assert seen == ["America/Chicago"]
+    with session_scope() as db:
+        due = db.scalar(select(m.ContextAssertion.due_at).where(m.ContextAssertion.kind == "commitment"))
+    assert due.astimezone(ZoneInfo("America/Chicago")).date().isoformat() == "2026-11-20"
 
 
 def test_source_budget_cap_waits_for_an_explicit_continuation(envelope, provider, vectors, monkeypatch):
@@ -355,7 +379,7 @@ def test_source_budget_cap_waits_for_an_explicit_continuation(envelope, provider
         assert "continue_after" not in runs("extract")[0][3]
         assert pipeline.continue_source(db, OWNER, receipt.source_id, 2.0)
     drain()
-    assert len(sent) == 3 and set(assertions()) == NATIVE
+    assert len(sent) == 5 and set(assertions()) == NATIVE
     with session_scope() as db:
         assert db.get(m.ContextSource, receipt.source_id).status == "ready"
 

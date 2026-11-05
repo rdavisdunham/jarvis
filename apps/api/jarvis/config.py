@@ -57,12 +57,22 @@ class Settings(BaseSettings):
     agent_parallelism: int = Field(default=4, ge=1, le=16)
     agent_account_parallelism: int = Field(default=2, ge=1, le=4)
     agent_request_timeout_seconds: int = Field(default=600, ge=30, le=3600)
+    # A run's verification still running after this long sends the owner one notice (it keeps running up to the verify
+    # entry's own timeout); a verify entry's advertised `notify_after_s` overrides it (run_coordinator.verify_notify_after).
+    agent_verify_notify_after_seconds: int = Field(default=1800, ge=60, le=4 * 3600)
+    # GitHub CI as the final verification (run_ci.py): a run whose criteria are met on a quick local check waits this
+    # long in awaiting_ci for the PR head's checks to finish, then needs you (ci_timeout).
+    agent_ci_wait_seconds: int = Field(default=90 * 60, ge=300, le=12 * 3600)
+    # Verify entry ids that are only a pre-push check (scripts/verify-quick.sh): their pass needs green CI on the PR
+    # head to finish the run. Any other entry's pass counts on its own, as before. Comma-separated.
+    agent_ci_quick_verify_ids: str = "quick"
     agent_queue_limit: int = Field(default=100, ge=10, le=1000)
     max_tool_calls_per_request: int = Field(default=100, ge=1, le=1000)
     max_model_rounds_per_request: int = Field(default=30, ge=2, le=100)
     openai_api_key: str = ""
     groq_api_key: str = ""
     gemini_api_key: str = ""
+    anthropic_api_key: str = ""  # Claude models routed through model_map (JARVIS_ANTHROPIC_API_KEY)
     history_days: int = 0
     web_dist: Path = Path("apps/web/dist")
     vapid_private_key: str = ""
@@ -80,11 +90,19 @@ class Settings(BaseSettings):
     # Context platform (jarvis/context, read through context/settings.py). Off until the pilot.
     context_enabled: bool = False
     context_queue_concurrency: int = Field(default=2, ge=1, le=8)
-    context_source_budget_usd: float = Field(default=1.0, ge=0)
+    # Sized for the whole-meeting action pass on Terra or Sonnet 5.5 plus the chunked passes (about $0.30 to
+    # $1.50 for a one-hour meeting depending on the routes); reservations count upper bounds against it.
+    context_source_budget_usd: float = Field(default=3.0, ge=0)
     context_model_timeout_s: int = Field(default=90, ge=10, le=600)
     context_poll_minutes: int = Field(default=5, ge=1, le=1440)
     context_max_source_chars: int = Field(default=1_000_000, ge=1_000, le=20_000_000)
     context_granola_enabled: bool = False
+    # model_map profile for the meeting action-item pass; empty keeps the model map's route (Luna). When the profile
+    # is unknown or its provider key is missing, the pass falls back to that route (context/native/actions.py).
+    context_actions_model: str = "sonnet-5.5"
+    # "split": action pass + per-chunk detect/enrich/verify; "combined": one whole-meeting call for facts and
+    # follow-ups, then one verify call (an experiment; context/native/extract.py).
+    context_extraction_mode: Literal["split", "combined"] = "split"
 
     @property
     def secure_cookie(self):
@@ -109,9 +127,11 @@ def get_settings():
     settings.openai_api_key = settings.openai_api_key or legacy.get("OPENAI_API_KEY", "") or ""
     settings.groq_api_key = settings.groq_api_key or legacy.get("GROQ_API_KEY", "") or ""
     settings.gemini_api_key = settings.gemini_api_key or legacy.get("GEMINI_API_KEY", "") or ""
+    settings.anthropic_api_key = settings.anthropic_api_key or legacy.get("ANTHROPIC_API_KEY", "") or ""
     if not settings.external_services_enabled:
         # A restored staging database must not spend money or send device notifications.
         settings.openai_api_key = settings.groq_api_key = settings.gemini_api_key = ""
+        settings.anthropic_api_key = ""
         settings.vapid_private_key = settings.home_assistant_token = ""
     return settings
 

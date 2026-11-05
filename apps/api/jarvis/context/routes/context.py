@@ -42,6 +42,19 @@ def source(source_id: Annotated[str, Path(max_length=100)], identity: Bot, segme
                                               segment_end=segment_end, revision=revision))
 
 
+@router.get("/sources/{source_id}/runs")
+def runs(source_id: Annotated[str, Path(max_length=100)], identity: Bot, detail: bool = False,
+         limit: int = Query(30, ge=1, le=100)):
+    """`context_runs`: a meeting's processing runs with model, prompt version, coverage, cost and rejections."""
+    return service.runs(service.RunsInput(source_id=source_id, detail=detail, limit=limit))
+
+
+@router.get("/sources/{source_id}/proposals")
+def proposals(source_id: Annotated[str, Path(max_length=100)], identity: Bot):
+    """`context_proposals`: a meeting's task proposals with checked state, reason and quotes."""
+    return service.proposals(service.ProposalsInput(source_id=source_id))
+
+
 @router.post("/open-loops")
 def open_loops(body: service.OpenLoopsInput, identity: Bot):
     """`context_open_loops`: open commitments, the user's own or waiting-for."""

@@ -76,8 +76,9 @@ def cosine(a, b):
     return sum(x * y for x, y in zip(a, b)) / den if den else 0.0
 
 
-def provider_request(owner, path, payload, model, allowance, timeout=30):
-    """Every attempted cloud call has a budget reservation, including retries."""
+def provider_request(owner, path, payload, model, allowance, timeout=30, *, agent=None):
+    """Every attempted cloud call has a budget reservation, including retries. `agent` prices the call
+    (model_map.costing); Luna at the Standard tier by default."""
     settings = get_settings()
     if not settings.openai_api_key:
         raise DomainError("INTEGRATION_UNAVAILABLE", "Memory learning needs an OpenAI API key.", 503)
@@ -112,8 +113,9 @@ def provider_request(owner, path, payload, model, allowance, timeout=30):
             } if path == "responses" else raw_usage
             if any(type(usage.get(k)) is not int or usage[k] < 0 for k in ("prompt_tokens", "completion_tokens")):
                 raise ValueError("Extraction response omitted valid usage")
-            from .agent_models import catalog
-            agent = catalog()["luna"]  # Standard, independent of interactive settings.
+            if agent is None:
+                from .agent_models import catalog
+                agent = catalog()["luna"]  # Standard, independent of interactive settings.
             usage = agent.usage_record({"usage": usage, "service_tier": data.get("service_tier")})
             cost = agent.usage_cost(usage)
         # A truncated/refused/unusable answer can still have a known provider charge.
@@ -139,9 +141,14 @@ def provider_request(owner, path, payload, model, allowance, timeout=30):
             budget.close(db, owner, reservation, uncertain=uncertain)
 
 
-def extraction_request(owner, path, payload, model, allowance, timeout=45):
-    """Use Luna reasoning and strict structured output for memory/note extraction."""
-    if path != "chat/completions" or model != EXTRACTION_MODEL:
+def extraction_request(owner, path, payload, model, allowance, timeout=45, *, profile="luna"):
+    """Strict structured output on an OpenAI Responses profile: Luna with low reasoning unless the model map
+    routes the job to another priced Responses profile (Terra)."""
+    from .model_map import PROFILES, costing
+
+    spec, agent = PROFILES.get(profile), costing(profile)
+    if path != "chat/completions" or spec is None or agent is None or spec.api != "openai_responses" \
+            or model != spec.model:
         raise ValueError("Unsupported extraction request")
     output_format = payload["response_format"]["json_schema"]
     return provider_request(
@@ -151,29 +158,76 @@ def extraction_request(owner, path, payload, model, allowance, timeout=45):
             "model": model,
             "input": payload["messages"],
             "text": {"format": {"type": "json_schema", **output_format}},
-            "reasoning": {"effort": "low"},
+            "reasoning": {"effort": spec.reasoning_effort or "low"},
             "max_output_tokens": max(8192, payload["max_completion_tokens"]),
             "store": False,
         },
         model,
         allowance,
         timeout,
+        agent=agent,
     )
 
 
-def profile_request(owner, job, payload, allowance, timeout=45, *, prompt_tokens=0):
-    """extraction_request by job type: the job's model_map route decides the model. Only the extraction model is
-    enabled in production (the budget ledger prices Luna only), so any other route raises like the allowlist."""
-    from .model_map import JOBS, PROFILES, route
+def anthropic_request(owner, payload, profile, allowance, timeout=45):
+    """A `chat/completions`-shaped structured request on an Anthropic Messages profile (strict JSON through
+    `output_config.format`), answered in the same normalized shape as `provider_request`'s Responses path:
+    `choices[0].message.content` / `.refusal`, `finish_reason` ("length" at `max_tokens`) and chat-style `usage`.
+    Budget reservation and usage recording match `provider_request`."""
+    from .model_map import PROFILES, build, costing, headers, parse
+
+    spec, agent = PROFILES[profile], costing(profile)
+    key = get_settings().anthropic_api_key
+    if not key:
+        raise DomainError("INTEGRATION_UNAVAILABLE", f"{spec.label} needs an Anthropic API key.", 503)
+    body = build(spec, payload)
+    reservation = "memory:" + uid()
+    with session_scope() as db:
+        budget.reserve(db, owner, reservation, allowance, spec.model, optional=True)
+    uncertain = True
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.post(spec.endpoint, headers=headers(spec, key), json=body)
+        if response.is_error and response.status_code < 500:
+            uncertain = False  # an explicit rejection
+        response.raise_for_status()
+        answer = parse(spec, response.json())
+        raw = answer["usage"]
+        if any(type(raw.get(k)) is not int or raw[k] < 0 for k in ("input_tokens", "output_tokens")):
+            raise ValueError("Extraction response omitted valid usage")
+        usage = agent.usage_record({"usage": {
+            "prompt_tokens": raw["input_tokens"], "completion_tokens": raw["output_tokens"],
+            "prompt_tokens_details": {"cached_tokens": raw["cached_input_tokens"],
+                                      "cache_write_tokens": raw["cache_write_tokens"]}}})
+        with session_scope() as db:
+            budget.record_usage(db, owner, reservation, reservation, spec.model, usage, agent.usage_cost(usage))
+        uncertain = False
+        message = {"role": "assistant", "content": answer["text"], "refusal": answer["refusal"]}
+        return {"model": spec.model, "choices": [{"index": 0, "message": message, "finish_reason": answer["finish"]}],
+                "usage": usage}
+    finally:
+        with session_scope() as db:
+            budget.close(db, owner, reservation, uncertain=uncertain)
+
+
+def profile_request(owner, job, payload, allowance, timeout=45, *, prompt_tokens=0, profile=None):
+    """extraction_request by job type: the job's model_map route (or an explicit, already-routed `profile`) decides
+    the model. Any profile with a configured price (`model_map.costing`) is enabled: OpenAI Responses profiles go
+    through extraction_request, Anthropic Messages profiles through anthropic_request; others raise."""
+    from .model_map import JOBS, PROFILES, costing, route
 
     if JOBS[job].path != "extraction":
         raise ValueError(f"{job} is not a structured extraction job")
-    chosen = route(job, prompt_tokens)
-    profile = PROFILES.get(chosen.profile)
-    if profile is None or profile.api != "openai_responses" or profile.model != EXTRACTION_MODEL \
-            or profile.reasoning_effort != "low":
-        raise ValueError(f"Model profile {chosen.profile} is not enabled for production {job} calls")
-    return extraction_request(owner, "chat/completions", payload, EXTRACTION_MODEL, allowance, timeout)
+    chosen = profile or route(job, prompt_tokens).profile
+    spec = PROFILES.get(chosen)
+    if spec is None or costing(chosen) is None or spec.api not in ("openai_responses", "anthropic_messages") \
+            or spec.service_tier != "default":
+        raise ValueError(f"Model profile {chosen} is not enabled for production {job} calls")
+    if spec.api == "anthropic_messages":
+        return anthropic_request(owner, payload, chosen, allowance, timeout)
+    if chosen == "luna":
+        return extraction_request(owner, "chat/completions", payload, EXTRACTION_MODEL, allowance, timeout)
+    return extraction_request(owner, "chat/completions", payload, spec.model, allowance, timeout, profile=chosen)
 
 
 def embeddings(owner, texts, timeout=20):

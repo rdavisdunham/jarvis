@@ -55,6 +55,13 @@ PRICES = {
         "long": {"above": 272_000, "input": 0.80, "cached_input": 0.08, "output": 3.60},
         "checked": "2026-10-04", "source": "docs/COST_TRACKING.md Luna Fast",
     },
+    "gpt-5.6-terra": {
+        "input": 2.00, "cached_input": 0.20, "output": 12.00,
+        "long": {"above": 272_000, "input": 4.00, "cached_input": 0.40, "output": 18.00},
+        "checked": "2026-11-04",
+        "source": "docs/archive/2026-10-02/BACKGROUND_MODEL_COMPARISON.md ($2 / $12); long-prompt and cached "
+                  "rates assumed to follow Luna's multipliers (agent_models.PRICES)",
+    },
     "claude-haiku-5-5": {
         "input": 0.10, "output": 0.50,
         "long": {"above": 100_000, "input": 0.50, "output": 2.50},

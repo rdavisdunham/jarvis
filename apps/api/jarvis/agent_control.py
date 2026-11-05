@@ -15,7 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, not_, or_, select
 
-from . import agent_link, run_summaries
+from . import agent_link, run_attention, run_ci, run_summaries
 from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
@@ -115,6 +115,9 @@ class ApproveInput(Input):
     # Required: approving completes the task, so it must be the state the approver reviewed (REVISION_CONFLICT if not).
     expected_revision: int = Field(ge=1)
     action_id: UUID | None = None  # agent_receipts.once
+    # Approving a run that is not awaiting approval overrides the completion policy (e.g. no passing verification);
+    # the approver's reason is recorded with the override (approve).
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class VerifyNowInput(Input):
@@ -227,17 +230,27 @@ VERIFY_TIMEOUT_MAX = 4 * 3600
 
 
 def verify_timeout(item, verify_id):
-    """The verify entry's timeout in seconds as the host advertised it for this target: `timeout` on the entry's
-    `verify_status` row, or on a `verify` list item sent as an object. None when the host did not say (remotea up
-    to PR #24 sends `verify` as plain ids and no timeout)."""
+    """The verify entry's timeout in seconds as the host advertised it for this target: `timeout_s` (remotea's wire
+    name) or `timeout` on the entry's `verify_status` row, or on a `verify` list item sent as an object. None when the
+    host did not say (remotea up to PR #24 sends `verify` as plain ids and no timeout)."""
+    return advertised_seconds(item, verify_id, ("timeout_s", "timeout"))
+
+
+def verify_notify_after(item, verify_id):
+    """The verify entry's soft threshold in seconds (`notify_after_s` or `notify_after`), when the host says it."""
+    return advertised_seconds(item, verify_id, ("notify_after_s", "notify_after"))
+
+
+def advertised_seconds(item, verify_id, names):
     if not isinstance(item, dict):
         return None
     for key in ("verify_status", "verify"):
         for v in item.get(key) or []:
             if isinstance(v, dict) and v.get("id") == verify_id:
-                value = v.get("timeout")
-                if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value <= VERIFY_TIMEOUT_MAX:
-                    return int(value)
+                for name in names:
+                    value = v.get(name)
+                    if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value <= VERIFY_TIMEOUT_MAX:
+                        return int(value)
     return None
 
 
@@ -312,6 +325,9 @@ def advertised(db, owner):
         for item in (host.caps or {}).get("targets") or []:
             if isinstance(item, dict) and isinstance(item.get("id"), str):
                 found.append({"host_id": host.id, "host_name": host.name, "host_target": item["id"][:64],
+                              # A host row is never retired: the picker tells a live host from a stale one.
+                              "host_connected": agent_link.connected(host),
+                              "hello_at": (host.caps or {}).get("hello_at"),
                               "repo": str(item.get("repo") or "")[:1000],
                               "worktree_root": str(item.get("worktree_root") or item.get("worktreeRoot") or "")[:1000],
                               "harnesses": target_harnesses(item),
@@ -553,6 +569,24 @@ def role_spec(spec):
             **({"permission_profile": spec.permission_profile} if spec.permission_profile else {})}
 
 
+def managed_missing(host, host_target, harnesses):
+    """(harness, launcher version) for the first of `harnesses` a managed-sessions host cannot run managed on
+    `host_target` (its hello launch probe, else the host-wide flag), or None. remotea gates managed runs on launcher
+    versions it has verified, so a launcher that auto-updated past them turns this off until remotea catches up."""
+    for harness in harnesses:
+        launch = (target_launch(hello_target(host, host_target)) or {}).get(harness, {})
+        wide = ((host.caps or {}).get("harnesses") or {}).get(harness) or {}
+        if not launch.get("managed", wide.get("managed", False)):
+            return harness, launch.get("version") or wide.get("version")
+    return None
+
+
+def managed_message(harness, version=None):
+    name = HARNESS_LABELS.get(harness, harness)
+    return (f"{name}{' ' + version if version else ''} on this target is not a launcher version remotea supports for "
+            f"managed runs; update remotea (or use a supported {name} version), choose another harness, or start freestyle.")
+
+
 def run_roles(body):
     """The run's `roles` from a StartInput, or None for a classic run (no reviewer, and no worker that differs from
     the planner)."""
@@ -603,12 +637,10 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
     check_host(owner, task, host, body.harness, target.host_target,
                roles={"reviewer": roles["reviewer"], "worker": roles["worker"]} if roles else None)
     if coordinator.host_cap(db, host.id, "managed.sessions") and not body.freestyle:
-        for harness in [body.harness, *[s.harness for s in (body.reviewer, body.worker) if s]]:
-            launch = (target_launch(hello_target(host, target.host_target)) or {}).get(harness, {})
-            managed = launch.get("managed", ((host.caps or {}).get("harnesses", {}).get(harness) or {}).get("managed", False))
-            if not managed:
-                raise DomainError("MANAGED_UNAVAILABLE", "This target's launcher does not support managed runs; update its launcher.", 409,
-                                  data={"harness": harness, "host_target": target.host_target})
+        missing = managed_missing(host, target.host_target, [body.harness, *[s.harness for s in (body.reviewer, body.worker) if s]])
+        if missing:
+            raise DomainError("MANAGED_UNAVAILABLE", managed_message(*missing), 409,
+                              data={"harness": missing[0], "version": missing[1], "host_target": target.host_target})
         planner = role_spec(RoleInput(harness=body.harness, model=body.model, effort=body.effort,
                                       permission_profile=body.permission_profile))
         roles = roles or {"planner": planner, "reviewer": None, "worker": None, "rounds": 0, "approve_final": True}
@@ -730,7 +762,7 @@ def send_message(db, owner, run_id, body, *, actor):
         if not coordinator.host_cap(db, run.host_id, "input.direct") or not coordinator.host_cap(db, run.host_id, "commands.durable") or (run.sync_state or {}).get("execution_mode") != "managed":
             raise DomainError("DIRECT_UNSUPPORTED", "This host cannot deliver direct messages; update Remotea and use a managed run.", 409)
         agent_automation.hold(db, run, actor=actor)
-        if run.state in ("verifying", "judging"):
+        if run.state in ("verifying", "judging", "awaiting_ci"):
             coordinator.transition(db, run, "executing", actor=actor, reason="direct_message")
         coordinator.command(db, run, "input", {"surf": run.surf, "incarnation": run.incarnation,
             "text": body.text, "mode": "direct", "origin": "human"})
@@ -873,13 +905,32 @@ def approve(db, owner, run_id, body, *, actor):
     from . import agent_sync
     from .linear_sync import for_run
 
+    override = policy_override(db, run, body, actor)
     task = db.get(Task, run.task_id)
     with acting(Actor("human", credential_id=actor.credential_id, reason="approve")), for_run(run.id, "done") as outcome:
         execute(db, owner, f"run-approve:{run.id}", "task.complete", {"task_id": task.id, "expected_revision": task.revision})
     db.refresh(run)
+    if override:
+        # The run's journal says the human accepted the work without the policy's evidence, and why.
+        coordinator.note(run, "approve_override", **override)
+        completion = (run.sync_state or {}).get("completion") or {}
+        run.sync_state = {**(run.sync_state or {}), "completion": {**completion, "policy_override": override}}
     if outcome.get("status"):
         agent_sync.save(run, "done", outcome)
     return public_run(db, run)
+
+
+def policy_override(db, run, body, actor):
+    """What an approval overrides, or None: approving anything but awaiting_approval accepts the work without the
+    judge's met verdict under the completion policy (a required verify pass, a pull request)."""
+    if run.state == "awaiting_approval":
+        return None
+    fact = verification_fact(db, run) or {}
+    return {"state": run.state, "reason": run.state_reason, "note": (body.note or "").strip()[:2000],
+            "policy": run.completion_policy or "code_ready",
+            "verification": {"verify_id": fact.get("verify_id"), "status": fact.get("status"),
+                             "evidence": fact.get("evidence")} if fact else None,
+            "actor": actor.record()}
 
 
 def set_freestyle(db, owner, run_id, body, *, actor):
@@ -951,6 +1002,9 @@ def public_attempt(a):
                    **(({k: result.get(k) for k in ("isolated", "isolation", "isolation_reason", "workspace_complete",
                                                    "workspace_reasons", "timeout_s", "stale_workspace")}
                        | {"deadline_at": a.deadline_at}) if a.kind == "verify" else {}),
+                   # GitHub CI (run_ci.py, kind `ci`, verify_id `github_ci`): one row per PR head, updated per poll.
+                   **({k: result.get(k) for k in ("source", "state", "head_sha", "pr_url", "run_url", "checks", "failed",
+                                                  "checked_at")} if a.kind == "ci" else {}),
                    "created_at": a.created_at, "updated_at": a.updated_at})
 
 
@@ -1054,7 +1108,9 @@ def verification_fact(db, run):
     return {"verify_id": attempt.verify_id, "status": attempt.status, "at": attempt.updated_at, "evidence": evidence,
             "turn_seq": attempt.turn_seq, "isolated": result.get("isolated"),
             "isolation_reason": result.get("isolation_reason"), "workspace_complete": result.get("workspace_complete"),
-            "workspace_reasons": result.get("workspace_reasons") or [], "deadline_at": attempt.deadline_at}
+            "workspace_reasons": result.get("workspace_reasons") or [], "deadline_at": attempt.deadline_at,
+            # While running: other runs verifying on the same host at once (they share its CPU and test database).
+            "alongside": coordinator.running_alongside(db, run, attempt) if attempt.status == "running" else []}
 
 
 def pending_controls(db, run):
@@ -1227,6 +1283,9 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                              "retries")} or None,
         "base": base_info(db, run, host),
         "reason_detail": reason_detail(db, run),
+        # Why the run stopped for you, structured ({reason, headline, action, detail, last_output}; run_attention.py).
+        # Named apart from `attention` (the none/decision/paused/error kind) so existing readers keep working.
+        "attention_detail": None,
         # Linear outcomes, separate from the run's own state (agent_sync.py): in_progress, done, comment.
         "linear": {k: {f: v.get(f) for f in ("status", "code", "message", "url", "reconciled")}
                    for k, v in ((run.sync_state or {}).get("linear") or {}).items() if isinstance(v, dict)},
@@ -1240,6 +1299,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # current turn, and controls sent but not yet taken by the host or whose delivery is uncertain.
         "last_turn_at": db.scalar(run_turns(run).with_only_columns(func.max(AgentTurn.created_at))),
         "verification": verification_fact(db, run),
+        # GitHub CI on the PR head, the final verification after a quick local check (run_ci.py); null without one.
+        "ci": run_ci.public(db, run),
         "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question") or harness.get("managed_questions")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
@@ -1247,6 +1308,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # One plain-language line on what the agent is doing now (run_summaries.py); summary_stale: a newer one is due.
         **run_summaries.public(run),
     }
+    result["attention_detail"] = run_attention.attention(db, run, result["reason_detail"])
     if not run.plan_pending and (run.state_reason == "no_plan" or (run.sync_state or {}).get("coordination_failure")):
         result["summary"] = "Planning submission needs recovery; no questions or plan are awaiting your approval."
     from .agent_decisions import for_run
@@ -1751,6 +1813,12 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None, *,
             elif wanted in HARNESSES and not harnesses.get(wanted, False):
                 out["problems"].append({"code": "HARNESS_UNAVAILABLE", "role": role, "blocking": True,
                                         "message": f"{role.capitalize()}: " + (reasons.get(wanted) or "unavailable")})
+        if host is not None and host.owner_id == owner and coordinator.host_cap(db, host.id, "managed.sessions"):
+            missing = managed_missing(host, target.host_target, [harness, *[h for h in (reviewer_harness, worker_harness) if h]])
+            if missing:
+                # start_run refuses this (MANAGED_UNAVAILABLE) unless the run is freestyle; say so before Start.
+                out["problems"].append({"code": "MANAGED_UNAVAILABLE", "blocking": True, "freestyle_ok": True,
+                                        "message": managed_message(*missing)})
     except DomainError:
         pass
     return {**out, "task": {"id": task.id, "title": task.title},
@@ -1784,7 +1852,7 @@ def verify_fix(reason):
                 '(sudo apt install bubblewrap) or set isolation "none" on the entry. ' + RELOAD)
     if "path" in text:
         return ("Its program is not on the service PATH (systemd's minimal PATH; uv in ~/.local/bin is the usual "
-                "case): use scripts/verify.sh or an absolute program, or set env.PATH on the entry in "
+                "case): use scripts/verify-quick.sh (or scripts/verify.sh) or an absolute program, or set env.PATH on the entry in "
                 f"{CONFIG_FILE}. {RELOAD}")
     if "cwd" in text:
         return f"Its cwd does not exist in the repository: fix cwd on the entry in {CONFIG_FILE}. {RELOAD}"
@@ -1884,8 +1952,9 @@ def target_setup(db, owner, host, host_target, saved=None):
     elif not status:
         out["problems"].append(problem(
             "NO_VERIFY", f"{label} has no verify command, so a run cannot check its work with tests.",
-            f"Add a verify[] entry to the target in {CONFIG_FILE} (for jarvis, scripts/verify.sh with an isolated "
-            f"test database). {RELOAD}", blocks=False))
+            f"Add a verify[] entry to the target in {CONFIG_FILE} (for jarvis, id \"quick\" running "
+            f"scripts/verify-quick.sh with timeout 600 and an isolated test database; GitHub CI is the final "
+            f"verification). {RELOAD}", blocks=False))
     for entry in status or []:
         if not entry["ready"]:
             out["problems"].append(problem(

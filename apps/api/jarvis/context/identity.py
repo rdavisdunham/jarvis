@@ -220,7 +220,7 @@ def _owner_email(db, owner) -> str | None:
 
 
 def _create_actor(db, owner, name: str, email: str) -> str:
-    from ..assignees import active_actors_named
+    from ..assignees import name_in_use
     from ..models import Command
 
     name = name[:100]
@@ -230,7 +230,7 @@ def _create_actor(db, owner, name: str, email: str) -> str:
     previous = db.get(Command, (owner, command_id))
     if previous is not None:
         return previous.result["data"]["id"]
-    arguments = {"name": name, "allow_duplicate": bool(active_actors_named(db, owner, name))}
+    arguments = {"name": name, "allow_duplicate": bool(name_in_use(db, owner, name))}
     return execute(db, owner, command_id, "actor.create", arguments)["data"]["id"]
 
 

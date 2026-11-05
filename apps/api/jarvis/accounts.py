@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from . import access
-from .assignees import active_actors_named
+from .assignees import name_in_use
 from .auth import Identity, authenticate_personal, digest
 from .config import get_settings
 from .db import session_scope
@@ -298,7 +298,7 @@ def accept(body: InviteAction, user: User):
             if member is None:
                 name = preferences(db, user.owner_id)["preferred_name"]
                 # Names may repeat now, but a distinguishable one keeps name-based assignment usable.
-                if active_actors_named(db, row.workspace_id, name):
+                if name_in_use(db, row.workspace_id, name):
                     name = name[:60] + " · " + user.owner_id[:8]
                 actor = Actor(owner_id=row.workspace_id, name=name, kind="person")
                 db.add(actor)

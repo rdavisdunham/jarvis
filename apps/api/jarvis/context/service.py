@@ -48,6 +48,8 @@ from .models import (
     ContextDecision,
     ContextEntityLink,
     ContextEvidence,
+    ContextProposal,
+    ContextRun,
     ContextSegment,
     ContextSource,
     ContextSourceRevision,
@@ -163,6 +165,16 @@ class MeetingPrepInput(Input):
 class ChangesInput(Input):
     after: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=200)
+
+
+class RunsInput(Input):
+    source_id: str = ID
+    detail: bool = Field(default=False, description="Every rejection instead of the first few per run.")
+    limit: int = Field(default=30, ge=1, le=100, description="Newest runs first.")
+
+
+class ProposalsInput(Input):
+    source_id: str = ID
 
 
 Suggestion = Literal["wrong", "changed", "confirm", "reject_link", "confirm_link"]
@@ -884,6 +896,130 @@ def changes(args: ChangesInput, *, at: datetime | None = None) -> dict:
             if item.get("type") == "assertion" and not item.get("deleted") and item["id"] not in cited:
                 item.update(deleted=True, statement=None, subject=None)  # evidence gone since: a tombstone
         return {**data, "items": items}
+
+
+# ---------------------------------------------------------------- processing visibility (runs, proposals)
+
+
+REJECTIONS_SHOWN = 5
+_RUN_KEEP = {"skipped", "summary", "links", "questions", "briefs", "speakers_changed", "retired", "continue_after",
+             "reason", "admitted", "attached", "revived", "refused", "actions"}
+
+
+def _compact(values: dict) -> dict:
+    """Small stage results only: scalars, lists as counts, flat count dicts; never payloads or model output."""
+    out = {}
+    for key, value in values.items():
+        if key not in _RUN_KEEP:
+            continue
+        if isinstance(value, list):
+            out[key] = len(value)
+        elif isinstance(value, dict):
+            out[key] = {k: v for k, v in value.items() if isinstance(v, (int, float, str, bool)) or v is None}
+        else:
+            out[key] = value
+    return out
+
+
+def _rejection(item: dict) -> dict:
+    """The extractor's (`code, statement, detail, segment_seqs`) and the action pass's (`code, reason, title,
+    segments`) rejections in one shape."""
+    text = item.get("statement") or item.get("title") or ""
+    return {"code": item.get("code"), "reason": item.get("reason") or item.get("detail"),
+            "statement": text[:QUOTE], "segments": list(item.get("segments") or item.get("segment_seqs") or [])}
+
+
+def _rejections(items, detail: bool) -> dict:
+    items = [_rejection(i) for i in items or [] if isinstance(i, dict)]
+    return {"rejected": items if detail else items[:REJECTIONS_SHOWN], "rejected_total": len(items)}
+
+
+def _actions_diagnostics(data, detail: bool) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    out = {k: data.get(k) for k in ("status", "model", "profile", "prompt_version", "calls", "cost_usd", "latency_ms")
+           if k in data}
+    out["items"] = len(data.get("items") or [])
+    return out | _rejections(data.get("rejected"), detail)
+
+
+def _run_item(run, revisions: dict[str, int], detail: bool) -> dict:
+    results = run.stage_results or {}
+    out = {"id": run.id, "stage": run.stage, "status": run.status, "engine": run.engine, "model": run.model,
+           "prompt_version": run.prompt_version, "revision": revisions.get(run.revision_id),
+           "reprocess": bool((results.get("payload") or {}).get("reprocess")), "attempts": run.attempts,
+           "error": run.error, "cost_usd": float(run.cost_usd or 0), "input_tokens": run.input_tokens,
+           "output_tokens": run.output_tokens, "created_at": _iso(run.created_at),
+           "finished_at": _iso(run.finished_at), "results": _compact(results)}
+    if run.coverage:
+        counts: dict[str, int] = {}
+        for value in run.coverage.values():
+            counts[value] = counts.get(value, 0) + 1
+        out["coverage"] = {"segments": len(run.coverage), **dict(sorted(counts.items()))}
+    diagnostics = (results.get("result") or {}).get("diagnostics")
+    if isinstance(diagnostics, dict):
+        out["profile"] = diagnostics.get("profile")
+        out["diagnostics"] = {
+            "partial": diagnostics.get("partial"), "uncovered_segments": diagnostics.get("uncovered_segments"),
+            "chunks": len(diagnostics.get("chunks") or []), "usage": diagnostics.get("usage"),
+            "rejection_counts": diagnostics.get("rejection_counts") or {},
+            **_rejections(diagnostics.get("rejected"), detail),
+            "actions": _actions_diagnostics(diagnostics.get("actions"), detail)}
+    return out
+
+
+def runs(args: RunsInput) -> dict:
+    """A meeting's processing runs, newest first: stage, status, model and prompt, coverage, cost and the
+    extractor's rejections (with `diagnostics.actions` from the action pass when it ran)."""
+    with session_scope() as db:
+        caller = authorize(db)
+        source = sources.owned(db, caller.owner, args.source_id)
+        rows = list(db.scalars(select(ContextRun).where(ContextRun.owner_id == caller.owner,
+                                                        ContextRun.source_id == source.id)
+                               .order_by(ContextRun.created_at.desc(), ContextRun.id).limit(args.limit + 1)))
+        revisions = dict(db.execute(select(ContextSourceRevision.id, ContextSourceRevision.revision).where(
+            ContextSourceRevision.source_id == source.id)).all())
+        more = len(rows) > args.limit
+        items = [_run_item(r, revisions, args.detail) for r in rows[:args.limit]]
+        caller = _again(db, caller)
+        sources.owned(db, caller.owner, source.id)  # deleted meanwhile: nothing is returned
+        return {"source_id": source.id, "status": source.status, "revision": source.current_revision,
+                "runs": items, "has_more": more,
+                "next": "context_proposals(source_id) for the task proposals; detail=true for every rejection."}
+
+
+def proposals(args: ProposalsInput) -> dict:
+    """A meeting's task proposals: checked state (`preselected`), the reason, who is responsible and the quotes."""
+    with session_scope() as db:
+        caller = authorize(db)
+        source = sources.owned(db, caller.owner, args.source_id)
+        p = ContextProposal
+        rows = list(db.scalars(select(p).where(p.owner_id == caller.owner, p.source_id == source.id)
+                               .order_by(p.created_at, p.id)))
+        segment_ids = {e.get("segment_id") for r in rows for e in r.evidence or []} - {None}
+        g = ContextSegment
+        seqs = dict(db.execute(select(g.id, g.seq).where(g.id.in_(segment_ids))).all()) if segment_ids else {}
+        revisions = dict(db.execute(select(ContextSourceRevision.id, ContextSourceRevision.revision).where(
+            ContextSourceRevision.source_id == source.id)).all())
+        known = names(db, caller, [("actor", r.responsible) for r in rows])
+        items = []
+        for row in rows:
+            payload = row.payload or {}
+            items.append({
+                "id": row.id, "revision": row.revision, "kind": row.kind, "title": row.title,
+                "status": row.disposition, "preselected": row.preselected, "reason": payload.get("reason") or "",
+                "responsible": {"actor_id": row.responsible, "name": known.get(f"actor:{row.responsible}"),
+                                "mention": payload.get("responsible_mention")}
+                if row.responsible or payload.get("responsible_mention") else None,
+                "collective": payload.get("collective", False), "due_at": _iso(row.due_at),
+                "due_date": payload.get("due_date"), "explanation": payload.get("explanation"),
+                "source_revision": revisions.get(row.revision_id), "task_id": row.task_id,
+                "evidence": [{"segment": seqs.get(e.get("segment_id")), "quote": (e.get("quote") or "")[:QUOTE]}
+                             for e in row.evidence or []]})
+        caller = _again(db, caller)
+        sources.owned(db, caller.owner, source.id)
+        return {"source_id": source.id, "revision": source.current_revision, "proposals": items,
+                "next": "context_source(source_id, segment_start) to read the cited lines."}
 
 
 # ---------------------------------------------------------------- feedback (agent) and Questions (owner)

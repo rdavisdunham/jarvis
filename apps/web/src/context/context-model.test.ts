@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chosen, effectiveAt, groupItems, linkedId, meetingStatus, nextSelection } from "./context-model";
+import { chosen, effectiveAt, groupItems, linkedId, meetingStatus, nextSelection, proposalGroup } from "./context-model";
 import { proposal, review, source } from "./test-fixtures";
 
 describe("meeting status", () => {
@@ -35,6 +35,16 @@ describe("selection", () => {
     expect([...nextSelection(mine, first, second)].sort()).toEqual(["p-other", "p-own"]);
     const settled = [proposal({ disposition: "approved", publication: { id: "pub-q", status: "queued", task_id: null } }), first[1]];
     expect([...nextSelection(new Set(["p-own", "p-other"]), first, settled)]).toEqual(["p-other"]);
+  });
+
+  it("groups work others owe apart and never preselects it", () => {
+    const waiting = proposal({ id: "p-wait", reason: "Waiting on Kim to send the calls.", preselected: true });
+    expect(proposalGroup(waiting)).toBe("waiting");
+    expect(proposalGroup(proposal({ reason: "Implied by the discussion." }))).toBe("tasks");
+    expect(proposalGroup(proposal({ kind: "suggestion", reason: "Waiting on Kim." }))).toBe("suggestions");
+    expect([...nextSelection(new Set(), null, [proposal(), waiting])]).toEqual(["p-own"]);
+    expect([...nextSelection(new Set(["p-wait"]), [waiting], [waiting])]).toEqual(["p-wait"]);  // the reader's own choice stays
+    expect(chosen([waiting], new Set(["p-wait"]), "approvable")).toEqual([{ proposal_id: "p-wait", revision: 1 }]);
   });
 
   it("keeps task approval and update application apart", () => {

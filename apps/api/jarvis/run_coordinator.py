@@ -58,11 +58,17 @@ TRANSITIONS = {
     "waiting_answer": {"executing", "interviewing", "planning", "needs_you", "stopping"},
     "verifying": {"judging", "executing", "needs_you", "stopping", "failed"},
     # judging → completed exists for stage D's auto_complete; C never takes it.
-    "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "capped", "completed", "stopping"},
+    # → awaiting_ci: the criteria are met on a quick local check; GitHub CI on the PR head is the final word (run_ci.py).
+    "judging": {"executing", "needs_you", "awaiting_approval", "awaiting_integration", "awaiting_ci", "capped", "completed",
+                "stopping"},
+    # Waiting for the PR head's CI (run_ci.py): green → approval or auto_complete (stopping), red → executing with the
+    # gap, nothing terminal in time → needs_you(ci_timeout). A message resumes execution; Approve still works.
+    "awaiting_ci": {"awaiting_approval", "awaiting_integration", "executing", "needs_you", "capped", "verifying",
+                    "judging", "replanning", "stopping"},
     # → verifying / judging: the operator's Judge again (judge_again) on the current turn.
     # → plan_reviewing / handing_off: a hyperplan run resumes its review round or its worker's spawn (phase()).
-    "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "replanning",
-                  "verifying", "judging", "plan_reviewing", "handing_off", "stopping", "failed"},
+    "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "awaiting_ci",
+                  "replanning", "verifying", "judging", "plan_reviewing", "handing_off", "stopping", "failed"},
     # After integration the agent pulls the merged children and the loop verifies and judges again.
     "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
     "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "verifying", "judging", "stopping"},
@@ -73,22 +79,28 @@ TRANSITIONS = {
 }
 STATES = tuple(TRANSITIONS)
 # Where human input (a message, an answer) may resume execution.
-RESUMABLE = {"needs_you", "awaiting_approval"}
+RESUMABLE = {"needs_you", "awaiting_approval", "awaiting_ci"}
 # needs_you reasons the host itself can clear: the terminal comes back.
 SELF_HEALING = {"host_offline", "surface_lost"}
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
-       "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "automation.hold": timedelta(days=36500), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2),
+       "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "automation.hold": timedelta(days=36500), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2), "ci.status": timedelta(minutes=2),
        # Someone is waiting for the tab to come forward: a late one would surprise more than help.
        "terminal.focus": timedelta(seconds=30), "run.pause": timedelta(days=36500), "run.resume": timedelta(days=36500)}
 # Commands that leave no trace on the run's timeline or history (not work the run does).
 QUIET_COMMANDS = {"terminal.focus"}
+# Commands that only read from the host: sent whoever has control of the session (no ensure_eridani_control).
+READ_COMMANDS = {"worktrees.scan", "ci.status"}
 # A verification's deadline, then timed_out (a non-pass): the target's verify timeout as its host advertised it plus
 # VERIFY_GRACE, never less than VERIFY_DEADLINE (the host's old 10-minute default plus a minute), which is also the
-# deadline when the host did not say (verify_deadline).
+# deadline when the host did not say (verify_deadline). The hard ceiling is the entry's own `timeout` in eridani.json
+# (remotea enforces it and advertises it as `timeout_s`); 7200 s is the recommended value for the jarvis suite.
 VERIFY_DEADLINE = timedelta(minutes=11)
 VERIFY_GRACE = timedelta(seconds=120)
+# The soft threshold: a verification still running this long gets one notice to the owner ("still running; it stops at
+# <ceiling>") and keeps running. Per verify entry as `notify_after_s` in the host's hello; else the setting
+# agent_verify_notify_after_seconds (default 1800). verify_slow_notices sends it from the sweep.
 JUDGE_DEADLINE = timedelta(minutes=15)
 # This many consecutive not_met verdicts with the same gap are no progress.
 NO_PROGRESS_VERDICTS = 3
@@ -100,6 +112,8 @@ TOKEN_TTL = timedelta(hours=24)
 # The wall clock measures the agent's working time, not time spent waiting on the owner: a run waits on the owner in
 # these states and while an interview for its current generation is open (never in plan_reviewing: the reviewer works).
 OWNER_WAIT_STATES = ("needs_you", "waiting_answer")
+# Waits that are neither the agent's working time nor the owner's move: excluded from the wall clock too.
+IDLE_WAIT_STATES = ("awaiting_ci",)
 # Resuming a run parked on its wall clock grants it this much more working time, so it does not bounce straight back.
 WALL_CLOCK_GRANT = timedelta(hours=2)
 PROMPT_CHARS = 32_000  # A spawn prompt's limit (agent_control.PROMPT_CHARS is this).
@@ -153,6 +167,9 @@ REASONS = {
     "awaiting_merge": "The criteria are met; merge the pull request to finish.",
     "pr_unknown": "The criteria are met, but Eridani has no current record of the pull request: check it, then approve or message the agent.",
     "merged": "The pull request merged; confirming the result.",
+    "ci_unavailable": "The criteria are met on the quick check, but the host cannot report GitHub CI, the final verification: update remotea, or approve.",
+    "ci_timeout": "The criteria are met on the quick check, but GitHub CI did not finish on the pull request in time: check it, then approve or message the agent.",
+    "ci_failed_again": "GitHub CI failed again on the same commit; the agent did not push a fix.",
     # Working states: what just happened, so the page never shows a raw reason token.
     "start": "Starting the agent.",
     "started": "The agent is up; planning.",
@@ -161,6 +178,11 @@ REASONS = {
     "plan_frozen": "The plan is frozen; the agent is working on it.",
     "plan_reviewed": "You reviewed the plan; the agent is working on it.",
     "turn": "Checking the last turn against the success criteria.",
+    "verify_late_result": "The host's verification result arrived after Eridani stopped waiting; judging it now.",
+    "ci_pending": "The criteria are met on the quick check; waiting for GitHub CI on the pull request.",
+    "ci_passed": "GitHub CI passed on the pull request head; checking the turn against the success criteria.",
+    "ci_failed": "GitHub CI failed on the pull request; the agent is fixing it.",
+    "ci_push": "GitHub CI has not run on this work; the agent is pushing it and opening the pull request.",
     "not_met": "Not met yet; the agent is on the next turn.",
     "queue": "Your message is queued for the agent.",
     "steer": "You steered the agent.",
@@ -243,8 +265,12 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
 
         queue_comment(db, run)  # Once per run; the run marker reconciles a lost write (agent_sync.py).
     if to == "needs_you":
-        notify(db, run, "agent_stuck", "An agent needs you", REASONS.get(reason, reason or "The run needs attention."),
-               key=f"{run.id}:{run.state_revision}")
+        from .run_attention import attention
+
+        shown = attention(db, run, detail)  # The same headline and action the run card leads with.
+        notify(db, run, "agent_stuck", "An agent needs you",
+               f"{shown['headline']} {shown['action']}" if shown and reason in ATTENTION_PUSH
+               else REASONS.get(reason, reason or "The run needs attention."), key=f"{run.id}:{run.state_revision}")
     elif to == "awaiting_approval":
         notify(db, run, "agent_done", "An agent finished", "Review the run and approve to complete the task.",
                key=f"{run.id}:{run.state_revision}")
@@ -262,7 +288,7 @@ def transition(db, run, to, *, actor=None, reason="", detail="", expected_revisi
 def awaiting_owner(db, run):
     """Whether the run's next move is the owner's: needs_you, waiting_answer, or an open interview for its current
     generation (plan_reviewing never: the reviewer is working)."""
-    if run.paused or run.state in OWNER_WAIT_STATES:
+    if run.paused or run.state in OWNER_WAIT_STATES or run.state in IDLE_WAIT_STATES:
         return True
     if run.state in TERMINAL or run.state in ("stopping", "plan_reviewing"):
         return False
@@ -350,6 +376,9 @@ def bound(db, host_id, run_id, lock=True):
 
 
 PUSHES_PER_RUN = 3
+# needs_you reasons whose push says the run card's headline and action (run_attention) instead of the REASONS line:
+# the ones where the specific cause (a timeout at 94%, a missing database extension) is what the owner acts on.
+ATTENTION_PUSH = ("verify_infra", "ci_timeout")
 PUSH_WINDOW = timedelta(minutes=10)
 
 
@@ -415,7 +444,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
                 raise DomainError("HANDOFF_UNCONFIRMED", "Only a confirmed separate worker can retire its planner.", 409)
         elif run is None or run.state not in TERMINAL:
             raise DomainError("RUN_ACTIVE", "Only an ended run can close its terminal sessions.", 409)
-    if run and kind not in QUIET_COMMANDS and kind not in ("worktrees.scan", "run.cleanup"):
+    if run and kind not in QUIET_COMMANDS and kind not in READ_COMMANDS and kind != "run.cleanup":
         ensure_eridani_control(run)
     host = db.get(AgentHost, host_id or run.host_id) if host_id or run else None
     durable = bool(host and "commands.durable" in ((host.caps or {}).get("caps") or []))
@@ -439,7 +468,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
                        plan_revision=run.plan_revision if run else 0)
     db.add(row)
     db.flush()
-    if run and kind not in QUIET_COMMANDS:
+    if run and kind not in QUIET_COMMANDS and kind != "ci.status":  # A CI poll every 2 min would flood the timeline.
         note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}),
              **({"role": body["role"]} if body.get("role") else {}), **({"source": source} if source else {}))
         emit(db, run.owner_id, "agent.changed", run.id)
@@ -511,6 +540,10 @@ def on_outcome(db, row, state, detail="", result=None):
         row.status = "superseded"  # Keep the host's outcome, without letting a suppressed old command move the run.
         emit(db, run.owner_id, "agent.changed", run.id)
         return
+    if row.kind == "ci.status":
+        from . import run_ci
+
+        return run_ci.on_outcome(db, run, row, state, detail, result)  # Not noted: a poll every 2 minutes.
     role = (row.payload or {}).get("role")
     if (row.kind in ("spawn", "stop") or row.kind == "input" and state == "executed") and result and result.get("surf"):
         from . import agent_cleanup
@@ -1669,6 +1702,59 @@ def verify_deadline(db, run, verify_id):
     return max(VERIFY_DEADLINE, timedelta(seconds=timeout) + VERIFY_GRACE), timeout
 
 
+def verify_notify_after(db, run, verify_id):
+    """Seconds after which a still-running verification is worth a notice: the entry's advertised `notify_after_s`,
+    else the agent_verify_notify_after_seconds setting."""
+    from . import agent_control
+    from .config import get_settings
+    from .session_models import ExecutionTarget
+
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    host = db.get(AgentHost, run.host_id) if run.host_id else None
+    value = agent_control.verify_notify_after(agent_control.hello_target(host, target.host_target), verify_id) \
+        if target and host else None
+    return value or get_settings().agent_verify_notify_after_seconds
+
+
+def span(seconds):
+    """30 min, 2 h, 1 h 30 min."""
+    minutes = round(seconds / 60)
+    hours, rest = divmod(minutes, 60)
+    return f"{minutes} min" if not hours else f"{hours} h" + (f" {rest} min" if rest else "")
+
+
+def verify_slow_notices(db, clock):
+    """One notice per verification attempt that runs past its soft threshold (verify_notify_after) and would still
+    run on before its ceiling; the attempt is not stopped. Marked on the attempt as `slow_notice_at`."""
+    for attempt in db.scalars(select(AgentAttempt).where(AgentAttempt.kind == "verify", AgentAttempt.status == "running")
+                              .with_for_update(skip_locked=True)):
+        result = attempt.result or {}
+        run = db.get(AgentRun, attempt.run_id)
+        if result.get("slow_notice_at") or run is None or run.paused or not attempt.created_at:
+            continue
+        after = verify_notify_after(db, run, attempt.verify_id)
+        ceiling = result.get("timeout_s") or (
+            (attempt.deadline_at - attempt.created_at - VERIFY_GRACE).total_seconds() if attempt.deadline_at else None)
+        if clock - attempt.created_at < timedelta(seconds=after) or (ceiling and ceiling <= after):
+            continue
+        attempt.result = {**result, "slow_notice_at": clock.isoformat()}
+        stop = f"; it will stop at {span(ceiling)}" if ceiling else ""
+        others = len(running_alongside(db, run, attempt))
+        beside = (f" {others} other verification{'s are' if others != 1 else ' is'} running on the same host."
+                  if others else "")
+        notify(db, run, "agent_verify_slow", "Verification is still running",
+               f"Verification has been running for {span(after)}{stop}.{beside} Nothing is needed from you yet.",
+               key=attempt.id)
+
+
+def running_alongside(db, run, attempt):
+    """Ids of other runs verifying on the same host right now. Neither remotea nor Eridani queues verifications
+    (remotea runs one attempt per session, sessions in parallel), so these compete for the machine, not for a lane."""
+    return list(db.scalars(select(AgentAttempt.run_id).join(AgentRun, AgentRun.id == AgentAttempt.run_id).where(
+        AgentAttempt.kind == "verify", AgentAttempt.status == "running", AgentAttempt.id != attempt.id,
+        AgentRun.host_id == run.host_id, AgentRun.id != run.id)))
+
+
 def current(run, attempt):
     return (attempt.generation, attempt.turn_seq, attempt.plan_revision) == \
         (run.generation, run.turn_seq, run.plan_revision)
@@ -1723,7 +1809,9 @@ _DATABASE = re.compile(
     r"|could not connect to (?:server|database)|connection to server at .{0,120} failed"
     r"|\bconnection refused\b|\bECONNREFUSED\b|password authentication failed for user"
     r"|database \"[^\"\n]{1,80}\" does not exist|role \"[^\"\n]{1,80}\" does not exist"
-    r"|is the server running on that host and accepting", re.IGNORECASE)
+    r"|is the server running on that host and accepting"
+    # A database extension the test server lacks (pgvector): the operator installs it, the agent cannot.
+    r"|extension \"[^\"\n]{1,80}\" is not available|\bFeatureNotSupported\b", re.IGNORECASE)
 _CWD = re.compile(r"\bcwd\b|no such folder|the worktree is missing", re.IGNORECASE)
 
 
@@ -1877,11 +1965,41 @@ def verify_result(db, host_id, frame):
             (frame.generation, frame.turn_seq, frame.plan_revision, frame.verify_id):
         return {"discarded": "tuple mismatch"}
     attempt.workspace_fingerprint = frame.workspace_fingerprint[:200]
+    if swept(attempt):
+        return late_result(db, run, attempt, verify_status(frame), facts)
     if not settle_verify(db, run, attempt, verify_status(frame), facts):
         late = (attempt.result or {}).get("late", [])[-4:]
         attempt.result = {**attempt.result, "late": [*late, {"at": now().isoformat(), "exit_code": frame.exit_code}]}
         return {"discarded": "late"}
     return {"attempt": attempt.id, "status": attempt.status}
+
+
+SWEPT_DETAIL = "No result within the deadline."
+
+
+def swept(attempt):
+    """The attempt was settled by Eridani's own deadline (the sweep), not by a result from the host."""
+    result = attempt.result or {}
+    return attempt.status == "timed_out" and (result.get("swept") is True or (
+        result.get("detail") == SWEPT_DETAIL and result.get("exit_code") is None and not result.get("tail")))
+
+
+def late_result(db, run, attempt, status, facts):
+    """The host's real result for an attempt Eridani had stopped waiting for: it replaces the swept outcome (kept as
+    `swept: {at, deadline_at}`). A pass for the run's current turn while it is parked on that timeout
+    (needs_you(verify_infra)) goes to the judge again, so the run moves on by itself."""
+    kept = {k: v for k, v in (attempt.result or {}).items() if k not in ("detail", "category", "action", "swept")}
+    gave_up = attempt.updated_at or now()
+    attempt.status, attempt.updated_at = status, now()
+    attempt.result = {**kept, **facts, "swept": {"at": gave_up.isoformat(),
+                                                 "deadline_at": attempt.deadline_at.isoformat() if attempt.deadline_at else None}}
+    categorize(db, run, attempt)
+    note(run, "verify_late_result", attempt_id=attempt.id, status=status)
+    emit(db, run.owner_id, "agent.changed", run.id)
+    if status == "passed" and run.state == "needs_you" and run.state_reason == "verify_infra" and current(run, attempt) \
+            and not run.freestyle and not run.paused:
+        to_judging(db, run, attempt, reason="verify_late_result")
+    return {"attempt": attempt.id, "status": status, "late": True}
 
 
 def to_judging(db, run, verify_attempt, *, reason="turn", actor=None):
@@ -1965,11 +2083,16 @@ def on_verdict(db, attempt, final):
 
 
 def judged_met(db, run, plan, actor):
-    """The criteria and the completion policy are met: integration first, then auto_complete or approval."""
+    """The criteria and the completion policy are met: integration first, then green CI when the verify entry is only
+    a quick check (run_ci.gate), then auto_complete or approval. run_ci calls it again when CI turns green."""
     pending = integration_pending(db, run, plan)
     if pending:
         run.sync_state = {**(run.sync_state or {}), "integration": pending}
         return transition(db, run, "awaiting_integration", actor=actor, reason="awaiting_integration")
+    from . import run_ci
+
+    if run_ci.gate(db, run, plan, actor) is not None:
+        return run  # A quick check passed: GitHub CI on the PR head is the final verification (awaiting_ci).
     if auto_complete(db, run.owner_id) and plan and plan.criteria and human_gate(plan):
         # A fingerprint that did not cover the whole workspace cannot prove the tree it tested is the one the turn
         # left (remotea `workspace_complete: false`): not fresh enough to close the task without a human.
@@ -2336,7 +2459,8 @@ def render_plan(db, run, plan, token=None):
         data.append("Steps:")
         marks = {"done": "x", "skipped": "-", "doing": "~", "disputed": "!"}
         for step in (task.steps if task else plan.steps):
-            data.append(f"- [{marks.get(step.get('status'), ' ')}] {step['id']}: {step['title']} (revision {step.get('revision', 0)})")
+            phase = f"[{step['phase']}] " if step.get("phase") else ""
+            data.append(f"- [{marks.get(step.get('status'), ' ')}] {phase}{step['id']}: {step['title']} (revision {step.get('revision', 0)})")
     if plan.criteria:
         data.append("Success criteria:")
         data += [f"- {c['id']}: {c['text']}" for c in plan.criteria]
@@ -2699,11 +2823,16 @@ def sweep(db, clock=None):
             continue
         if attempt.kind == "verify":
             # timed_out is its own non-pass; a result that arrives later is discarded.
-            settle_verify(db, run, attempt, "timed_out", {"detail": "No result within the deadline."})
+            # `swept`: Eridani stopped waiting, the host may still be running it (late_result keeps what it sends).
+            settle_verify(db, run, attempt, "timed_out", {"detail": SWEPT_DETAIL, "swept": True})
         else:
             attempt.status, attempt.updated_at = "failed", clock
             attempt.result = {**(attempt.result or {}), "non_verdict": "timeout"}
             judge_failed(db, attempt, "timeout", "the judge did not finish in time")
+    verify_slow_notices(db, clock)
+    from . import run_ci
+
+    run_ci.sweep(db, clock)  # Poll CI every 2 minutes while a run awaits it; past the wait, the run needs you.
     # A judge holding for a fresh PR record past its wait runs once more and settles on what is on record.
     release_held(db, [a for a in db.scalars(select(AgentAttempt).where(
         AgentAttempt.kind == "judge", AgentAttempt.status == "queued").with_for_update(skip_locked=True))

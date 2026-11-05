@@ -218,6 +218,27 @@ def test_web_run_states_match_the_coordinator():
     assert set(terminal) == set(TERMINAL_RUN_STATES)
 
 
+def test_every_run_notice_category_is_documented():
+    """run_coordinator.notify categories (run_ci's agent_ci_failed among them) are free strings; ADDING_FEATURES § 7
+    lists each one so a new push category is a decision, not an accident."""
+    categories = set()
+    for name in ("run_coordinator.py", "run_ci.py"):
+        source = (ROOT / "apps/api/jarvis" / name).read_text()
+        categories |= set(re.findall(r'notify\(db, run, "([a-z_]+)"', source))
+    assert {"agent_stuck", "agent_ci_failed"} <= categories, "notify() parser"
+    guide = (ROOT / "docs/ADDING_FEATURES.md").read_text()
+    assert {c for c in categories if f"`{c}`" not in guide} == set()
+
+
+def test_ci_state_is_registered_where_runs_wait():
+    """awaiting_ci (run_ci.py) is a wait the wall clock skips, a message resumes, and the web labels."""
+    from jarvis import run_coordinator
+
+    assert "awaiting_ci" in run_coordinator.IDLE_WAIT_STATES and "awaiting_ci" in run_coordinator.RESUMABLE
+    assert "awaiting_ci" in run_coordinator.TRANSITIONS["judging"]
+    assert re.search(r'awaiting_ci: "Awaiting CI"', web("remotea-model.ts")), "RUN_LABELS / STAGES"
+
+
 def test_every_needs_you_reason_has_text():
     """REASONS is what the run page, push body and control_status show; a missing key shows the raw code."""
     from jarvis.run_coordinator import REASONS
@@ -226,6 +247,21 @@ def test_every_needs_you_reason_has_text():
     used = set(re.findall(r'transition\(db, run, "needs_you",[^)\n]*?reason="([a-z_]+)"', source))
     assert used, "run_coordinator.py parser"
     assert used <= set(REASONS), sorted(used - set(REASONS))
+
+
+def test_every_needs_you_reason_has_a_headline():
+    """The run card and drawer lead with run_attention's headline and action; a reason without a row falls back to a
+    generic line. Covers every needs_you reason run_coordinator.py names and every stop reason in REASONS."""
+    from jarvis.run_attention import ATTENTION
+    from jarvis.run_coordinator import REASONS
+
+    source = (ROOT / "apps/api/jarvis/run_coordinator.py").read_text()
+    used = set(re.findall(r'transition\(db, run, "needs_you",[^)\n]*?reason="([a-z_]+)"', source))
+    assert used, "run_coordinator.py parser"
+    assert used <= set(ATTENTION), sorted(used - set(ATTENTION))
+    stops = list(REASONS)[:list(REASONS).index("start")]  # REASONS lists the stop reasons before the working states.
+    assert set(stops) - {"judge_met", "awaiting_integration", "integrated", "merged"} <= set(ATTENTION), \
+        sorted(set(stops) - set(ATTENTION))
 
 
 def test_every_control_tool_is_gated_on_remotea():

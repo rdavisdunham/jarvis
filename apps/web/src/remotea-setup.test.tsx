@@ -160,7 +160,8 @@ describe("target templates (remotea S-Q3)", () => {
     expect(templateNote({})).toBe("");
     const need: NeedsTarget = { task_id: "t", records: [], candidates: [
       { id: "s1", host_id: "h1", host_target: "jarvis", name: "jarvis", repo: "/home/davin/jarvis", worktree_root: "/wt", record_id: null, template }],
-      advertised: [{ host_id: "h1", host_name: "desk", host_target: "remotea", repo: "/home/davin/remotea", worktree_root: "/wt",
+      advertised: [{ host_id: "h1", host_name: "desk", host_target: "jarvis", repo: "/home/davin/jarvis", worktree_root: "/wt", template },
+        { host_id: "h1", host_name: "desk", host_target: "remotea", repo: "/home/davin/remotea", worktree_root: "/wt",
         template: { ready: true } }] };
     expect(targetOptions(need).map(o => o.detail)).toEqual([
       "/home/davin/jarvis · not ready: repo: /home/davin/jarvis is not a git checkout; prepare.web: npm is not on the service PATH",

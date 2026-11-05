@@ -58,6 +58,16 @@ TOOLS = {
         service.ChangesInput, service.changes, service.READ,
         "Poll meeting-context changes after a saved cursor (like changes_list). Persist next_cursor and follow "
         "has_more. Retracted assertions and deleted sources arrive as tombstones without content."),
+    "context_runs": Tool(
+        service.RunsInput, service.runs, service.READ,
+        "How a meeting (source_id) was processed, newest run first: stage, status, model, prompt version, "
+        "coverage, cost and the extractor's rejections (code, reason, statement, segment numbers), including the "
+        "action pass's under diagnostics.actions. detail=true lists every rejection."),
+    "context_proposals": Tool(
+        service.ProposalsInput, service.proposals, service.READ,
+        "A meeting's task proposals (source_id): title, kind, status, preselected (checked for the user), the "
+        "reason, who is responsible, due date and the cited quotes with segment numbers. Read-only: only the "
+        "owner approves or dismisses."),
     "context_feedback": Tool(
         service.FeedbackInput, service.feedback, service.WRITE,
         "Suggest a correction to meeting context (wrong, changed, confirm; reject_link, confirm_link) with the "

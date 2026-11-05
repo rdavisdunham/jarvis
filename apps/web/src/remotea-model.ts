@@ -136,7 +136,7 @@ export function place(item: Pick<RemoteaSession, "repo" | "branch" | "cwd">) {
 
 export type RunState =
   | "queued" | "spawning" | "interviewing" | "planning" | "executing" | "waiting_answer" | "verifying" | "judging"
-  | "needs_you" | "awaiting_integration" | "awaiting_approval" | "stopping" | "replanning"
+  | "needs_you" | "awaiting_integration" | "awaiting_approval" | "awaiting_ci" | "stopping" | "replanning"
   | "plan_reviewing" | "handing_off"
   | "completed" | "stopped" | "capped" | "failed";
 export type Run = {
@@ -164,11 +164,17 @@ export type Run = {
   /** Freshness facts kept apart (E-S6; older Eridani: absent): when the last turn landed, the latest verification
    * and how far it proves the current turn, and controls the host has not taken yet or whose delivery is uncertain. */
   last_turn_at?: string | null; verification?: VerificationFact | null; pending_controls?: PendingCommand[];
+  /** GitHub CI on the pull request head, the final verification after a quick local check (run_ci.py; older
+   * Eridani: absent). Null when the run has no CI record and is not awaiting CI. */
+  ci?: RunCi | null;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
   freestyle?: boolean;
   /** The full text behind the current state (the judge's notes, the proposal summary); reason_text is the one-liner. */
   reason_detail?: string;
+  /** Why the run stopped for you, structured (run_attention.py): what happened, what to do, the last output lines.
+   * Present on needs_you and capped runs; null otherwise (older Eridani: absent). */
+  attention_detail?: AttentionDetail | null;
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */
   base?: RunBase | null;
@@ -201,10 +207,24 @@ export type PlanReviewRow = RoleSpec & {
 /** The run's latest verification as a decision fact (agent_control.verification_fact). `evidence`: `fresh` (this
  * turn, an unchanged workspace), `stale` (an older turn, or the checkout changed around it), `incomplete` (remotea's
  * fingerprint missed part of the workspace), `pending` (still running). */
+export type AttentionDetail = { reason: string; headline: string; action: string; detail: string; last_output: string[] };
 export type VerificationFact = {
   verify_id: string; status: string; at: string; evidence: "fresh" | "stale" | "incomplete" | "pending"; turn_seq?: number;
   isolated?: boolean | null; isolation_reason?: string | null; workspace_complete?: boolean | null; workspace_reasons?: string[];
   deadline_at?: string | null;
+  /** While running: other runs verifying on the same host at once (no queue; they share the machine). */
+  alongside?: string[];
+};
+/** One GitHub check on the PR head; `bucket` is gh's own (pass, fail, pending, skipping, cancel). */
+export type CiCheck = { name: string; bucket: "pass" | "fail" | "pending" | "skipping" | "cancel"; state?: string; link: string | null; workflow?: string };
+/** The run's CI (agent_control.public_run `ci`). `state`: passed and failed are terminal; requested (asked, no answer
+ * yet), pending, absent (no checks yet), no_pr, unpushed and cancelled keep an awaiting_ci run waiting. `since` and
+ * `wait_until` are set while the run is awaiting CI; `current`: the record is for the run's current turn. */
+export type RunCi = {
+  state: "requested" | "passed" | "failed" | "pending" | "absent" | "no_pr" | "unpushed" | "cancelled" | null;
+  current: boolean; attempt_id: string | null; source: "github_ci"; head_sha: string | null; pr_url: string | null;
+  run_url: string | null; checks: CiCheck[]; failed: { name: string; link: string | null }[]; log: string[];
+  checked_at: string | null; since: string | null; wait_until: string | null; error: string | null;
 };
 /** A command whose effect is not known yet: `pending` (the host has not taken it) or `uncertain` (it could not tell). */
 export type PendingCommand = { kind: string; status: "pending" | "uncertain"; mode?: string | null; at: string };
@@ -299,7 +319,9 @@ export type HistoryEntry = { at: string; from?: string; to?: string; reason?: st
   kind?: string; state?: string; actor?: { kind: string; reason?: string }; text?: string;
   plan_revision?: number; proposals?: string; accepted?: string[]; kept?: string[];
   /** Hyperplan events: `review_blocked` (round), `handoff` (the worker's harness and model). */
-  round?: number; harness?: string; model?: string };
+  round?: number; harness?: string; model?: string;
+  /** `approve_override`: the approver's note (the reason they accepted the work without the policy's evidence). */
+  note?: string };
 export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
   multi: boolean; free_text: boolean };
 export type Interview = { id: string; run_id: string; generation: number; questions: InterviewQuestion[];
@@ -307,7 +329,7 @@ export type Interview = { id: string; run_id: string; generation: number; questi
 export type Criterion = { id: string; text: string; kind?: "text" | "verify"; verify_id?: string };
 export type CriterionVerdict = { id: string; status: "met" | "not_met" | "unclear"; evidence: string };
 export type Attempt = {
-  id: string; kind: "verify" | "judge"; status: string; generation: number; turn_seq: number; plan_revision: number;
+  id: string; kind: "verify" | "judge" | "ci"; status: string; generation: number; turn_seq: number; plan_revision: number;
   verify_id: string; initiator: string; verdict: "met" | "not_met" | "needs_you" | null; gap: string | null; summary: string | null;
   criteria: CriterionVerdict[] | null; rules: string[] | null; non_verdict: string | null; exit_code: number | null;
   tail: string | null; on_demand: boolean | null; created_at: string; updated_at: string;
@@ -316,6 +338,10 @@ export type Attempt = {
   isolated?: boolean | null; isolation?: "bwrap" | "none" | null; isolation_reason?: string | null;
   workspace_complete?: boolean | null; workspace_reasons?: string[] | null; timeout_s?: number | null;
   stale_workspace?: boolean | null; deadline_at?: string | null;
+  /** CI only (run_ci.py, verify_id `github_ci`): GitHub CI on one pull request head, updated on every poll. `status` is
+   * passed, failed or pending; `state` is the finer RunCi state (absent, no_pr, unpushed, cancelled …). */
+  source?: "github_ci"; state?: RunCi["state"]; head_sha?: string | null; pr_url?: string | null; run_url?: string | null;
+  checks?: CiCheck[]; failed?: { name: string; link: string | null }[]; checked_at?: string | null;
   /** Why a verification did not pass (run_coordinator.classify_verify) and the one-line fix; null when it passed. */
   category?: VerifyCategory | null; action?: string | null;
   /** How long the verify command ran (null from older Eridani). */
@@ -339,7 +365,7 @@ export type Proposals = {
   completion_policy?: { current: string; proposed: string };
 };
 export type RunDetail = Run & {
-  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string; note?: string; updated_at?: string; revision?: number; by?: string }[];
+  plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string; note?: string; phase?: string; updated_at?: string; revision?: number; by?: string }[];
     criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
     proposals?: Proposals | null; approval_status?: string } | null;
   plan_history?: (NonNullable<RunDetail["plan"]> & { approval_status?: string; frozen_at?: string | null })[];
@@ -399,7 +425,7 @@ const RUN_LABELS: Partial<Record<RunState, string>> = {
   queued: "Queued", spawning: "Starting", executing: "Working", waiting_answer: "Asked you", needs_you: "Needs you",
   awaiting_approval: "Awaiting approval", stopping: "Stopping…", completed: "Completed", stopped: "Stopped",
   capped: "Turn cap", failed: "Failed", interviewing: "Interviewing", planning: "Planning", verifying: "Verifying",
-  judging: "Judging", awaiting_integration: "Awaiting integration", replanning: "Replanning",
+  judging: "Judging", awaiting_integration: "Awaiting integration", awaiting_ci: "Awaiting CI", replanning: "Replanning",
   plan_reviewing: "Reviewing plan", handing_off: "Handing off",
 };
 export function runLabel(state: RunState) {
@@ -408,7 +434,7 @@ export function runLabel(state: RunState) {
 const STAGES: Record<string, string> = {
   starting: "Starting", queued: "Starting", spawning: "Starting", interviewing: "Interviewing", planning: "Planning", replanning: "Planning",
   plan_reviewing: "Reviewing plan", reviewing_plan: "Reviewing plan", handing_off: "Starting", executing: "Working", working: "Working",
-  verifying: "Checking results", judging: "Checking results", checking_results: "Checking results", awaiting_approval: "Ready for review", ready_for_review: "Ready for review",
+  verifying: "Checking results", judging: "Checking results", checking_results: "Checking results", awaiting_ci: "Awaiting CI", awaiting_approval: "Ready for review", ready_for_review: "Ready for review",
   completed: "Complete", complete: "Complete", stopped: "Stopped", failed: "Failed", capped: "Needs attention", stopping: "Stopping",
 };
 export function executionModeLabel(run: Run): string | null { return run.execution_mode === "legacy" ? "Legacy terminal session" : null; }
@@ -448,9 +474,47 @@ export function runControls(run: Run) {
     approve: { enabled: !terminal && !settled && !stopping, primary: run.state === "awaiting_approval",
       label: run.state === "needs_you" && run.state_reason === "plan_approval" ? "Complete task" : "Approve",
       reason: settled ? "This run has finished." : stopping ? "The run is stopping." : "" },
-    replan: { enabled: !terminal && started && ["executing", "needs_you", "awaiting_approval", "awaiting_integration", "planning"].includes(run.state),
+    replan: { enabled: !terminal && started && ["executing", "needs_you", "awaiting_approval", "awaiting_integration", "awaiting_ci", "planning"].includes(run.state),
       reason: !started ? "The agent has not started yet." : "Re-plan works while the run is working, waiting for you or awaiting approval." },
     offline,
+  };
+}
+
+// The stop reasons an approval can override, in words for the timeline (the run's own text is reason_text).
+const REASON_WORDS: Record<string, string> = { verify_infra: "verification could not run", verify_missing: "no verify command",
+  verify_incomplete: "incomplete verification", turn_cap: "turn cap", wall_clock: "wall clock", judge_needs_you: "the judge asked for you",
+  judge_unavailable: "no verdict", no_progress_gap: "the same gap repeated", pr_unknown: "pull request unknown",
+  ci_timeout: "CI did not finish", ci_failed_again: "CI failed again", ci_unavailable: "CI unreadable" };
+
+/** The run row's line for a stopped run: the headline and the action (run_attention), else the one-line reason. */
+export function stopLine(run: Pick<Run, "attention_detail" | "reason_text">) {
+  const a = run.attention_detail;
+  return a ? `${a.headline} ${a.action}` : run.reason_text;
+}
+
+/** The drawer's "Needs you" card for a run parked in needs_you (plan stops and planning recovery keep their own
+ * cards): the headline, the action and the last output lines, with Approve (always offered: approving here overrides
+ * the completion policy, so it asks first), Verify again (/judge: verify, then judge) and Send back to the agent (a
+ * queued message, which resumes the run). Null when there is nothing to show. */
+export function stopCard(run: RunDetail) {
+  const a = run.attention_detail;
+  if (!a || run.state !== "needs_you" || PLAN_STOPS.includes(run.state_reason) || run.state_reason === "no_plan") return null;
+  const terminal = run.controller === "terminal";
+  const hasVerify = !!run.plan?.verify;
+  const passing = run.verification?.status === "passed" && run.verification.evidence === "fresh";
+  const judgeable = !run.freestyle && !!run.turn_seq && !!run.plan?.criteria.length;
+  const message = runControls(run).message;
+  return {
+    headline: a.headline, action: a.action, lines: a.last_output ?? [],
+    detail: a.detail && a.detail !== a.action && !a.headline.includes(a.detail) ? a.detail : "",
+    approve: { enabled: !terminal,
+      confirm: run.state_reason.startsWith("ci_") ? "GitHub CI has not passed on the pull request; approve anyway?"
+        : hasVerify && !passing ? "Verification has no passing run; approve anyway?"
+        : "The judge has not found the criteria met; approve anyway?" },
+    verifyAgain: { enabled: !terminal && judgeable, label: hasVerify ? "Verify again" : "Judge again",
+      reason: terminal ? "Terminal has control." : run.freestyle ? "Freestyle is on, so the judge is off."
+        : !run.turn_seq ? "The agent has not finished a turn yet." : !run.plan?.criteria.length ? "The plan has no success criteria." : "" },
+    sendBack: { enabled: message.enabled, reason: message.reason },
   };
 }
 
@@ -663,7 +727,10 @@ const VERIFY_TEXT: Record<string, string> = { running: "running", passed: "passe
   refused: "not run (refused)", uncertain: "result uncertain", stale: "stale: code changed during the run", canceled: "canceled",
   error: "error", superseded: "superseded" };
 const VERDICT_TEXT: Record<string, string> = { met: "criteria met", not_met: "not met yet", needs_you: "needs you" };
+const CI_ATTEMPT_TEXT: Record<string, string> = { passed: "passing", failed: "failing", pending: "running", requested: "running",
+  absent: "not started", no_pr: "no pull request", unpushed: "not pushed", cancelled: "cancelled" };
 export function attemptTitle(a: Attempt) {
+  if (a.kind === "ci") return `GitHub CI${a.head_sha ? " on " + a.head_sha.slice(0, 7) : ""} · ${CI_ATTEMPT_TEXT[a.state ?? a.status] ?? a.status}`;
   if (infraAttempt(a)) return `Verification could not run · ${a.action || VERIFY_TEXT[a.status] || a.status}${a.on_demand ? " (on demand)" : ""}`;
   if (a.kind === "verify") return `Verification ${a.verify_id} · ${VERIFY_TEXT[a.status] ?? a.status}${a.on_demand ? " (on demand)" : ""}`;
   if (a.status === "done" && a.verdict) return "Judge · " + VERDICT_TEXT[a.verdict];
@@ -671,6 +738,7 @@ export function attemptTitle(a: Attempt) {
   return "Judge · " + a.status;
 }
 export function attemptTone(a: Attempt): TimelineEntry["tone"] {
+  if (a.kind === "ci") return a.status === "passed" ? "good" : a.status === "failed" ? "warn" : "plain";
   if (infraAttempt(a)) return "setup";
   if (a.kind === "verify") return a.status === "passed" ? "good" : a.status === "running" ? "plain" : "warn";
   return a.verdict === "met" ? "good" : a.verdict === "needs_you" || a.status === "failed" ? "attention" : "plain";
@@ -813,7 +881,8 @@ export function freshnessFacts(run: Run, host?: Pick<Host, "connected" | "last_s
   if (v) {
     if (v.evidence === "pending") {
       const late = !!v.deadline_at && new Date(v.deadline_at).getTime() < now;
-      facts.push({ key: "verify", label: `verify ${v.verify_id} running for ${elapsed(v.at, now)}${late ? " (past its deadline)" : ""}`, tone: late ? "warn" : "plain" });
+      const beside = v.alongside?.length ? ` · ${v.alongside.length} other run${v.alongside.length === 1 ? "" : "s"} verifying on this host` : "";
+      facts.push({ key: "verify", label: `verify ${v.verify_id} running for ${elapsed(v.at, now)}${late ? " (past its deadline)" : ""}${beside}`, tone: late ? "warn" : "plain" });
     } else {
       facts.push({ key: "verify", label: `verify ${v.verify_id} ${VERIFY_TEXT[v.status] ?? v.status} ${ago(v.at, now)} · ${EVIDENCE_TEXT[v.evidence]}`,
         tone: v.evidence === "fresh" && v.status === "passed" ? "ok" : "warn" });
@@ -858,6 +927,7 @@ export const SENT_REASON: Record<string, string> = {
   execute: "plan frozen, start work", gap: "judge gap", replan: "re-plan", verify_set: "verify command set",
   interview_answers: "your interview answers", merged: "pull request merged", integrated: "sub-task pull requests merged",
   plan_critique: "review sent to the planner", handoff: "plan handed to the worker",
+  ci_failed: "CI failed on the pull request", ci_push: "push for CI",
 };
 
 /** Title of a timeline entry for a message typed in the terminal (not sent from this page). */
@@ -905,7 +975,9 @@ export function timeline(run: RunDetail): TimelineEntry[] {
   for (const q of run.questions) entries.push({ id: "question:" + q.id, at: q.created_at, kind: "question", title: "Question · " + QUESTION_TEXT[q.status],
     detail: q.items.map(i => i.text).join(" / "), tone: q.status === "open" || q.status === "timed_out" ? "attention" : q.status === "accepted" ? "good" : "plain", who: "agent" });
   for (const a of run.attempts ?? []) entries.push({ id: "attempt:" + a.id, at: a.updated_at, kind: "attempt", title: attemptTitle(a),
-    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "") : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani",
+    detail: a.kind === "judge" ? (a.verdict === "met" ? a.summary ?? "" : a.gap ?? "")
+      : a.kind === "ci" ? (a.status === "failed" ? "Failed: " + ((a.failed ?? []).map(f => f.name).join(", ") || "a check") : "")
+      : (a.status === "failed" ? a.tail ?? "" : ""), tone: attemptTone(a), who: "eridani",
     ...(attemptFacts(a).length ? { facts: attemptFacts(a) } : {}) });
   for (const i of run.interviews ?? []) entries.push({ id: "interview:" + i.id, at: i.created_at, kind: "question", title: "Interview · " + (i.status === "open" ? "waiting for you" : i.status),
     detail: i.questions.map(q => q.question).join(" / "), tone: i.status === "open" ? "attention" : "plain", who: "agent" });
@@ -956,6 +1028,11 @@ export function timeline(run: RunDetail): TimelineEntry[] {
       if (!blocked.has(key)) entries.push({ id, at: h.at, kind: "state", tone: "warn", who: "eridani", detail: h.detail ?? "",
         title: (h.event === "review_blocked" ? `Review ${h.round ?? ""} waiting` : "Handoff waiting") + ": the host is at its run limit; retrying" });
       blocked.add(key);
+      continue;
+    }
+    if (h.event === "approve_override") {
+      entries.push({ id, at: h.at, kind: "state", title: "Approved by you without the completion policy's evidence",
+        detail: [h.reason ? (REASON_WORDS[h.reason] ?? h.reason) : "", h.note ?? ""].filter(Boolean).join(" · "), tone: "attention", who: "you" });
       continue;
     }
     if (h.event === "plan_reviewed") {
@@ -1062,21 +1139,47 @@ export type SavedTarget = { id: string; host_id: string; host_target: string; na
 /** A target a host listed in hello. `harnesses` is what the target can start; null when the host did not say (older
  * remotea: its host-wide flags decide). `verify` is its verify ids (absent from older Eridani). */
 export type AdvertisedTarget = { host_id: string; host_name: string; host_target: string; repo: string; worktree_root: string;
-  harnesses?: string[] | null; verify?: string[] } & TargetFacts;
+  harnesses?: string[] | null; verify?: string[];
+  /** Whether the advertising host holds its lease now, and when it last said hello (absent from older Eridani). */
+  host_connected?: boolean; hello_at?: string | null } & TargetFacts;
 export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertised: AdvertisedTarget[];
   records: { id: string; title: string; type_id?: string }[] };
 export type UnmergedWork = { host_id: string; host_name: string; target: string | null; path: string | null; branch: string | null;
   base: string | null; ahead: number | null; behind: number | null; unpushed: number | null; uncommitted: number | null;
   untracked: number | null; merged: boolean | null; active: boolean | null; reasons: string[] | null };
 
-/** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. */
+/** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. A target
+ * saved for several records (one row per "Remember for") is offered once, preferring a row on a connected host that
+ * still lists it; saving re-binds by host and target anyway. Hosts are never retired, so when more than one host
+ * offers a target name each row names its host, and a row on a host that is not connected (or no longer lists the
+ * target) says so and sorts after the live ones. */
 export function targetOptions(need: NeedsTarget) {
   const detail = (base: string, t: { template?: TargetTemplate | null }) => [base, templateNote(t)].filter(Boolean).join(" · ");
-  const saved = need.candidates.map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target, detail: detail(t.repo, t), saved: t }));
+  const adverts = new Map(need.advertised.map(t => [`${t.host_id}:${t.host_target}`, t]));
+  const hosts = new Map(need.advertised.map(t => [t.host_id, t]));
+  const names = new Map<string, Set<string>>();
+  for (const t of [...need.candidates, ...need.advertised]) names.set(t.host_target, (names.get(t.host_target) ?? new Set()).add(t.host_id));
+  const live = (t: { host_id: string; host_target: string }) => adverts.get(`${t.host_id}:${t.host_target}`)?.host_connected !== false
+    && adverts.has(`${t.host_id}:${t.host_target}`);
+  const state = (t: { host_id: string; host_target: string }) => {
+    const advert = adverts.get(`${t.host_id}:${t.host_target}`);
+    const host = (names.get(t.host_target)?.size ?? 0) > 1 ? hosts.get(t.host_id)?.host_name || `host ${t.host_id.slice(0, 8)}` : "";
+    const note = !advert ? "not listed by its host" : advert.host_connected === false ? "host offline" : "";
+    return [host, note].filter(Boolean).join(", ");
+  };
+  const unique = new Map<string, SavedTarget>();
+  for (const t of need.candidates) {
+    const id = `${t.host_id}:${t.host_target}:${t.repo}`, seen = unique.get(id);
+    if (!seen || (!live(seen) && live(t))) unique.set(id, t);
+  }
+  const saved = [...unique.values()].map(t => ({ key: `saved:${t.id}`, label: t.name || t.host_target,
+    detail: [detail(t.repo, t), state(t)].filter(Boolean).join(" · "), saved: t, live: live(t) }));
   const known = new Set(need.candidates.map(t => `${t.host_id}:${t.host_target}`));
   const offered = need.advertised.filter(t => !known.has(`${t.host_id}:${t.host_target}`))
-    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target, detail: detail(t.repo || t.host_name, t), advertised: t }));
-  return [...saved, ...offered];
+    .map(t => ({ key: `host:${t.host_id}:${t.host_target}`, label: t.host_target,
+      detail: [detail(t.repo || t.host_name, t), state(t)].filter(Boolean).join(" · "), advertised: t, live: live(t) }));
+  // Stable: live rows keep their order ahead of stale ones, so the picker's default (the first row) is a live target.
+  return [...saved.filter(o => o.live), ...offered.filter(o => o.live), ...saved.filter(o => !o.live), ...offered.filter(o => !o.live)];
 }
 
 /** The picker's default "Remember for": the nearest record that is not a task (usually the project), so the choice
@@ -1258,7 +1361,8 @@ export const ATTENTION_GROUPS: { key: AttentionKey; verb: string; action: boolea
 ];
 // needs_you reasons the host or its setup must fix (verify_infra: a verification that could not run).
 // host_busy: the host is at limits.maxRuns, so a reviewer or the worker cannot start until a slot frees up.
-const REPAIR_REASONS = new Set(["host_offline", "surface_lost", "exited", "spawn_expired", "delivery_uncertain", "verify_infra", "host_busy"]);
+// ci_unavailable: the host cannot report GitHub CI (remotea without ci.status).
+const REPAIR_REASONS = new Set(["host_offline", "surface_lost", "exited", "spawn_expired", "delivery_uncertain", "verify_infra", "host_busy", "ci_unavailable"]);
 const ANSWER_REASONS = new Set(["question_timed_out"]);
 const UNMERGED_REASONS = new Set(["awaiting_merge"]);
 
@@ -1597,4 +1701,41 @@ export function focusSentText(run: Pick<Run, "host">, result: FocusResult) {
   if (!result.sent) return "";
   const where = run.host?.name ? " on " + run.host.name : "";
   return "Brought the terminal forward in remotea" + where + ".";
+}
+
+// ---------------------------------------------------------------- GitHub CI (run_ci.py)
+
+const CI_WORDS: Record<NonNullable<RunCi["state"]>, string> = {
+  requested: "CI pending", pending: "CI pending", absent: "CI not started", no_pr: "CI: no pull request",
+  unpushed: "CI: not pushed", cancelled: "CI cancelled", passed: "CI passing", failed: "CI failing",
+};
+
+/** The CI chip on a run row and in the drawer: pending, passing or failing, linked to the checks. Null without CI. */
+export function ciChip(ci: RunCi | null | undefined): { label: string; tone: "ok" | "warn" | "plain"; href: string | null; title: string } | null {
+  if (!ci?.state) return null;
+  const tone = ci.state === "passed" ? "ok" as const : ci.state === "failed" ? "warn" as const : "plain" as const;
+  const head = ci.head_sha ? ` on ${ci.head_sha.slice(0, 7)}` : "";
+  const running = ci.checks.filter(c => c.bucket === "pending").map(c => c.name);
+  const title = ci.state === "failed" ? `Failed${head}: ${ci.failed.map(f => f.name).join(", ") || "a check"}`
+    : ci.state === "pending" && running.length ? `Running${head}: ${running.join(", ")}` : CI_WORDS[ci.state] + head;
+  return { label: CI_WORDS[ci.state], tone, href: ci.run_url || ci.pr_url, title };
+}
+
+/** The drawer's CI card: while awaiting CI, how long it has waited and when it gives up; when CI failed, the jobs
+ * and the log lines the agent was sent. Null when there is nothing to say beyond the chip. */
+export function ciCard(run: Pick<Run, "state" | "ci">, now = Date.now()) {
+  const ci = run.ci;
+  if (!ci) return null;
+  const chip = ciChip(ci);
+  const waiting = run.state === "awaiting_ci";
+  if (!waiting && ci.state !== "failed") return null;
+  const minutes = (from: string | null, to: number) => from ? Math.max(0, Math.round((to - new Date(from).getTime()) / 60_000)) : null;
+  const waited = waiting ? minutes(ci.since, now) : null;
+  const left = waiting && ci.wait_until ? Math.max(0, Math.round((new Date(ci.wait_until).getTime() - now) / 60_000)) : null;
+  const head = ci.head_sha ? ci.head_sha.slice(0, 7) : null;
+  const line = waiting
+    ? `Waiting ${waited ?? 0} min for GitHub CI${head ? " on " + head : ""}` + (left !== null ? `; needs you in ${left} min if it has not finished.` : ".")
+    : `GitHub CI failed${head ? " on " + head : ""}; the agent was sent the failed jobs and the log.`;
+  return { title: waiting ? "Awaiting CI" : "CI failed", line, chip, failed: ci.state === "failed" ? ci.failed : [],
+    log: ci.state === "failed" ? ci.log : [], error: waiting ? ci.error : null, waited };
 }

@@ -7,6 +7,7 @@ import { emptyOrganization, type Organization } from "./productivity";
 import { UsageReport } from "./UsageReport";
 import { BudgetHolds } from "./BudgetHolds";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
+import { NameAliases } from "./NameAliases";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   CalendarDays,
@@ -751,6 +752,10 @@ export function SettingsPanel({
                 Save name
               </button>
             </form>
+          </SettingRow>
+          <SettingRow className="setting-row-form" label="Also known as"
+            hint="Your full name, nicknames and other spellings. Work assigned to any of them, by Dani, by name or in meetings, is yours.">
+            <NameAliases aliases={p.name_aliases ?? []} busy={busy} onSave={(name_aliases) => onSave({ name_aliases })}/>
           </SettingRow>
         </SettingsGroup>
       )}

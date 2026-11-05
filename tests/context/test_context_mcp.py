@@ -115,3 +115,21 @@ def test_definitions_follow_scopes():
     reads = {d["name"] for d in definitions({"context:read"})}
     assert reads >= set(context_mcp.TOOLS) - {"context_feedback"} and "context_feedback" not in reads
     assert not {d["name"] for d in definitions({"tasks:read"})} & set(context_mcp.TOOLS)
+
+
+def test_runs_and_proposals_over_mcp(client, monkeypatch):
+    from .test_pipeline import use_doubles, vector
+    from .test_proposals import meeting, process
+
+    monkeypatch.setattr("jarvis.memory_learning.embeddings", vector)
+    use_doubles()
+    got = process(meeting())
+    _, reader = mint(client, "context:read")
+    error, runs = call(client, reader, "context_runs", {"source_id": got.source_id})
+    assert not error, runs
+    assert runs["runs"][0]["created_at"] >= runs["runs"][-1]["created_at"]
+    assert any(r["stage"] == "extract" and r["status"] == "succeeded" for r in runs["runs"])
+    error, listed = call(client, reader, "context_proposals", {"source_id": got.source_id})
+    assert not error and any(p["preselected"] for p in listed["proposals"])
+    error, missing = call(client, reader, "context_runs", {"source_id": str(uuid4())})
+    assert error and missing["error"]["code"] == "NOT_FOUND"

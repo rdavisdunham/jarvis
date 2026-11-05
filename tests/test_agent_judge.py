@@ -270,7 +270,7 @@ def test_a_verdict_for_a_stale_tuple_is_discarded(host):  # noqa: F811
 
 
 def test_step_inference_marks_done_and_disputed_but_never_downgrades(verifying_host):  # noqa: F811
-    steps = [{"id": "s1", "title": "a", "status": "todo", "revision": 1}, {"id": "s2", "title": "b", "status": "done",
+    steps = [{"id": "s1", "title": "a", "status": "todo", "phase": "Fix", "revision": 1}, {"id": "s2", "title": "b", "status": "done",
                                                                           "revision": 1},
              {"id": "s3", "title": "c", "status": "done", "revision": 1}]
     run_id = planned(verifying_host)
@@ -283,6 +283,7 @@ def test_step_inference_marks_done_and_disputed_but_never_downgrades(verifying_h
     with session_scope() as db:
         merged = {s["id"]: s for s in db.get(Task, db.get(AgentRun, run_id).task_id).steps}
         assert merged["s1"]["status"] == "done" and merged["s1"]["by"].startswith("judge:")
+        assert merged["s1"]["phase"] == "Fix"  # The judge's mark keeps the step's phase.
         assert merged["s2"]["status"] == "disputed" and merged["s2"]["revision"] == 2
         assert merged["s3"]["status"] == "done" and merged["s3"]["revision"] == 1
 

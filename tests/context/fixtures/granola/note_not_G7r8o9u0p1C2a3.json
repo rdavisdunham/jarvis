@@ -1,0 +1,50 @@
+{
+  "id": "not_G7r8o9u0p1C2a3",
+  "object": "note",
+  "title": "Clinic rollout group sync",
+  "owner": {
+    "name": "Sam Okafor",
+    "email": "sam.okafor@fernhill.example"
+  },
+  "created_at": "2026-11-03T16:00:00Z",
+  "updated_at": "2026-11-03T17:05:00Z",
+  "deleted_at": null,
+  "web_url": "https://notes.granola.ai/d/not_G7r8o9u0p1C2a3",
+  "calendar_event": {
+    "event_title": "Clinic rollout group sync",
+    "invitees": [
+      {
+        "email": "sam.okafor@fernhill.example"
+      },
+      {
+        "email": "alex.morgan@fernhill.example"
+      },
+      {
+        "email": "priya.natarajan@northwind.example"
+      },
+      {
+        "email": "tomas.reyes@northwind.example"
+      }
+    ],
+    "organiser": "sam.okafor@fernhill.example",
+    "calendar_event_id": "8c1d2e3f4a5b6c7d8e9f0a1b2c_20261103T160000Z",
+    "scheduled_start_time": "2026-11-03T16:00:00Z",
+    "scheduled_end_time": "2026-11-03T16:30:00Z"
+  },
+  "attachments": [],
+  "attendees": [
+    {
+      "name": "Sam Okafor",
+      "email": "sam.okafor@fernhill.example"
+    },
+    {
+      "name": "Alex Morgan",
+      "email": "alex.morgan@fernhill.example"
+    },
+    {
+      "name": "Priya Natarajan",
+      "email": "priya.natarajan@northwind.example"
+    }
+  ],
+  "folder_membership": []
+}

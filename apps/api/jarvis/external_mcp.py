@@ -147,7 +147,7 @@ def definitions(scopes):
             "so stop after calling this. Needs run_token.",
             agent_plan.InterviewInput.model_json_schema(), False)
         add("submit_plan",
-            "Planning phase only: save the PRD, ordered steps (sub-tasks stay as linked steps), success_criteria "
+            "Planning phase only: save the PRD, ordered steps (each with a phase label; sub-tasks stay as linked steps), success_criteria "
             "(kind text, or verify naming the verify_id) and an optional verify config from your execution target, "
             "with expected_plan_revision from task_plan. Set migration=true when the plan adds a database migration: "
             "Eridani reserves its number. Freezes the plan this run is judged against; stop after "

@@ -189,6 +189,72 @@ Results: [`reports/native-retrieval-benchmark.md`](reports/native-retrieval-benc
 `.json` summary beside each that `report --perf` grades. [`reports/pilot-perf.md`](reports/pilot-perf.md) has
 the gate verdict, review-ready time and cost per meeting and per query (`bench.py --pipeline 60`).
 
+## Meeting lab (`lab.py`)
+
+Real meetings through the whole loop with real extraction models, scored against an answer key and against
+Granola's own next steps. **This one spends money and reads private client meetings**, so it is run by hand and its
+data never enters the repository: meetings live in `$CONTEXT_LAB_DIR` (default `/home/davin/todue/meeting-lab`;
+`evals/context/private/` is ignored by git if you keep them in the tree).
+
+~~~sh
+export JARVIS_ENV_FILE="" JARVIS_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:54411/jarvis
+uv run --no-sync python -m evals.context.lab import-file <slug>             # check the conversion, writes envelope.json
+uv run --no-sync python -m evals.context.lab import-granola <note_id> --slug <slug>   # needs GRANOLA_API_KEY
+uv run --no-sync python -m evals.context.lab run <slug>... --model luna|terra|sonnet-5.5 [--repeat N]
+# options: --facts-model P, --mode split|combined, --no-private-notes, --speakers auto|recorder|unknown
+uv run --no-sync python -m evals.context.lab score <slug>... [--run latest|all|<dir>] [--no-judge] [--out PATH]
+uv run --no-sync python -m evals.context.lab gold-sheet <slug>               # edit, then:
+uv run --no-sync python -m evals.context.lab gold-apply <slug> <sheet.md>
+~~~
+
+A meeting folder holds `meeting.json` (`note_id`, `title`, `meeting_at` with offset, `timezone`, `owner` = the
+note's recorder, `participants`, `private_notes`, `granola_summary`, `transcript` in the Granola MCP text format),
+`gold.json` (`verified`, `lab_user` with optional `timezone` and `aliases` (other full forms of the user's
+name, seeded on the owner's actor and treated as the user when scoring owners; a bare first name counts only if
+listed), `items` of `{id, title, owner, kind: mine|waiting,
+due, notes}` plus optional `owner_email` and `parts` (a grouped item's atomic pieces), optional `must_not` items)
+and `granola.json` (Granola's next steps, same item shape). `import-granola` also keeps the raw REST responses,
+`granola-note.json` and `granola-transcript.json`.
+
+- **Envelope.** With the raw REST files, the envelope comes from production's builder
+  (`connectors.granola.to_envelope`); otherwise `meeting.json` is converted to the same shape. The lab rules
+  below apply after either (`run.json` records `envelope_path`: `connector` or `text`).
+- **Conversion.** `Microphone:` (Granola's "me") is the recorder: the Eridani owner (attribution `owner`) when the recorder is the
+  lab user, otherwise that person (attribution `other`, labelled with their name), because `owner` attribution
+  always means the account owner. `System audio (Name):` is that participant, bare `System audio:` an unnamed
+  other speaker. When every line is the recorder's although several people attended (room or mixed audio),
+  `--speakers auto` leaves those lines unattributed; `--speakers recorder|unknown` overrides. Private notes are
+  kept only when the lab user recorded the meeting, and `run --no-private-notes` drops them (run name
+  `-nonotes`). The text path never passes Granola's summary on; the connector path passes what production does
+  (display only, never evidence).
+- **`run`** creates a throwaway database (refused unless the server is local), makes the lab user the owner (a
+  signed-in email and the owner actor with their email and name, an actor and email identity for every other
+  participant, and the timezone preference from `lab_user.timezone`, default America/Chicago, which also stands in
+  for a missing meeting timezone), sets `model_map.MODEL_MAP["context_actions"]` to `--model` and
+  `["context_extraction"]` to `--facts-model` (default: the same; runs and score rows are then named
+  `terra+luna`), raises the per-source budget (`--budget-usd`, default 3) and
+  model timeout, receives the meeting and drains its jobs. Model calls are real (keys from settings, never
+  printed); embeddings use the hashed bag-of-words vectors. It writes `<slug>/runs/<model>-<stamp>/run.json` and
+  `report.md`: speakers, every run with cost and latency, extraction candidates, rejections, the action pass
+  diagnostics, assertions and proposals with checked state and reason.
+- **`score`** matches proposals (and Granola's items) to the answer key with one judge call per meeting and
+  system (`--judge`, default Luna, strict JSON schema), falling back to greedy token-Jaccard on titles
+  (`--no-judge`, or when the judge fails). A grouped item matches any prediction covering one of its parts. It
+  reports `recall_mine` (the user's todos matched with the right owner), `candidate_recall_mine` and
+  `candidate_recall` (matched whoever owns them), `recall_waiting` (others' items with the right owner; an item
+  without an owner in the key matches on its title alone) and `candidate_recall_waiting`, `parts_recall` and `full_recall` (every
+  part covered), precision, owner accuracy (email when both sides have one, else full name, else a first name no
+  two participants share), `inferred_owner_share` (matched proposals whose owner the engine inferred without
+  proof: owned for recall and owner accuracy, right when unchecked), checked accuracy (mine checked, waiting unchecked), `checked_precision` (checked
+  proposals that are the user's real todos, unmatched ones included), `unmatched_checked`, checked `must_not`
+  items and cost per meeting, per meeting and pooled, and the plan's ship gate on verified keys only. A `must_not`
+  item matches only the same action with the same scope and owner its note rejected (judged in the same call;
+  the fallback needs title Jaccard of at least 0.8 and the same owner), and each checked one is printed as
+  `MUST-NOT CHECKED`. The terminal shows the match tables; `--out` (default `evals/context/reports/actions-lab-<date>.md`) gets numbered aggregates only.
+- **`gold-sheet` / `gold-apply`** round-trip the answer key (parts and owner emails included) through a
+  markdown worksheet; `verified` becomes true
+  only when its box is ticked.
+
 ## Caveats of the synthetic numbers
 
 - The histories are small: each meeting is one chunk, so raw recall is trivially high and the arm comparison
