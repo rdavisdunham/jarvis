@@ -97,7 +97,7 @@ def is_user(name: str | None, email: str | None, user: dict | None) -> bool:
         return False
     if email and user.get("email") and email.strip().casefold() == user["email"].strip().casefold():
         return True
-    return bool(_name(name)) and _name(name) in {_name(n) for n in user_names(user)}
+    return bool(_key(name)) and _key(name) in {_key(n) for n in user_names(user)}
 
 
 def lab_timezone(user: dict) -> str:
@@ -902,6 +902,12 @@ def _name(name: str | None) -> str:
     return " ".join((name or "").replace("(you)", "").split()).casefold()
 
 
+def _key(name: str | None) -> str:
+    """A name for equality: lowercased, without spaces, dots or hyphens ("YvetteRuiz" == "Yvette Ruiz" ==
+    "yvette-ruiz"). The first-name rule still splits `_name` on spaces."""
+    return re.sub(r"[\s.\-]", "", _name(name))
+
+
 def same_person(a: tuple[str | None, str | None], b: tuple[str | None, str | None],
                 people: Iterable[dict] = (), user: dict | None = None) -> bool:
     """(name, email) pairs. The lab user is matched by email or alias only (never a bare first name that is not
@@ -910,16 +916,16 @@ def same_person(a: tuple[str | None, str | None], b: tuple[str | None, str | Non
     if is_user(*a, user) or is_user(*b, user):
         return is_user(*a, user) and is_user(*b, user)
     people = list(people)
-    emails = {_name(p.get("name")): p["email"].casefold() for p in people if p.get("name") and p.get("email")}
+    emails = {_key(p.get("name")): p["email"].casefold() for p in people if p.get("name") and p.get("email")}
     (an, ae), (bn, be) = a, b
-    ae, be = (ae or "").casefold() or emails.get(_name(an)), (be or "").casefold() or emails.get(_name(bn))
+    ae, be = (ae or "").casefold() or emails.get(_key(an)), (be or "").casefold() or emails.get(_key(bn))
     if ae and be:
         return ae == be
-    an, bn = _name(an), _name(bn)
-    if not (an and bn):
+    if not (_key(an) and _key(bn)):
         return False
-    if an == bn:
+    if _key(an) == _key(bn):
         return True
+    an, bn = _name(an), _name(bn)
     first = an.split(" ")[0]
     return first == bn.split(" ")[0] and sum(_name(p.get("name")).split(" ")[0] == first for p in people
                                              if p.get("name")) <= 1
@@ -953,9 +959,11 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
     parts_total = sum(max(1, len(parts_of(i))) for i in items.values())
     parts_covered = sum(len(covered.get(g, ())) if parts_of(i) else int(g in hit) for g, i in items.items())
     has_checked = any(p["checked"] is not None for p in preds)  # Granola has no checked state
+    must_not_hits = None
+    if gold.get("must_not") is not None and has_checked:  # (must_not ID, prediction ID): matched and checked
+        must_not_hits = jaccard_pairs(gold["must_not"], [p for p in preds if p["checked"]])
     matched_preds = {p["id"] for _, p in pairs}
     checked = [p for p in preds if p["checked"]]
-    must_not = gold.get("must_not")
     checked_pairs = [(g, p) for g, p in pairs if p["checked"] is not None]
     return {
         "gold_items": len(items), "gold_mine": sum(g["kind"] == "mine" for g in items.values()),
@@ -976,7 +984,8 @@ def score_meeting(gold: dict, preds: list[dict], matches: list[dict], people: It
         "checked_predictions": len(checked),
         "checked_mine": sum(1 for g, p in pairs if p["checked"] and g["kind"] == "mine"),
         "unmatched_checked": sum(p["id"] not in matched_preds for p in checked) if has_checked else None,
-        "checked_must_not": len(jaccard_pairs(must_not, checked)) if must_not is not None and has_checked else None,
+        "checked_must_not": len(must_not_hits) if must_not_hits is not None else None,
+        "must_not_checked": must_not_hits or [],
     }
 
 
@@ -1051,7 +1060,7 @@ def meeting_people(folder: Path, gold: dict) -> list[dict]:
     people = [meeting.get("owner") or {}, *(meeting.get("participants") or []), gold.get("lab_user") or {}]
     seen, out = set(), []
     for p in people:
-        key = ((p.get("email") or "").casefold(), _name(p.get("name")))
+        key = ((p.get("email") or "").casefold(), _key(p.get("name")))
         if any(key) and key not in seen:
             seen.add(key)
             out.append({"name": p.get("name"), "email": p.get("email")})
@@ -1193,6 +1202,9 @@ def print_score(result: dict, echo: Callable[[str], None] = print) -> None:
                     echo(f"   [{mark}] {item['kind']:7} {item['title'][:60]:60} <- {pred['title'][:60]}{parts}"
                          + ("" if owner_correct(item, pred, people, meeting["gold"].get("lab_user"))
                             else f"  (owner: {pred.get('owner')})"))
+                must_not = {m["id"]: m for m in meeting["gold"].get("must_not") or []}
+                for n, p in r.get("must_not_checked") or []:
+                    echo(f"   MUST-NOT CHECKED {must_not[n]['title'][:60]} <- {preds[p]['title'][:60]}")
                 paired_g, paired_p = {m["gold"] for m in r["matches"]}, {m["pred"] for m in r["matches"]}
                 for g in gold:
                     if g not in paired_g:

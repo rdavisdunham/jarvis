@@ -764,3 +764,40 @@ def test_seeded_owner_carries_every_alias():
             assert identity.actors_for(db, owner, "alias", alias) == [actor]
         assert identity.resolve_exact(db, owner, "email", ME["email"]) == actor
         assert identity.actors_for(db, owner, "alias", "Vale") == []
+
+
+# ---------------------------------------------------------------- name spelling and must-not visibility
+
+
+def test_names_compare_without_spaces_dots_or_hyphens():
+    people = [{"name": "YvetteRuiz", "email": None}, {"name": "JanieceGarcia", "email": None}]
+    yvette = {"kind": "waiting", "owner": "Yvette Ruiz"}
+    for spelling in ("YvetteRuiz", "yvette-ruiz", "Yvette  Ruiz", "yvette.ruiz"):
+        assert lab.owner_correct(yvette, {"mine": False, "owner": spelling}, people)
+    assert not lab.owner_correct(yvette, {"mine": False, "owner": "JanieceGarcia"}, people)
+    # The first-name rule still splits on spaces: "Yvette" alone matches "Yvette Ruiz", not "YvetteRuiz".
+    assert lab.same_person(("Yvette", None), ("Yvette Ruiz", None), people)
+    assert not lab.same_person(("Yvette", None), ("YvetteRuiz", None), people)
+    # A compact name still finds its email among the participants.
+    assert lab.same_person(("Yvette Ruiz", None), ("x", "y@client.example"),
+                           [{"name": "YvetteRuiz", "email": "y@client.example"}])
+    user = {**ME, "aliases": ["R. Vale"]}
+    assert lab.is_user("RobinVale", None, user) and lab.is_user("r-vale", None, user)
+    assert not lab.is_user("Robin", None, user)
+
+
+def test_checked_must_not_items_are_printed(lab_dir):
+    folder = lab_dir / "rubric-sync"
+    key = {**gold(), "must_not": [{"id": "n1", "title": "Cancel the pilot", "notes": "hypothetical"}]}
+    lab.write_json(folder / "gold.json", key)
+    save_fake_run(folder, "terra", [
+        {"title": "Cancel the pilot program", "responsible": "Robin Vale (you)", "mine": True, "checked": True},
+        {"title": "Cancel the pilot", "responsible": "Kai Moreno", "mine": False, "checked": False}],
+        0.01, "20261104T100000")
+    result = lab.score(["rubric-sync"], echo=lambda line: None)
+    run = result["meetings"][0]["systems"]["terra"][0]
+    assert run["checked_must_not"] == 1 and run["must_not_checked"] == [("n1", "P1")]
+    lines = []
+    lab.print_score(result, echo=lines.append)
+    assert "   MUST-NOT CHECKED Cancel the pilot <- Cancel the pilot program" in lines
+    assert not any("MUST-NOT" in line for line in lines if "Kai" in line)
