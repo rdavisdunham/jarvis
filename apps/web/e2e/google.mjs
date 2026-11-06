@@ -266,6 +266,7 @@ try {
     view: "settings",
     settings_section: "integrations",
   });
+  await page.getByRole("tab", { name: "Linear", exact: true }).click();
   await page.getByLabel("Linear API key").fill("fixture-key-browser");
   await page
     .getByRole("button", { name: "Connect Linear", exact: true })
@@ -353,6 +354,7 @@ try {
     view: "settings",
     settings_section: "integrations",
   });
+  await page.getByRole("tab", { name: "Google", exact: true }).click();
   await shot("google-settings-mobile.png");
   if (
     await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)

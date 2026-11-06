@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Check, X, ListTodo, ExternalLink } from "lucide-react";
 import { Prop, PriorityControl } from "./RecordCard";
 import { ReviewProps } from "./Reviews";
+import { HomePathChip } from "./HomePath";
 import type { CustomRecord } from "./structure-types";
 import "./details.css";
 import { z } from "zod";
@@ -416,7 +417,7 @@ function StandardTaskDetails(p: Props) {
             <ListTodo size={16} />
             {task?.is_template ? "Routine template" : "Task"}
           </span>
-          {home && <span className="chip chip-home detail-path" title={home}>{home}</span>}
+          {home && <HomePathChip className="detail-path" path={home}/>}
           <span role="status" className={"detail-save-state" + (busy ? " busy" : error ? " attention" : "")}>
             {busy
               ? "Saving…"

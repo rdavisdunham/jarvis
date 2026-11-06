@@ -35,7 +35,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByText(/At this month's pace:/)).toBeVisible();
-  await expect(page.getByText(/reserved for active work/)).toBeVisible();
+  await expect(page.getByText(/spent this month/)).toBeVisible();
   if (errors.length) throw new Error(errors.join("; "));
   console.log(JSON.stringify({ result: "passed", taskDueTime: true, mobile: true, budgetStatus: true }));
 } finally { await browser.close(); }

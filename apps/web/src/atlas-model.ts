@@ -6,13 +6,19 @@ export type AtlasRecord = {
   id: string; title: string; type_id: string; parent_id: string | null; depth: number; revision: number; sort_order: number;
   opens_as: "container" | "item"; status_meaning: string | null; work: boolean; due_date: string | null; planned_date: string | null;
   context_only?: boolean; archived?: boolean; review_due?: boolean; next_review_at?: string | null;
+  /** Server counts over all descendants, finished work included whatever the filter hides (Browse's definition). */
+  work_done?: number; work_open?: number; work_total?: number;
 };
 export type AtlasLink = { id: string; source_id: string; target_id: string; relationship_id: string; label: string; behavior: "related" | "blocks" };
 export type AtlasType = { id: string; name: string; plural: string; capabilities: string[]; parent_types: string[]; opens_as?: string; review?: { enabled: boolean; every: string }; archived?: boolean };
 export type AtlasData = { schema_revision: number; types: AtlasType[]; records: AtlasRecord[]; links: AtlasLink[]; total: number; truncated: boolean; limit: number };
-export type AtlasIndex = { links: AtlasLink[]; byId: Map<string, AtlasRecord>; children: Map<string | null, AtlasRecord[]>; types: Map<string, AtlasType>; progress: Map<string, { done: number; total: number }>;
+export type AtlasIndex = { links: AtlasLink[]; byId: Map<string, AtlasRecord>; children: Map<string | null, AtlasRecord[]>; types: Map<string, AtlasType>; progress: Map<string, Progress>;
   /** Due reviews among each record's descendants (never counting the record itself). */
   reviews: Map<string, number> };
+
+export type Progress = { done: number; open: number; total: number };
+/** "55 open · 100 of 155 done": the same words on the map and in a mark's accessible name. */
+export const progressLabel = (p: Progress) => `${p.open} open · ${p.done} of ${p.total} done`;
 
 export const ROOT = "root";
 /** A synthetic region for records without a home; it is never a move target. */
@@ -31,20 +37,25 @@ export function indexAtlas(data: Pick<AtlasData, "records" | "types"> & { links?
   }
   for (const list of children.values()) list.sort((a, b) => a.sort_order - b.sort_order || a.title.localeCompare(b.title));
   const index: AtlasIndex = { links: data.links ?? [], byId, children, types: new Map(data.types.map(t => [t.id, t])), progress: new Map(), reviews: new Map() };
-  // Post-order totals: work done/total and due reviews over each record's descendants (never its own state).
-  const visit = (id: string, seen: Set<string>): { done: number; total: number; due: number } => {
-    let done = 0, total = 0, due = 0;
+  // Post-order totals over each record's descendants (never its own state). Work progress comes from the server,
+  // which counts finished work the Atlas does not load; loaded records are only a fallback for older responses.
+  const visit = (id: string, seen: Set<string>): { done: number; open: number; total: number; due: number } => {
+    let done = 0, open = 0, total = 0, due = 0;
     for (const child of children.get(id) ?? []) {
       if (seen.has(child.id)) continue;
       seen.add(child.id);
-      if (child.work && !child.context_only) { total++; if (child.status_meaning === "completed") done++; }
+      if (child.work && !child.context_only) {
+        total++;
+        if (child.status_meaning === "completed") done++; else if (child.status_meaning !== "cancelled") open++;
+      }
       if (child.review_due && !child.context_only) due++;
       const sub = visit(child.id, seen);
-      done += sub.done; total += sub.total; due += sub.due;
+      done += sub.done; open += sub.open; total += sub.total; due += sub.due;
     }
-    index.progress.set(id, { done, total });
+    const own = byId.get(id);
+    index.progress.set(id, own?.work_total == null ? { done, open, total } : { done: own.work_done ?? 0, open: own.work_open ?? 0, total: own.work_total });
     if (due) index.reviews.set(id, due);
-    return { done, total, due };
+    return { done, open, total, due };
   };
   const seen = new Set<string>();
   for (const r of children.get(null) ?? []) { seen.add(r.id); visit(r.id, seen); }
@@ -271,7 +282,7 @@ export function markName(r: AtlasRecord, index: AtlasIndex, today: string): stri
   if (r.due_date && state !== "done") parts.push("due " + r.due_date);
   if (r.review_due) parts.push("review due");
   const p = index.progress.get(r.id);
-  if (isRegion(r) && p?.total) parts.push(`${p.done} of ${p.total} done`);
+  if (isRegion(r) && p?.total) parts.push(progressLabel(p));
   const reviewsInside = index.reviews.get(r.id) ?? 0;
   if (isRegion(r) && reviewsInside) parts.push(count(reviewsInside, "review") + " due inside");
   const inside = index.children.get(r.id)?.length ?? 0;

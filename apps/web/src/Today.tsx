@@ -12,7 +12,8 @@ import { TodayReviews } from "./Reviews";
 import { RunButton } from "./RunButton";
 import "./today.css";
 import { FinishedToday } from "./FinishedToday";
-import { activeTodayEntry, finishedToday } from "./task-finished";
+import { activeTodayEntry } from "./task-finished";
+import { doneToday as countDoneToday, dueCounts, dueParts } from "./today-counts";
 
 type Props = {
   tasks: Task[];
@@ -128,15 +129,15 @@ export function Today(p: Props) {
   const dueIds = new Set(due.map(t => t.id));
   const inbox = p.tasks.filter(t => isOpen(t) && !dueIds.has(t.id) && !t.project_id && !t.space_id && !t.area_id)
     .sort((a, b) => b.priority - a.priority || b.created_at.localeCompare(a.created_at));
-  const doneToday = finishedToday(p.finishedTasks ?? p.tasks, p.today, p.zone).filter(t => t.status === "completed").length;
-  const dueToday = due.filter(t => t.due_date === p.today).length;
-  const overdue = due.filter(t => t.due_date && t.due_date < p.today).length;
+  const doneToday = countDoneToday(p.finishedTasks ?? p.tasks, p.today, p.zone);
+  // One count source for the header and the "Due and overdue" card: its parts add up to the card's count.
+  const dueSplit = dueParts(dueCounts(due, p.today));
   const timed = (entries ?? []).filter(e => e.date === p.today && activeTodayEntry(e, p.tasks) && e.at && !(e.kind === "task" && e.timing === "planned"))
     .sort((a, b) => a.at!.localeCompare(b.at!));
   const allDay = (entries ?? []).filter(e => e.date === p.today && !e.at && eventKinds.has(e.kind));
   const events = [...timed, ...allDay].filter(e => eventKinds.has(e.kind)).length;
   const nowIndex = timed.findIndex(e => Date.parse(e.at!) > now.getTime());
-  const summary = [dueToday && `${dueToday} due today`, overdue && `${overdue} overdue`, events && plural(events, "event")].filter(Boolean).join(", ");
+  const summary = [...dueSplit, events && plural(events, "event")].filter(Boolean).join(", ");
   const heading = new Date(p.today + "T12:00:00Z").toLocaleDateString("en-US", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric" });
 
   const taskRow = (task: Task, withDue: boolean) => <li key={task.id} className="row today-row">
@@ -198,6 +199,7 @@ export function Today(p: Props) {
         <section className="panel" aria-labelledby="today-due-title">
           <header className="panel-header"><h2 id="today-due-title">Due and overdue</h2>{!!due.length && <span className="panel-count">{due.length}</span>}
             {due.length > 6 && <button type="button" className="btn btn-ghost btn-sm panel-action" onClick={() => p.onNavigate("tasks-today")}>See all</button>}</header>
+          {dueSplit.length > 1 && <p className="today-due-split">{dueSplit.join(", ")}</p>}
           {due.length ? <ul className="today-rows">{due.slice(0, 6).map(t => taskRow(t, true))}</ul>
             : <div className="empty"><span>Nothing is due. Plan a task for today above.</span><button type="button" className="btn btn-soft" onClick={() => captureRef.current?.focus()}>Add a task</button></div>}
         </section>

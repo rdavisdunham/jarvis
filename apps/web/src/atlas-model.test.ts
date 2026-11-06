@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   ROOT, chooseLabels, flyTarget, indexAtlas, itemState, layoutAtlas, legalTargets, markKind, markName, moveChoices, movesWhole, placedNode, scaleOf,
-  searchRecords, trimLabel, viewFor, visibleNodes, type AtlasRecord, type AtlasType,
+  progressLabel, searchRecords, trimLabel, viewFor, visibleNodes, type AtlasRecord, type AtlasType,
 } from "./atlas-model";
 
 const types: AtlasType[] = [
@@ -88,10 +88,18 @@ describe("open-as decisions and marks", () => {
     expect(itemState(index.byId.get("ce")!, "2026-10-03")).toBe("done");
   });
   it("counts work in each subtree without the record's own status", () => {
-    expect(index.progress.get("abc")).toEqual({ done: 2, total: 7 });
-    expect(index.progress.get("fcd")).toEqual({ done: 1, total: 2 });
-    expect(markName(index.byId.get("abc")!, index, "2026-10-03")).toBe("Client: ABC Home & Commercial, 2 of 7 done");
+    expect(index.progress.get("abc")).toEqual({ done: 2, open: 5, total: 7 });
+    expect(index.progress.get("fcd")).toEqual({ done: 1, open: 1, total: 2 });
+    expect(markName(index.byId.get("abc")!, index, "2026-10-03")).toBe("Client: ABC Home & Commercial, 5 open · 2 of 7 done");
     expect(markName(index.byId.get("fcd")!, index, "2026-10-03")).toBe("Task: Finish the central docs, in progress, 2 items inside");
+  });
+  it("uses the server's counts, which include finished work the Atlas did not load", () => {
+    // The Atlas loads without finished records, so counting loaded children read "0 of 55 done" while Browse said 100/155.
+    const roadmap = rec("roadmap", "project", null, { title: "Eridani roadmap", work_done: 100, work_open: 55, work_total: 155 });
+    const loaded = indexAtlas({ records: [roadmap, rec("a", "task", "roadmap"), rec("b", "task", "roadmap")], types });
+    expect(loaded.progress.get("roadmap")).toEqual({ done: 100, open: 55, total: 155 });
+    expect(progressLabel(loaded.progress.get("roadmap")!)).toBe("55 open · 100 of 155 done");
+    expect(markName(roadmap, loaded, "2026-10-03")).toBe("Project: Eridani roadmap, open, 55 open · 100 of 155 done");
   });
 });
 
@@ -143,7 +151,7 @@ it("keeps finished ancestor context navigable without including it in search or 
   const i = indexAtlas({records:[parent,active],types});
   expect(searchRecords(i,"filed")).toEqual([]);
   expect(searchRecords(i,"active")).toEqual([active]);
-  expect(i.progress.get(parent.id)).toEqual({done:0,total:1});
+  expect(i.progress.get(parent.id)).toEqual({done:0,open:1,total:1});
   expect(layoutAtlas(i).byId.has(active.id)).toBe(true);
   expect(markName(parent,i,"2026-11-02")).toContain("archived ancestor home");
   expect(legalTargets(active,i).has(parent.id)).toBe(false);

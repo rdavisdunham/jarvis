@@ -428,12 +428,13 @@ Readiness, worker leases, outbox replay, encrypted backups, restore and disabled
 Disabled-dev mode, reservations, action limits, settlement and uncertainty reconciliation.
 Usage is three separate buckets (`budget.summary().buckets`, `/budget/holds` `bucket`):
 recorded charges, reservations for active work, and unconfirmed sessions (unknown provider
-outcome, including `historic` ones from earlier months). Unconfirmed holds stay counted
-against the limit and are settled one by one only from provider evidence
-(`scripts/reconcile_budget.py --evidence-file`, dry run unless `--apply`); a session the
-evidence does not name stays unconfirmed and is never cleared as zero. A settlement's
-adjustment is dated at the session, so historic sessions do not change this month's
-recorded charges.
+outcome). Unconfirmed holds count against the limit until provider evidence settles them
+(`scripts/reconcile_budget.py --evidence-file`, dry run unless `--apply`) or they lapse:
+holds from before `cost_tracking_since` close as `predates_tracking`, and unconfirmed holds
+older than 30 days close as `expired_without_evidence`, holding nothing (rows kept for
+audit). A settlement's adjustment is dated at the session, so historic sessions do not
+change this month's recorded charges. Settings shows recorded spend this month, the
+projection, and one line for work still in progress.
 
 - Acceptance set: [25 cases](../evals/app/features/budget.json).
 - Implementation: [budget.py](../apps/api/jarvis/budget.py), [voice.py](../apps/api/jarvis/voice.py).

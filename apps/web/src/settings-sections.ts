@@ -1,3 +1,5 @@
+import { isConnectionTab } from "./connection-tabs";
+
 export const settingsSections = [
   {id: "profile", label: "Profile & display", description: "Your name and how the planner looks."},
   {id: "organization", label: "Organization", description: "How Dani learns your filing habits and work hours."},
@@ -9,6 +11,8 @@ export const settingsSections = [
   {id: "system", label: "System", description: "Models, usage and data exports."},
 ] as const;
 export type SettingsSection = typeof settingsSections[number]["id"];
+/** The settings section a `section` value names; a Connections tab id (`section=linear`) opens Connections. */
 export function readSettingsSection(value: string | null): SettingsSection {
+  if (isConnectionTab(value)) return "integrations";
   return settingsSections.find(section => section.id === value)?.id ?? "profile";
 }

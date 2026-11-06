@@ -37,6 +37,16 @@ def rows_under(db, owner, identity):
     )
 
 
+FINISHED = {"completed", "cancelled"}
+
+
+def counts_as_work(*, archived, status, template=False):
+    """The one progress definition Browse and the Atlas share: every descendant task, finished
+    included, whatever filter hides it. Archived open work drops out; a filed (archived) finished
+    outcome still counts toward historical progress. Templates are never work."""
+    return not template and (not archived or status in FINISHED)
+
+
 def summary(db, row, schema, *, visible_ids=None, context_ids=frozenset()):
     """Unique descendants, separate from related links; never sum parent task effort."""
     from .structure import record_type
@@ -50,10 +60,10 @@ def summary(db, row, schema, *, visible_ids=None, context_ids=frozenset()):
             select(Task).where(Task.owner_id == row.owner_id, Task.id.in_([r.task_id for r in work]))
         )
     }
-    # Filed outcomes still contribute to historical completion progress.
-    work = [r for r in work if not r.archived or tasks[r.task_id].status in {"completed", "cancelled"}]
+    work = [r for r in work if counts_as_work(archived=r.archived or tasks[r.task_id].archived,
+                                              status=tasks[r.task_id].status, template=tasks[r.task_id].is_template)]
     done = sum(tasks[r.task_id].status == "completed" for r in work)
-    open_count = sum(tasks[r.task_id].status not in {"completed", "cancelled"} for r in work)
+    open_count = sum(tasks[r.task_id].status not in FINISHED for r in work)
     starts, ends = [], []
     for r in active:
         t = record_type(schema, r.type_id, archived=True)

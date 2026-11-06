@@ -104,6 +104,21 @@
 .settings-content p {
   line-height: 1.55;
 }
+/* Connections: one tab at a time (agent keys, remotea, Linear, Google, meetings). */
+.connections-settings,
+.connection-panel,
+.connection-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.connection-tab-body[hidden] {
+  display: none;
+}
+.connection-tabs {
+  max-width: 100%;
+}
 .settings-content > section > p,
 .settings-content .settings-sections > section > p,
 .settings-panel > p,
@@ -1200,6 +1215,12 @@
 }
 .activity-toolbar .btn {
   margin-left: auto;
+}
+.activity-toolbar .activity-filter {
+  font-family: inherit;
+}
+.activity-toolbar .activity-filter[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px currentColor;
 }
 .activity-panel > [role="alert"] {
   margin: 12px 24px 0;
