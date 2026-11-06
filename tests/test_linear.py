@@ -826,3 +826,30 @@ def test_comments_route_is_owner_scoped_and_needs_a_linear_task(linear, client):
         local_id = local.id
     assert client.get(f"/api/v1/integrations/linear/tasks/{local_id}/comments").status_code == 404
     assert client.get(f"/api/v1/integrations/linear/tasks/{uuid4()}/comments").status_code == 404
+
+
+def test_a_linear_closure_is_marked_so_today_does_not_count_it(linear):
+    tid, _ = imported()
+    linear.rows["remote"]["state"] = {"id": "done", "name": "Done", "type": "completed"}
+    linear.rows["remote"]["updatedAt"] = "2026-09-12T12:00:00Z"
+    with session_scope() as db:
+        jid = sync.queue_sync(db, "davin", force=True)
+    sync.process_sync(jid)
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert task.status == "completed" and task.external["finished_via"] == "linear"
+        revision = task.revision
+    # A status change made in Eridani clears it, and survives the next sync read.
+    reopened = run("task.update", task_id=tid, expected_revision=revision, status="open")
+    assert reopened["external"]["finished_via"] is None
+    sync.process_write(reopened["external"]["job_id"])
+    with session_scope() as db:
+        revision = db.get(Task, tid).revision
+    done = run("task.update", task_id=tid, expected_revision=revision, status="completed")
+    sync.process_write(done["external"]["job_id"])
+    with session_scope() as db:
+        jid = sync.queue_sync(db, "davin", force=True)
+    sync.process_sync(jid)
+    with session_scope() as db:
+        task = db.get(Task, tid)
+        assert task.status == "completed" and not task.external.get("finished_via")

@@ -226,6 +226,8 @@ def external_state(db, link):
         "job_id": link.pending_job_id,
         "remote_updated_at": snapshot.get("updatedAt"),
         "held_remote_state": held_finish(link),
+        # Set when a Linear read finished the task (apply_remote); a status change made here clears it.
+        "finished_via": (task.external or {}).get("finished_via"),
     }
     emit(db, link.owner_id, "task.changed", task.id, task.revision)
 
@@ -309,6 +311,9 @@ def apply_remote(db, conn, link, remote, force=False):
         changes.update(due_time=None, due_timezone=None)
     from .task_archive import apply_lifecycle
 
+    if status != task.status:
+        # Remember who finished it, so Today counts only completions made in Eridani (external_state keeps it).
+        task.external = {**(task.external or {}), "finished_via": "linear" if status in {"completed", "cancelled"} else None}
     apply_lifecycle(task, changes, external=True)
     for key, value in changes.items():
         setattr(task, key, value)

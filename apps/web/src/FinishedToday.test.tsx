@@ -11,3 +11,14 @@ it("renders separate visible completion and cancellation checklists with reopen 
   expect(html).toContain('aria-label="Reopen completed task"');
   expect(html).toContain("cancelled task");
 });
+it("counts only what was finished in Eridani and keeps Linear closures apart", () => {
+  const at = "2026-11-02T15:00:00Z";
+  const tasks = [
+    { id: "mine", title: "Mine", status: "completed", finished_at: at, archived: false },
+    { id: "synced", title: "Closed in Linear", status: "completed", finished_at: at, archived: false, external: { provider: "linear", finished_via: "linear" } },
+  ] as Task[];
+  const html = renderToStaticMarkup(<FinishedToday tasks={tasks} today="2026-11-02" zone="America/Chicago" busy={false} onTask={() => {}} onReopen={() => {}}/>);
+  expect(html).toMatch(/<h2>Completed today<\/h2><span class="panel-count">1<\/span>/);
+  expect(html).toContain("<summary>1 closed in Linear</summary>");
+  expect(html).toContain('aria-label="Reopen Closed in Linear"');
+});
