@@ -46,6 +46,19 @@
   line-height: 16px;
   color: var(--ink-3);
 }
+.footer-status-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--due-today);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.footer-status-link:hover {
+  color: var(--ink);
+}
 .splash,
 .login-page {
   min-height: 100dvh;
