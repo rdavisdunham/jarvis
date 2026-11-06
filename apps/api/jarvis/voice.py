@@ -87,6 +87,7 @@ class Controller:
         self.ui_context = {}
         self.unreported = set()
         self.pending_transcription = set()
+        self.context = None  # largest token context a response has read; sizes the next reservation
 
     async def send(self, event):
         if self.ws and not self.closed:
@@ -112,10 +113,11 @@ class Controller:
             self.plan_rounds += 1
             if self.plan_rounds > get_settings().max_model_rounds_per_request:
                 response["tool_choice"] = "none"
-        # 128k input tokens at the highest audio rate, plus capped output and transcription headroom.
-        # Pending/cancelled responses retain their allowance until provider completion.
+        # Each outstanding response may read the whole context so far, uncached, plus a new turn and a
+        # full reply. Pending/cancelled responses retain their allowance until provider completion.
+        headroom = budget.realtime_headroom(self.model, self.context)
         with session_scope() as db:
-            budget.ensure_room(db, self.owner, self.id, (len(self.allowed) + len(self.responses) + 1) * 4.3)
+            budget.ensure_room(db, self.owner, self.id, (len(self.allowed) + len(self.responses) + 1) * headroom)
         self.error = None
         nonce = secrets.token_hex(16)
         self.allowed[nonce] = {"phase": phase, "epoch": self.epoch, "created": time.monotonic()}
@@ -307,6 +309,8 @@ class Controller:
             request = self.responses.pop(response["id"], None)
             usage = response.get("usage")
             if usage:
+                seen = budget.realtime_context(usage)
+                self.context = {k: max(seen[k], (self.context or seen)[k]) for k in seen}
                 with session_scope() as db:
                     budget.record_usage(
                         db,
@@ -592,7 +596,9 @@ async def start(body: VoiceInput, user: User):
             c.startup_pending = bool(c.attempt_id)
         c.account = user.account_id or user.owner_id
         c.voice = body.voice
-        budget.reserve(db, user.owner_id, c.id, 0.10 if body.provider == "live" else 5, c.model)
+        # A small opening hold; each Realtime response tops it up through ensure_room in request().
+        opening = 0.10 if body.provider == "live" else budget.realtime_headroom(c.model)
+        budget.reserve(db, user.owner_id, c.id, opening, c.model)
     controllers[c.id] = c
     try:
         if body.provider == "live":

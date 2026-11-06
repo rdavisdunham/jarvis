@@ -2,11 +2,14 @@
 
 Tracking is independent of spending-limit enforcement. Development uses
 JARVIS_COST_TRACKING_ENABLED=true and JARVIS_BUDGET_ENFORCEMENT_ENABLED=false.
-Old uncertain reservations stay visible but cannot pause Eri in this mode.
+Open reservations cannot pause Eri in this mode.
 Enabling enforcement restores monthly limits and optional-work thresholds.
 
 Settings → System → Model usage shows rolling last-7-day and last-30-day totals
-by feature, plus a calendar-month total for budgets. Costs come from reported
+by feature, plus recorded spend this calendar month and its month-end projection.
+Agent rows (`agent_control`, `agent_summaries`, `session_ledger`) are Eridani's own
+judge, summary and search calls, labeled "(Eridani)"; a coding agent's own spend is
+not tracked here. Costs come from reported
 tokens or GPT-Live session seconds. Each Usage row stores tokens.feature;
 concurrent feature contexts stay independent. Memory queries and extraction,
 note organization, field/rule learning and search indexing have separate buckets.
@@ -18,8 +21,37 @@ No historical charges are invented. Earlier usage without attribution stays in
 an unclassified bucket. A future user-facing tracking toggle must update this marker.
 
 Usage is an estimate, not a provider invoice. Credits, taxes, infrastructure and
-isolated eval runs are excluded. Missing usage remains uncertain. Known usage
-from an incomplete answer is recorded; repeated usage IDs cannot double-charge.
+isolated eval runs are excluded. Known usage from an incomplete answer is
+recorded; repeated usage IDs cannot double-charge.
+
+## Holds for work in progress
+
+Each model session reserves a bound before each provider request
+(`budget.ensure_room`). Recorded usage replaces the hold as reports arrive. A
+session whose final report never comes (timeout, lost connection) keeps its
+unreported remainder as an unconfirmed hold, counted against the limit until
+provider evidence settles it (`scripts/reconcile_budget.py`) or it lapses.
+Settings shows open holds as one line: "Plus $X set aside for work that is still
+finishing."
+
+Holds lapse and stop counting at once; the worker's housekeeping
+(`budget.sweep_lapsed`) then closes them, keeping each row with the amount it
+still held in `settlement.held_usd`:
+
+- `predates_tracking`: created before `JARVIS_COST_TRACKING_SINCE`.
+- `expired_without_evidence`: unconfirmed for more than 30 days
+  (`budget.UNCONFIRMED_DAYS`). By owner decision (November 2026) a month-old hold
+  with no provider record is not worth carrying, so it holds nothing. Provider
+  evidence can still reconcile a lapsed row explicitly.
+
+Realtime voice used to open with a flat $5 hold, so a lost session held about $5
+until reconciled. It now opens with one response's bound and tops up per
+response (`budget.realtime_headroom`): the largest context a response in the
+session has read so far (audio and text, priced as uncached), plus a two-minute
+spoken turn, 4,000 text tokens for a tool result, the 1,024-token reply cap and
+that turn's transcription. That opens near $0.28 on gpt-realtime-2.1 (about $0.09
+on mini) and grows only as the conversation does. GPT-Live opens at $0.10 and tops
+up by seconds.
 
 Luna Fast accounting added October 4, 2026. Interactive requests default to Fast;
 scheduled learning and unqualified eval campaigns stay Standard. Usage metadata

@@ -3,8 +3,13 @@
 recorded     Usage rows: provider-reported (or provider-evidence-reconciled) charges.
 reserved     Open reservations for work that is still active.
 unconfirmed  Reservations whose provider outcome is unknown (timeout, lost connection, missing final
-             usage), including historic ones from earlier months. Their held allowance stays counted
-             against the limit until provider evidence settles them; age alone never clears them as zero.
+             usage). Their held allowance counts against the limit until provider evidence settles them
+             or they lapse.
+
+Lapsed holds stop counting and the worker sweep closes them, keeping the rows for audit: holds created
+before cost_tracking_since ("predates_tracking"), and unconfirmed holds older than UNCONFIRMED_DAYS
+("expired_without_evidence", nothing held). By owner decision a month-old hold with no provider record
+is not worth carrying; provider evidence can still reconcile a lapsed row explicitly.
 """
 
 from calendar import monthrange
@@ -20,6 +25,7 @@ from .models import BudgetReservation, Usage, now
 
 # Identifies the configured estimation rates, not a provider billing statement.
 PRICING_VERSION = "configured-2026-10-04-v4"
+UNCONFIRMED_DAYS = 30
 
 
 def enabled():
@@ -57,6 +63,7 @@ def summary(db, owner):
     by_model = {}
     for item in usage:
         by_model[item.model] = by_model.get(item.model, Decimal(0)) + item.amount
+    rows = [r for r in rows if r.state == "closed" or not lapse_reason(r)]
     unconfirmed = [r for r in rows if bucket(r) == "unconfirmed"]
     historic = [r for r in unconfirmed if r.created_at < month]
     uncertain = sum((held(r) for r in unconfirmed), Decimal(0))
@@ -248,6 +255,42 @@ def realtime_cost(usage, model):
     ) / 1_000_000
 
 
+# What one more Realtime response can add, on top of the context it reads: a long spoken turn (two minutes
+# at ~600 audio tokens a minute), a large tool result, the reply cap, and the turn's transcription.
+REALTIME_TURN = {"audio": 1_200, "text": 4_000}
+REALTIME_REPLY_TOKENS = 1_024  # session max_output_tokens
+REALTIME_TURN_TRANSCRIPTION_USD = 120 * 0.017 / 60
+# Before any response reports usage: instructions, tools, memory context and eight restored messages.
+REALTIME_OPENING_CONTEXT = {"audio": 0, "text": 32_000}
+
+
+def realtime_headroom(model, context=None):
+    """A ceiling for one more Realtime response, priced as if nothing were cached.
+
+    `context` is the largest {"audio", "text"} token context a response in this session has read so far
+    (input plus its own output, which the next response reads back). Replaces a flat 128k-token bound,
+    so a lost session holds tens of cents instead of dollars.
+    """
+    context = context or REALTIME_OPENING_CONTEXT
+    usage = {
+        "input_token_details": {
+            "audio_tokens": context["audio"] + REALTIME_TURN["audio"],
+            "text_tokens": context["text"] + REALTIME_TURN["text"],
+        },
+        "output_token_details": {"audio_tokens": REALTIME_REPLY_TOKENS},
+    }
+    return realtime_cost(usage, model) + REALTIME_TURN_TRANSCRIPTION_USD
+
+
+def realtime_context(usage):
+    """The token context a response read plus what it added, from its reported usage."""
+    inputs, outputs = usage.get("input_token_details", {}), usage.get("output_token_details", {})
+    return {
+        "audio": inputs.get("audio_tokens", 0) + outputs.get("audio_tokens", 0),
+        "text": inputs.get("text_tokens", 0) + outputs.get("text_tokens", 0),
+    }
+
+
 def stale(row):
     return row.state == "reserved" and (row.last_activity_at or row.created_at) < now() - timedelta(minutes=3)
 
@@ -288,6 +331,45 @@ def expire_abandoned(db, owner):
     return len(rows)
 
 
+def lapse_reason(row):
+    """Why an open hold no longer counts, or None. sweep_lapsed closes it with this reason."""
+    if row.state == "closed":
+        return None
+    since = get_settings().cost_tracking_since
+    if since and row.created_at < since:
+        return "predates_tracking"
+    if bucket(row) == "unconfirmed" and row.created_at < now() - timedelta(days=UNCONFIRMED_DAYS):
+        return "expired_without_evidence"
+    return None
+
+
+def sweep_lapsed(db, owner):
+    """Close holds that no longer count. The rows stay; the settlement notes what was still held."""
+    if not enabled():
+        return 0
+    advisory(db, f"budget:{owner}")
+    rows = db.scalars(
+        select(BudgetReservation).where(
+            BudgetReservation.owner_id == owner, BudgetReservation.state != "closed"
+        )
+    ).all()
+    closed = 0
+    for row in rows:
+        reason = lapse_reason(row)
+        if not reason:
+            continue
+        row.settlement = {
+            "reason": reason,
+            "held_usd": str(held(row)),
+            "previous_state": row.state,
+            "at": now().isoformat(),
+        }
+        row.state, row.closed_at = "closed", now()
+        closed += 1
+    db.flush()
+    return closed
+
+
 def holds(db, owner):
     if not enabled():
         return []
@@ -296,6 +378,7 @@ def holds(db, owner):
         .where(BudgetReservation.owner_id == owner, BudgetReservation.state != "closed")
         .order_by(BudgetReservation.created_at)
     ).all()
+    rows = [r for r in rows if not lapse_reason(r)]
     month = now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     return [
         {
@@ -320,7 +403,7 @@ def holds(db, owner):
 
 
 def reconcile(db, owner, reservation_id, final_amount, evidence):
-    """Explicit operator settlement from provider evidence; never infer zero from age."""
+    """Explicit operator settlement from provider evidence. Also works on a lapsed (swept) hold."""
     if not enabled():
         raise DomainError("TRACKING_DISABLED", "Cost tracking is disabled during development.")
     advisory(db, f"budget:{owner}")
@@ -368,8 +451,8 @@ def reconcile_unconfirmed(db, owner, lookup, *, apply=True):
     """Settle unconfirmed sessions one by one, only from provider evidence.
 
     `lookup(hold)` gets a holds() entry and returns {"final_usd", "evidence"} from a provider statement,
-    or None when the provider has nothing for it. Without evidence a session stays unconfirmed: it is
-    never cleared as zero, and recorded charges and active reservations are not touched. A settlement's
+    or None when the provider has nothing for it. Without evidence a session stays unconfirmed until it
+    lapses (see sweep_lapsed); recorded charges and active reservations are not touched. A settlement's
     adjustment Usage row is dated at the reservation, so a historic session lands in its own month.
     """
     if not enabled():
