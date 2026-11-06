@@ -121,6 +121,7 @@ def person_page(db, caller: service.Caller, actor_id: str, *, at: datetime | Non
                     "available.")
     return {
         "actor": data["actor"], "identities": data["identities"], "context": context, "projects": data["projects"],
+        "buckets": data["buckets"],
         "tasks": data["tasks"], "meetings": data["meetings"], "links_to_review": links,
         "merges": [{**m, "winner_name": names.get(m["winner_actor_id"]), "loser_name": names.get(m["loser_actor_id"])}
                    for m in data["merges"]],

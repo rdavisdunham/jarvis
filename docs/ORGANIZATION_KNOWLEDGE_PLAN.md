@@ -1,6 +1,6 @@
 # Organization knowledge: living overviews for clients and projects
 
-Status: agreed with the owner on 2026-11-06. Phases 1–3 built on 2026-11-06 (see the "as built" sections).
+Status: agreed with the owner on 2026-11-06. All four phases built on 2026-11-06 (see the "as built" sections).
 
 ## Goal
 
@@ -139,3 +139,28 @@ meaning (Eridani)").
   Quick Sort proposes the suggestion ("File … under …?"). A "no" asks openly instead of repeating it.
 - **Endpoint:** `GET /api/v1/structure/records/{id}/placement`.
 - **Not yet:** calibration on real filings. The confidence bar is the model's "high", not a measured precision.
+
+## Phase 4 as built
+
+`apps/api/jarvis/people_links.py`, table `person_bucket_links` (migration 0054), Dani tool `record_overview`.
+
+- **Links.** One row per (person, client or project), non-exclusive, with counts and up to 5 samples of evidence.
+  The evidence:
+  - tasks in the bucket's subtree assigned to the person;
+  - supported meeting facts about the bucket in which the person is the subject or object, responsible for a
+    commitment or owed it, or a linked mention.
+
+  The owner's own actor is never linked.
+- **Refresh.** The daily overview sweep (`record_overviews.queue_due`) calls `refresh_bucket` for each bucket it
+  checks. It needs no model call, so it also runs without the OpenAI key. Inferred links follow the evidence.
+- **Owner decisions.** `POST /api/v1/structure/records/{id}/people/{actor_id} {status}`:
+  - "confirmed" keeps the link even without evidence;
+  - "rejected" hides it for good;
+  - "inferred" goes back to following the evidence.
+- **Person page.** "Projects and relationships" lists the linked clients and projects with ✓ and ✕. The older
+  live inference of projects shows only while no links are stored.
+- **Overview card.** "People here:" lists the linked people.
+- **Dani.** Tool group `knowledge` with the read tool `record_overview` (scope `records:read`). It returns:
+  - the description and the latest overview;
+  - linked people and up to 20 supported meeting facts;
+  - the latest brief claims, child clients and projects, and open task counts with recent open tasks.

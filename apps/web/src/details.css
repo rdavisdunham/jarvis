@@ -1123,3 +1123,4 @@ button.detail-link-row:hover,
   color: var(--ink-2);
 }
 .placement-note strong { color: var(--ink); }
+.record-overview .overview-people { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
