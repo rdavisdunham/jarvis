@@ -18,7 +18,7 @@ from jarvis.context.native import retrieve
 from jarvis.context.native.retrieve import NativeRetriever
 from jarvis.context.schema import EntityRef, RetrieveQuery, ScopePredicate
 from jarvis.db import session_scope
-from sqlalchemy import and_, exists, false, or_, select
+from sqlalchemy import and_, exists, false, or_, select, text
 from sqlalchemy.orm import aliased
 
 from evals.context.corpus import generate, load, queries
@@ -88,6 +88,10 @@ def test_set_based_entity_scope_ranks_like_the_per_segment_predicate(monkeypatch
     corpus = generate(SPEC)
     with session_scope() as db:
         load(db, corpus)
+    # Fresh statistics: the per-test cleanup only DELETEs, so without this the planner sees the dead rows and
+    # stale estimates left by earlier tests and picks plans that took this test from seconds to many minutes.
+    with session_scope() as db:
+        db.execute(text("ANALYZE"))
     qs = queries(corpus, 24, seed=5)
     assert {q.entity[0] for q in qs} == {"project", "client", "actor"}
     cases = [(q, scope, vector) for q in qs for scope in scopes(q) for vector in (True, False)]

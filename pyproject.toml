@@ -39,6 +39,9 @@ testpaths = ["tests"]
 # The repo root, so tests can import `evals` and `scripts` (namespace packages) under plain `pytest` as in CI.
 pythonpath = ["."]
 asyncio_mode = "auto"
+# A test still running after five minutes prints every thread's stack, so a slow or stuck test names itself
+# instead of going quiet until the CI job timeout kills it.
+faulthandler_timeout = 300
 markers = [
   "e2e_protocol: the real remotea server against the real Eridani app (skips without node and a built remotea checkout)",
 ]

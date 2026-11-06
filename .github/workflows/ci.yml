@@ -87,7 +87,7 @@ jobs:
       - name: Check migration/model agreement
         run: uv run --no-sync alembic check
       - name: Run backend regression suite
-        run: uv run --no-sync pytest -q --tb=short --junitxml=artifacts/ci/backend.xml
+        run: uv run --no-sync pytest -q --tb=short --durations=15 --junitxml=artifacts/ci/backend.xml
       - name: Keep failed test report
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
