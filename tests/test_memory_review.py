@@ -45,6 +45,22 @@ def ambiguous():
         return a, b, r.id, r.revision
 
 
+def test_review_hides_automatic_repeats_of_a_rejected_fact_but_keeps_owner_statements():
+    wrong, _ = remember("The user is not named Davis.")
+    with session_scope() as db:
+        execute(db, "davin", str(uuid4()), "memory.forget", {"memory_id": wrong, "wrong": True})
+    # The same wrong claim learned again (another conversation) and the owner's own later statement.
+    repeat, _ = remember("The user is  NOT named Davis.")
+    own, _ = remember("The user is not named Davis.", attribution="owner_statement")
+    jid = run()
+    with session_scope() as db:
+        assert db.get(Memory, repeat).suppressed and db.get(Memory, repeat).attribution == "rejected"
+        assert not db.get(Memory, own).suppressed
+        assert db.get(Memory, wrong).suppressed and db.get(Memory, wrong).attribution == "rejected"
+        assert db.get(Job, jid).result["rejected"] == 1
+        assert db.scalar(select(MemoryReview)) is None
+
+
 def test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop():
     a, sa = remember("The user prefers tea.")
     b, sb = remember("The user prefers tea.", attribution="owner_statement")
@@ -57,7 +73,7 @@ def test_exact_duplicates_merge_but_preserve_sources_and_retry_is_noop():
         assert not db.get(Memory, b).suppressed
         assert not db.get(Memory, other).suppressed
         assert db.get(Source, sa).content and db.get(Source, sb).content
-        assert db.get(Job, jid).result == {"scanned": 2, "merged": 1, "queued_questions": 0}
+        assert db.get(Job, jid).result == {"scanned": 2, "merged": 1, "queued_questions": 0, "rejected": 0}
 
 
 def test_spelling_candidates_are_queued_not_guessed_and_not_duplicated():

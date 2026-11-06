@@ -90,6 +90,8 @@ def items(db, owner):
         if row.summary.get("definition_id") or row.status == "preview":
             continue
         for q in row.questions:
+            if not routing.proposable(q):
+                continue  # Proposed from fewer than routing.MIN_RULE_SUPPORT records: not worth asking.
             rule = db.get(RoutingPattern, q["id"])
             status = state(row) if row.status == "pending" else "resolved"
             if not rule or rule.owner_id != owner or rule.status not in {"candidate", "needs_review"}:

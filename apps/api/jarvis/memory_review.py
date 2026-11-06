@@ -21,7 +21,7 @@ from sqlalchemy import select
 from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError, advisory, capture_source, emit, enqueue_job, owned, preferences, serial
-from .memory_learning import EMBEDDING_MODEL, fingerprint, normalized
+from .memory_learning import EMBEDDING_MODEL, fingerprint, normalized, sweep_rejected
 from .models import Job, Memory, MemoryReview, OwnerSettings, Source, now
 from .text_normalize import canon, canon_tokens
 
@@ -342,6 +342,8 @@ def _review(job_id):
         if not prefs["memory_learning"] or not prefs["deep_sleep_enabled"]:
             job.status, job.finished_at, job.result = "succeeded", now(), {"skipped": True}
             return
+        # A fact the owner marked wrong never comes back through the review: repeats of it are hidden first.
+        rejected = sweep_rejected(db, owner)
         rows = active_memories(db, owner)
         scanned, merged = len(rows), 0
         duplicates = defaultdict(list)
@@ -398,7 +400,7 @@ def _review(job_id):
         db.flush()
         pending_reviews(db, owner, 10000, include_deferred=True)
         job.status, job.finished_at = "succeeded", now()
-        job.result = {"scanned": scanned, "merged": merged, "queued_questions": created}
+        job.result = {"scanned": scanned, "merged": merged, "queued_questions": created, "rejected": rejected}
         emit(db, owner, "memory.changed", job.id)
 
 

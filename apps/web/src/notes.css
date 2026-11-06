@@ -1031,6 +1031,19 @@ button.note-chip-link:disabled {
 .memory-meta .chip {
   margin-left: -4px;
 }
+.memory-source-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.memory-source-link:hover {
+  color: var(--ink);
+}
 .memory-evidence {
   margin-top: 6px;
 }

@@ -151,6 +151,13 @@ export interface Memory {
   attribution: string;
   created_at: string;
   revision: number;
+  /** Where the fact came from (GET /memory only): origin and conversation, never the source text. */
+  source?: MemorySourceInfo | null;
+}
+export interface MemorySourceInfo {
+  origin: "conversation" | "voice" | "capture" | "correction" | "review" | "other";
+  conversation_id: string | null;
+  created_at: string;
 }
 export interface MemoryReview {
   id: string;

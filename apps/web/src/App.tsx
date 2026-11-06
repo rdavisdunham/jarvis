@@ -2891,7 +2891,7 @@ export default function App() {
                   {memories.length > 0 && (
                     <div className="row-list memory-list">
                       {memories.map((m) => (
-                        <MemoryRow key={m.id} memory={m} onCorrect={() => setEditingMemory(m)} onForget={delete_source => mutate("memory.forget", {memory_id:m.id, delete_source}, delete_source ? "Memory and its stored source deleted" : "Memory forgotten")}/>
+                        <MemoryRow key={m.id} memory={m} onCorrect={() => setEditingMemory(m)} onForget={delete_source => mutate("memory.forget", {memory_id:m.id, delete_source}, delete_source ? "Memory and its stored source deleted" : "Memory forgotten")} onWrong={() => mutate("memory.forget", {memory_id:m.id, wrong:true}, "Removed. Dani won't learn this again")} onOpenConversation={id => void openNoteConversation(id)}/>
                       ))}
                     </div>
                   )}

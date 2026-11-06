@@ -112,6 +112,60 @@ async def test_forgetting_removes_vector_and_retrieval_and_blocks_repeat(cloud):
         assert len(list(db.scalars(select(Memory)))) == 1
 
 
+WRONG = "The user is not named Davis."
+VECTORS = {
+    WRONG: [1.0, 0.0],
+    "The user's name is not Davis.": [0.999, 0.02],  # The same claim reworded.
+    "The user is named Davis.": [0.8, 0.6],  # A correction is a different claim.
+    "The user has a cat named Hayes.": [0.0, 1.0],
+}
+
+
+async def test_this_is_wrong_removes_the_fact_and_blocks_exact_and_reworded_relearning(cloud, monkeypatch):
+    monkeypatch.setattr(learning, "embeddings", lambda owner, texts, *a: [VECTORS[t] for t in texts])
+    monkeypatch.setattr(learning, "extract", lambda *a: [fact(WRONG, "Davis")])
+    sid, jid = source("Davis said hi.")
+    learning.process(jid)
+    with session_scope() as db:
+        mid = db.scalar(select(Memory.id))
+        result = execute(db, "davin", "wrong", "memory.forget", {"memory_id": mid, "wrong": True})["data"]
+        assert result == {"id": mid, "forgotten": True, "rejected": True}
+        memory = db.get(Memory, mid)
+        assert memory.suppressed and memory.attribution == learning.REJECTED and memory.evidence == ""
+        # The wording and vector stay as the rejection record; the source conversation is untouched.
+        assert memory.content == WRONG and memory.embedding == [1.0, 0.0]
+        assert db.get(Source, sid).content == "Davis said hi."
+    assert await semantic_search("davin", "Davis") == []
+    seen = []
+    learned = [fact(WRONG, "Davis"), fact("The user's name is not Davis.", "Davis"),
+               fact("The user is named Davis.", "Davis"), fact("The user has a cat named Hayes.", "Hayes")]
+    monkeypatch.setattr(learning, "extract", lambda *a: seen.append(a) or learned)
+    _, jid = source("Davis here, and my cat Hayes.")
+    learning.process(jid)
+    assert seen[0][3] == [WRONG]  # The extractor is told what the owner rejected.
+    with session_scope() as db:
+        active = {m.content for m in db.scalars(select(Memory).where(Memory.suppressed.is_(False)))}
+        assert active == {"The user is named Davis.", "The user has a cat named Hayes."}
+
+
+def test_this_is_wrong_also_hides_automatic_repeats_from_other_sources(cloud, monkeypatch):
+    monkeypatch.setattr(learning, "extract", lambda *a: [fact(WRONG, "Davis")])
+    monkeypatch.setattr(learning, "embeddings", lambda owner, texts, *a: [VECTORS[t] for t in texts])
+    for text in ("Davis said hi.", "Davis again."):
+        with session_scope() as db:
+            conv = Conversation(owner_id="davin", device_id="test", private=False, learning=True)
+            db.add(conv)
+            db.flush()
+            row = capture_source(db, "davin", text, str(uuid4()), conversation=conv)
+            # Learned before the fingerprint guard could see it: write the repeat directly.
+            db.add(Memory(owner_id="davin", source_id=row.id, content=WRONG, attribution="automatic",
+                          fingerprint=learning.fingerprint(WRONG)))
+    with session_scope() as db:
+        first, second = db.scalars(select(Memory.id).order_by(Memory.created_at, Memory.id))
+        execute(db, "davin", "wrong-twice", "memory.forget", {"memory_id": first, "wrong": True})
+        assert db.get(Memory, second).suppressed and db.get(Memory, second).attribution == learning.REJECTED
+
+
 def test_older_history_cannot_replace_newer_fact(cloud, monkeypatch):
     _, jid = source()
     learning.process(jid)
