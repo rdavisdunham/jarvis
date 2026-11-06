@@ -1,6 +1,7 @@
 # Organization knowledge: living overviews for clients and projects
 
-Status: agreed with the owner on 2026-11-06. Phase 1 built on 2026-11-06 (see "Phase 1 as built").
+Status: agreed with the owner on 2026-11-06. Phases 1 and 2 built on 2026-11-06 (see "Phase 1 as built" and
+"Phase 2 as built").
 
 ## Goal
 
@@ -94,3 +95,23 @@ task list.
 - **For later phases:** `record_overviews.for_prompt` returns the latest overview as plain text, for placement by
   meaning (phase 3) and Dani's read tool (phase 4).
 
+
+## Phase 2 as built
+
+- **Evidence origin `linear_mapping`** (`routing.LINEAR`). `linear_structure.place` calls `routing.observe_linear`
+  when the mapping moves an issue into its Home or first confirms the Home it already sits in. One observation per
+  record (`source_key` `linear-mapping:<record id>`), carrying the title, the Home, and the Linear identifier,
+  team and project names. A later mapping move updates it. A move by anyone else withdraws it (`routing.observe`
+  suppresses a Linear observation whose Home no longer matches).
+- **Never phrase-rule evidence.** `latest_evidence` (the only input to rule proposals and held-out checks) reads
+  `origin == "human"` only, and `observe_linear` never touches rules. A test files five same-phrase Linear issues and
+  checks that no rule appears.
+- **Overview input.** `routing.placements(db, owner, record_ids)` gives the latest human or Linear observation per
+  record that still matches its Home (respecting the routing-learning preference; nothing for shared workspaces).
+  Overview material marks each task `filed`: "by you" or "by the Linear mapping (Linear project X)". The prompt
+  treats the owner's filing as the strongest sign of belonging (`PROMPT_VERSION` "overview-v2").
+- **Backfill.** Migration 0053 records an observation for every active record still in the Home the mapping gave
+  it (`provenance.linear_home`). Idempotent; the downgrade removes them.
+- **Visible:** Planner preferences, Organization learning shows "N Linear placements" next to the human example
+  counts.
+- **For phase 3:** `placements` is the labeled example set for placement by meaning.

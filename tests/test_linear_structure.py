@@ -400,3 +400,79 @@ def test_skip_imports_normally_and_routes_need_a_preview(linear, client):
     assert {r["key"]: bool(r["home"]) for r in view["rules"]} == {
         "team:team": True, "project:acme": True, "project:beta": True}
     assert home_of("r5") == "Beta Launch"
+
+
+def test_linear_placements_teach_overviews_never_phrase_rules(linear):
+    from jarvis import record_overviews, routing
+    from jarvis.structure_models import RoutingObservation, RoutingPattern
+
+    for i in range(5):
+        linear.rows[f"q{i}"] = remote(f"q{i}", "acme", title=f"QA dispute review {i}")
+    resync()
+    mapping.discover(OWNER)
+    setup()
+
+    def observations():
+        with session_scope() as db:
+            return {o.record_id: o for o in db.scalars(select(RoutingObservation).where(
+                RoutingObservation.origin == routing.LINEAR, RoutingObservation.suppressed.is_(False)))}
+
+    with session_scope() as db:
+        r1 = for_task(db, OWNER, task_of("r1")).id
+        acme = db.scalar(select(StructureRecord).where(StructureRecord.title == "Acme Web"))
+        acme_id = acme.id
+        seen = observations()
+        assert r1 in seen and seen[r1].evidence["provenance"] == {
+            "kind": "linear_mapping", "identifier": "ERI-r1", "team": seen[r1].evidence["provenance"]["team"],
+            "project": "Acme Web"}
+        # Never rule evidence: the learner reads human observations only, and nothing proposed a rule.
+        assert routing.latest_evidence(db, OWNER) == []
+        assert db.scalar(select(func.count()).select_from(RoutingPattern)) == 0
+        assert routing.state(db, OWNER)["linear_examples"] == len(seen) >= 8
+        # The overview of the mapped Home sees how its tasks arrived.
+        material = record_overviews.gather(db, OWNER, acme)
+        filed = {t["title"]: t["filed"] for t in material.tasks}
+        assert filed["QA dispute review 0"] == "by the Linear mapping (Linear project Acme Web)"
+    resync()
+    assert observations().keys() == seen.keys()  # Repeated syncs add nothing.
+
+    # The owner moves r1 elsewhere: the Linear example is withdrawn and the owner's choice is what counts.
+    with session_scope() as db:
+        schema = ensure(db, OWNER)
+        beta = db.scalar(select(StructureRecord).where(StructureRecord.title == "Beta Launch"))
+        record = db.get(StructureRecord, r1)
+        args = {"record_id": r1, "expected_revision": record.revision, "schema_revision": schema.revision,
+                "parent_id": beta.id}
+    run("record.update", **args)
+    assert r1 not in observations()
+    with session_scope() as db:
+        placed = routing.placements(db, OWNER, [r1])
+        assert placed[r1].origin == "human" and placed[r1].evidence["assignment"]["parent_id"] == beta.id
+        assert "Issue r1" not in {t["title"] for t in record_overviews.gather(db, OWNER, db.get(StructureRecord, acme_id)).tasks}
+
+
+def test_backfill_records_existing_linear_placements(linear):
+    import importlib.util
+    from pathlib import Path
+
+    from jarvis import routing
+    from jarvis.structure_models import RoutingObservation
+    from sqlalchemy import delete, text
+
+    path = Path(__file__).parents[1] / "migrations/versions/0053_linear_placement_evidence.py"
+    spec = importlib.util.spec_from_file_location("backfill_0053", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    mapping.discover(OWNER)
+    setup()
+    with session_scope() as db:
+        before = {o.record_id: o.evidence for o in db.scalars(
+            select(RoutingObservation).where(RoutingObservation.origin == routing.LINEAR))}
+        db.execute(delete(RoutingObservation))
+    with session_scope() as db:
+        db.execute(text(module.BACKFILL))
+        db.execute(text(module.BACKFILL))  # Idempotent.
+    with session_scope() as db:
+        after = {o.record_id: o.evidence for o in db.scalars(
+            select(RoutingObservation).where(RoutingObservation.origin == routing.LINEAR))}
+    assert before and after == before

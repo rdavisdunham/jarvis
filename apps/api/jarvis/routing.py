@@ -101,6 +101,9 @@ def observe(db, row, command_id, *, human=False):
     for previous in list(db.scalars(select(RoutingObservation).where(
             RoutingObservation.owner_id == row.owner_id, RoutingObservation.record_id == row.id,
             RoutingObservation.suppressed.is_(False)))):
+        if previous.origin == LINEAR and previous.evidence.get("assignment", {}).get("parent_id") != row.parent_id:
+            previous.suppressed = True  # Moved out of its mapped Home: no longer an example of that bucket.
+            continue
         if (previous.evidence.get("provenance", {}).get("kind") == "quick_sort"
                 and previous.evidence.get("assignment", {}).get("parent_id") != row.parent_id):
             retract_home_choice(db, row.owner_id, previous.source_key.removesuffix(":" + row.id), row.id)
@@ -158,6 +161,56 @@ def observe(db, row, command_id, *, human=False):
                 rule.revision += 1
                 rule.updated_at = now()
 
+
+
+LINEAR = "linear_mapping"
+
+
+def observe_linear(db, record, link):
+    """The Linear mapping filed this issue in a Home (linear_structure.place).
+
+    It is evidence of what belongs in a bucket: overviews read it, and placement by meaning will use it as an
+    example. It is never phrase-rule evidence: `latest_evidence` reads human observations only, and nothing here
+    touches rules. One row per record; a later mapping move updates it, a move by anyone else withdraws it
+    (`observe`)."""
+    if db.info.get("suppress_routing_observation") or record.archived or not record.parent_id:
+        return
+    snapshot = link.snapshot or {}
+    evidence = {"title": record.title, "type_id": record.type_id,
+                "assignment": {"parent_id": record.parent_id, "values": {}},
+                "provenance": {"kind": LINEAR, "identifier": snapshot.get("identifier"),
+                               "team": (snapshot.get("team") or {}).get("name"),
+                               "project": (snapshot.get("project") or {}).get("name")}}
+    key = "linear-mapping:" + record.id
+    row = db.scalar(select(RoutingObservation).where(
+        RoutingObservation.owner_id == record.owner_id, RoutingObservation.source_key == key))
+    if row is None:
+        db.add(RoutingObservation(owner_id=record.owner_id, record_id=record.id, source_key=key,
+                                  record_revision=record.revision, schema_revision=ensure(db, record.owner_id).revision,
+                                  origin=LINEAR, evidence=evidence))
+    elif row.suppressed or row.evidence != evidence:
+        row.evidence, row.suppressed, row.record_revision = evidence, False, record.revision
+        row.created_at = now()
+
+
+def placements(db, owner, record_ids):
+    """How each record came to sit in its current Home, when Eridani saw it happen: {record_id: observation}.
+
+    Latest unsuppressed human or Linear-mapping observation whose Home is still the record's Home. Respects the
+    owner's learning preference; a shared workspace learns nothing."""
+    ids = list(record_ids)
+    if not ids or not preferences(db, owner)["routing_learning"] or db.get(SharedWorkspace, owner):
+        return {}
+    homes = dict(db.execute(select(StructureRecord.id, StructureRecord.parent_id).where(
+        StructureRecord.owner_id == owner, StructureRecord.id.in_(ids))).all())
+    out = {}
+    for e in db.scalars(select(RoutingObservation).where(
+            RoutingObservation.owner_id == owner, RoutingObservation.record_id.in_(ids),
+            RoutingObservation.origin.in_(("human", LINEAR)), RoutingObservation.suppressed.is_(False))
+            .order_by(RoutingObservation.created_at)):
+        if "parent_id" in e.evidence.get("assignment", {}):
+            out[e.record_id] = e  # Latest wins.
+    return {k: e for k, e in out.items() if e.evidence["assignment"]["parent_id"] == homes.get(k)}
 
 
 def observe_home_choice(db, row, command_id, provenance):
@@ -463,6 +516,13 @@ def latest_evidence(db, owner):
     return list(latest.values())
 
 
+def linear_examples(db, owner):
+    from sqlalchemy import func
+    return db.scalar(select(func.count()).select_from(RoutingObservation).where(
+        RoutingObservation.owner_id == owner, RoutingObservation.origin == LINEAR,
+        RoutingObservation.suppressed.is_(False))) or 0
+
+
 def split(evidence):
     """Stable per-record split (one in five held out) so revisions of a training record never leak into
     held-out evaluation. Returns (training, held_out)."""
@@ -722,6 +782,8 @@ def state(db, owner):
         },
         # Current human evidence by split, so an empty training set is never mistaken for missing capture.
         "split": split_counts(latest_evidence(db, owner)),
+        # Linear-mapping placements teach overviews (and later placement by meaning), never phrase rules.
+        "linear_examples": linear_examples(db, owner),
         "quality_gate": f"Dani proposes a learned rule only after {MIN_RULE_SUPPORT} independent examples. Learned automatic rules also require 100 held-out human-reviewed matches and at least 95% precision. Explicitly confirmed rules can start immediately.",
     }
 
