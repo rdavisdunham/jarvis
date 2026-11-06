@@ -128,6 +128,13 @@ describe("host self-check (remotea doctor)", () => {
     expect(old).toContain(`<span>${TOO_OLD}</span>`);
     expect(old).not.toContain("<ul");
   });
+
+  it("starts collapsed, with the counts in its summary", () => {
+    const html = renderToStaticMarkup(<HostSelfCheck host={{ ...host, doctor, doctor_supported: true }} now={now}/>);
+    expect(html).toMatch(/^<details class="remotea-self-check tone-todo"[^>]*>/);
+    expect(html).not.toMatch(/^<details[^>]* open/);
+    expect(html).toContain("<summary><strong>Host self-check</strong> <span>2 failing · 1 warning · 30 ok</span>");
+  });
 });
 
 describe("target templates (remotea S-Q3)", () => {

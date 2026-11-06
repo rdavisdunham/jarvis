@@ -36,11 +36,12 @@ function Problems({ items }: { items: SetupProblem[] }) {
   </ul>;
 }
 
-/** `remotea doctor` as the host last reported it: counts, each warn/fail line with its fix, the report's age. */
+/** `remotea doctor` as the host last reported it: the counts and the report's age, then (collapsed until opened)
+ * each warn/fail line with its fix. */
 export function HostSelfCheck({ host, now }: { host: SetupHost; now?: number }) {
   const view = selfCheck(host, now);
-  return <div className={"remotea-self-check tone-" + view.tone} role="group" aria-label={"Host self-check for " + host.name}>
-    <p><strong>Host self-check</strong> <span>{view.headline}</span>{view.age && <small> · {view.age}</small>}</p>
+  return <details className={"remotea-self-check tone-" + view.tone} role="group" aria-label={"Host self-check for " + host.name}>
+    <summary><strong>Host self-check</strong> <span>{view.headline}</span>{view.age && <small> · {view.age}</small>}</summary>
     {!!host.doctor?.items.length && <ul className="remotea-setup-problems">
       {host.doctor.items.map(i => <li key={i.id} className={i.level === "fail" ? "blocks" : "warns"}>
         <strong><span className="remotea-check-level">{i.level === "fail" ? "Fail" : "Warn"}</span> {i.summary}</strong>
@@ -49,7 +50,7 @@ export function HostSelfCheck({ host, now }: { host: SetupHost; now?: number }) 
       </li>)}
     </ul>}
     {view.note && <p className="footnote">{view.note}</p>}
-  </div>;
+  </details>;
 }
 
 export function TargetCard({ target, onProbed }: { target: SetupTarget; onProbed: (probe: ProbeResult) => void }) {

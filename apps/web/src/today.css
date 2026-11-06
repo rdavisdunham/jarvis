@@ -143,6 +143,11 @@
 .today .panel > .empty .btn {
   min-height: 32px;
 }
+.today-due-split {
+  margin: 0 0 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
 .today-loading,
 .today-error {
   padding: 12px 0;
@@ -399,3 +404,5 @@
 .today-finished-row .row-title { flex: 1; min-width: 0; text-align: left; overflow-wrap: anywhere; }
 .today-finished-row .check.done { color: var(--violet); background: var(--violet-soft); }
 .today-finished-row .row-title { color: var(--ink-2); }
+.today-synced { margin-top: 4px; }
+.today-synced > summary { padding: 6px 0; color: var(--ink-2); font-size: 13px; cursor: pointer; }

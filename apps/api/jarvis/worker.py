@@ -496,6 +496,7 @@ def housekeeping_owner(db, owner):
         ):
             delete_source(db, source)
     budget.expire_abandoned(db, owner)
+    budget.sweep_lapsed(db, owner)
     from .bug_reports import sweep as bug_report_sweep
 
     bug_report_sweep(db, owner)

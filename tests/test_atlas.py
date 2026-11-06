@@ -262,3 +262,29 @@ def test_browse_counts_follow_visibility_without_losing_historical_progress(clie
     assert archive["total"] == archive["parent"]["contents"]["direct"] == 1
     assert archive["parent"]["contents"]["work_total"] == 3
     assert archive["parent"]["contents"]["work_done"] == 1
+
+
+def test_atlas_progress_counts_finished_work_like_browse(client):
+    # The Atlas loads without finished records; its progress must still match Browse ("100/155 complete").
+    c, p, t, s, n, g = tree()
+    shipped = create("task", "Shipped", parent_id=p["id"])
+    filed = create("task", "Filed outcome", parent_id=p["id"])
+    shelved = create("task", "Shelved open work", parent_id=p["id"])
+    with session_scope() as db:
+        db.get(Task, s["task_id"]).status = "completed"
+        db.get(Task, shipped["task_id"]).status = "completed"
+        outcome = db.get(Task, filed["task_id"])
+        outcome.status, outcome.archived = "completed", True
+        db.get(Task, shelved["task_id"]).archived = True
+    rows = {r["id"]: r for r in client.get("/api/v1/structure/atlas").json()["records"]}
+    assert shipped["id"] not in rows and filed["id"] not in rows
+    counts = lambda r: (r["work_done"], r["work_open"], r["work_total"])  # noqa: E731
+    # Under the project: t open; s, shipped and the filed outcome done; archived open work drops out.
+    assert counts(rows[p["id"]]) == (3, 1, 4)
+    assert counts(rows[c["id"]]) == (3, 2, 5)
+    assert counts(rows[g["id"]]) == (0, 0, 0)
+    for record in (c, p):
+        browse = client.get(f'/api/v1/structure/browse?parent_id={record["id"]}&status=active').json()["parent"]["contents"]
+        assert (browse["work_done"], browse["work_open"], browse["work_total"]) == counts(rows[record["id"]])
+    finished = {r["id"]: r for r in client.get("/api/v1/structure/atlas?show_finished=true").json()["records"]}
+    assert counts(finished[p["id"]]) == counts(rows[p["id"]])

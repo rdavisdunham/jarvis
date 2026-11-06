@@ -807,7 +807,9 @@ async def memories(user: User, q: str = ""):
         deferred = counts.get("deferred_budget", 0)
         enabled = preferences(db, user.owner_id)["memory_learning"]
         from .memory_review import pending_reviews, review_data, status
+        from .memory_service import with_sources
 
+        items = with_sources(db, user.owner_id, items)
         reviews = [review_data(db, r) for r in pending_reviews(db, user.owner_id)]
         maintenance = status(db, user.owner_id)
     return {

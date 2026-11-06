@@ -14,7 +14,7 @@ from jarvis.voice import Controller
 from sqlalchemy import select
 
 
-def test_stale_reservations_are_uncertain_not_active_and_never_forgiven():
+def test_stale_reservations_are_uncertain_not_active_until_they_lapse():
     with session_scope() as db:
         row = budget.reserve(db, "davin", "stale", 5, "gpt-realtime-2.1")
         row.last_activity_at = now() - timedelta(minutes=4)
@@ -114,7 +114,7 @@ async def test_response_without_usage_is_not_silently_marked_paid():
         assert db.get(BudgetReservation, c.id).state == "uncertain"
 
 
-def historic_unconfirmed(rid, amount, recorded, days=45):
+def historic_unconfirmed(rid, amount, recorded, days=20):
     with session_scope() as db:
         budget.reserve(db, "davin", rid, amount, "gpt-realtime-2.1")
         budget.record_usage(db, "davin", rid, rid + ":response", "gpt-realtime-2.1", {}, recorded)
@@ -127,6 +127,7 @@ def historic_unconfirmed(rid, amount, recorded, days=45):
 
 def test_three_usage_buckets_stay_separate():
     historic_unconfirmed("old", 5, 0.25)
+    earlier_month = (now() - timedelta(days=20)).month != now().month
     with session_scope() as db:
         budget.reserve(db, "davin", "active", 2, "gpt-5.6-luna")
         budget.record_usage(db, "davin", "active", "active:1", "gpt-5.6-luna", {}, 0.5)
@@ -138,17 +139,18 @@ def test_three_usage_buckets_stay_separate():
         assert buckets["reserved"] == {"usd": pytest.approx(1.5), "sessions": 1}
         unconfirmed = buckets["unconfirmed"]
         assert unconfirmed["usd"] == pytest.approx(5.75) and unconfirmed["sessions"] == 2
-        assert unconfirmed["historic_usd"] == pytest.approx(4.75) and unconfirmed["historic_sessions"] == 1
+        assert unconfirmed["historic_sessions"] == int(earlier_month)
+        assert unconfirmed["historic_usd"] == pytest.approx(4.75 if earlier_month else 0)
         holds = {h["id"]: h for h in budget.holds(db, "davin")}
-        assert (holds["old"]["bucket"], holds["old"]["historic"]) == ("unconfirmed", True)
+        assert (holds["old"]["bucket"], holds["old"]["historic"]) == ("unconfirmed", earlier_month)
         assert (holds["lost"]["bucket"], holds["lost"]["historic"]) == ("unconfirmed", False)
         assert holds["active"]["bucket"] == "reserved"
 
 
 def test_reconcile_settles_only_sessions_with_provider_evidence():
     historic_unconfirmed("old-a", 5, 0.25)
-    historic_unconfirmed("old-b", 3, 0.10, days=70)
-    historic_unconfirmed("old-c", 2, 0, days=40)
+    historic_unconfirmed("old-b", 3, 0.10, days=25)
+    historic_unconfirmed("old-c", 2, 0, days=15)
     with session_scope() as db:
         budget.reserve(db, "davin", "active", 2, "gpt-5.6-luna")
     statement = [
@@ -172,7 +174,8 @@ def test_reconcile_settles_only_sessions_with_provider_evidence():
         assert db.get(BudgetReservation, "active").state == "reserved"
         # The adjustment lands in the session's own month, not in this month's recorded charges.
         adjustment = db.get(Usage, "reconcile:old-a")
-        assert adjustment.amount == Decimal("0.150000") and adjustment.created_at < now() - timedelta(days=30)
+        assert adjustment.amount == Decimal("0.150000")
+        assert adjustment.created_at == db.get(BudgetReservation, "old-a").created_at
         buckets = budget.summary(db, "davin")["buckets"]
         assert buckets["recorded"]["usd"] == 0
         assert buckets["reserved"]["usd"] == pytest.approx(2)
@@ -190,3 +193,83 @@ def test_evidence_statement_names_each_reservation_once():
         budget.evidence_file_lookup([{"final_usd": "1", "evidence": "x"}])
     with pytest.raises(ValueError):
         budget.evidence_file_lookup([{"reservation": "a", "final_usd": "1", "evidence": "x"}] * 2)
+
+
+def test_lapsed_holds_stop_counting_and_the_sweep_closes_them_for_audit(monkeypatch):
+    since = now() - timedelta(days=60)
+    monkeypatch.setattr(get_settings(), "cost_tracking_since", since)
+    historic_unconfirmed("before-tracking", 5, 0.05, days=61)
+    historic_unconfirmed("month-old", 5, 0.10, days=31)
+    historic_unconfirmed("recent", 1, 0.25, days=29)
+    with session_scope() as db:
+        budget.reserve(db, "davin", "active", 2, "gpt-5.6-luna")
+        db.get(BudgetReservation, "active").created_at = now() - timedelta(days=45)  # a long but live lease
+        db.flush()
+        # Before the sweep runs, only the recent unconfirmed hold and the active work count.
+        data = budget.summary(db, "davin")
+        unconfirmed = data["buckets"]["unconfirmed"]
+        assert unconfirmed["usd"] == pytest.approx(0.75) and unconfirmed["sessions"] == 1
+        assert data["reserved_usd"] == pytest.approx(2.75)
+        assert {h["id"] for h in budget.holds(db, "davin")} == {"recent", "active"}
+        assert budget.sweep_lapsed(db, "davin") == 2
+        assert budget.sweep_lapsed(db, "davin") == 0
+        before = db.get(BudgetReservation, "before-tracking")
+        assert before.state == "closed" and before.settlement["reason"] == "predates_tracking"
+        assert before.settlement["held_usd"] == "4.950000" and before.amount == Decimal("5.000000")
+        old = db.get(BudgetReservation, "month-old")
+        assert old.state == "closed" and old.settlement["reason"] == "expired_without_evidence"
+        assert old.settlement["previous_state"] == "uncertain"
+        assert db.get(BudgetReservation, "recent").state == "uncertain"
+        assert db.get(BudgetReservation, "active").state == "reserved"
+        assert budget.summary(db, "davin")["reserved_usd"] == pytest.approx(2.75)
+        # Recorded charges stay; nothing about the sweep is a charge.
+        assert db.get(Usage, "month-old:response").amount == Decimal("0.100000")
+    with session_scope() as db:
+        # Provider evidence can still settle a lapsed hold explicitly.
+        budget.reconcile(db, "davin", "month-old", 0.40, "OpenAI usage export, sess_x")
+        assert db.get(BudgetReservation, "month-old").settlement["reason"] == "provider_evidence"
+
+
+def test_realtime_voice_reserves_cents_and_tops_up_per_response():
+    opening = budget.realtime_headroom("gpt-realtime-2.1")
+    assert 0.1 < opening < 0.5
+    assert budget.realtime_headroom("gpt-realtime-mini") < opening
+    long_talk = {"audio": 20_000, "text": 40_000}
+    assert opening < budget.realtime_headroom("gpt-realtime-2.1", long_talk) < 1
+    usage = {
+        "input_token_details": {"audio_tokens": 9_000, "text_tokens": 30_000},
+        "output_token_details": {"audio_tokens": 500, "text_tokens": 40},
+    }
+    assert budget.realtime_context(usage) == {"audio": 9_500, "text": 30_040}
+
+
+async def test_realtime_session_hold_follows_the_context_it_has_seen(monkeypatch):
+    with session_scope() as db:
+        c = Controller("davin", "test", "unused", None, preferences(db, "davin"))
+        budget.reserve(db, "davin", c.id, budget.realtime_headroom(c.model), c.model)
+    sent = []
+    c.ws = True
+
+    async def send(event):
+        sent.append(event)
+
+    monkeypatch.setattr(c, "send", send)
+    await c.request("gate")
+    with session_scope() as db:
+        opening = db.get(BudgetReservation, c.id).amount
+        assert float(opening) == pytest.approx(budget.realtime_headroom(c.model), abs=1e-6)
+    nonce = sent[-1]["response"]["metadata"]["jarvis_request"]
+    await c.event({"type": "response.created", "response": {"id": "r1", "metadata": {"jarvis_request": nonce}}})
+    usage = {
+        "input_token_details": {"audio_tokens": 3_000, "text_tokens": 30_000},
+        "output_token_details": {"audio_tokens": 400},
+    }
+    await c.event({"type": "response.done", "response": {"id": "r1", "status": "cancelled", "usage": usage}})
+    assert c.context == {"audio": 3_400, "text": 30_000}
+    await c.request("plan")
+    with session_scope() as db:
+        row = db.get(BudgetReservation, c.id)
+        expected = float(row.actual) + budget.realtime_headroom(c.model, c.context)
+        assert float(row.amount) == pytest.approx(expected, abs=1e-5)
+        # A lost session holds the bound for its outstanding response, cents rather than dollars.
+        assert float(row.amount - row.actual) < 0.5

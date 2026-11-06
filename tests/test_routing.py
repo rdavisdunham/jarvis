@@ -379,3 +379,81 @@ def test_empty_capture_and_agent_filing_keep_the_no_examples_message(monkeypatch
         review = db.scalar(select(RoutingReview).order_by(RoutingReview.created_at.desc()))
         assert review.summary["split"] == {"eligible": 0, "training": 0, "held_out": 0}
         assert review.summary["message"] == "No independent human organization examples yet."
+
+
+def _linear_candidate(parent_id):
+    return routing.Candidates(
+        candidates=[
+            routing.Candidate(
+                phrase="linear log", type_id="task", parent_id=parent_id, values=[], reason="filed together"
+            )
+        ]
+    )
+
+
+def test_a_rule_needs_three_supporting_records_before_it_is_proposed(monkeypatch):
+    parent = create()
+    # At most two matching titles (either may land in the held-out split), plus unrelated training records.
+    for i in range(2):
+        create("task", f"Fix linear log in settings {i}", parent_id=parent["id"])
+    for i in range(10):
+        create("task", f"Unrelated chore {i}", parent_id=parent["id"])
+    monkeypatch.setattr(routing, "infer", lambda *a: _linear_candidate(parent["id"]))
+    job = run("routing.run", {})
+    routing.process(job["job_id"])
+    with session_scope() as db:
+        assert db.scalar(select(RoutingPattern)) is None
+        review = db.scalar(select(RoutingReview))
+        assert review.questions == [] and review.status == "completed"
+    # With enough independent examples the same candidate becomes a question.
+    for i in range(12):
+        create("task", f"Linear log cleanup {i}", parent_id=parent["id"])
+    job = run("routing.run", {})
+    routing.process(job["job_id"])
+    with session_scope() as db:
+        rule = db.scalar(select(RoutingPattern))
+        assert rule.status == "candidate" and len(rule.evidence_ids) >= routing.MIN_RULE_SUPPORT
+        review = db.scalar(select(RoutingReview).where(RoutingReview.status == "pending"))
+        assert review.questions[0]["evidence_count"] >= routing.MIN_RULE_SUPPORT
+
+
+def test_existing_weak_rule_questions_are_not_asked():
+    from jarvis import review_questions
+
+    parent = create()
+    task = create("task", "Fix linear log in settings.", parent_id=parent["id"])
+    with session_scope() as db:
+        schema = structure.ensure(db, OWNER)
+        evidence = db.scalar(select(RoutingObservation).where(RoutingObservation.record_id == task["id"]))
+        rules = []
+        for phrase, support in (("fix linear log in settings", 1), ("linear log", routing.MIN_RULE_SUPPORT)):
+            rule = RoutingPattern(
+                owner_id=OWNER,
+                fingerprint=phrase,
+                condition={"type_id": "task", "phrase": phrase},
+                assignment={"values": {}, "parent_id": parent["id"]},
+                evidence_ids=[evidence.id] * support,
+                reason="learned",
+                schema_revision=schema.revision,
+            )
+            db.add(rule)
+            db.flush()
+            rules.append(rule)
+        weak, strong = rules
+
+        def question(rule, text, count):
+            return {"id": rule.id, "question": text, "evidence_count": count, "held_out": 0, "precision": 0}
+
+        # A question proposed from a single task title before the threshold existed.
+        db.add(RoutingReview(owner_id=OWNER, period="weak", status="pending", questions=[question(weak, "Weak?", 1)],
+                             created_at=datetime(2026, 1, 1, tzinfo=UTC)))
+        db.flush()
+        assert routing.offer_context(db, OWNER) == ""
+        assert not [i for i in review_questions.items(db, OWNER) if i["kind"] == "routing"]
+        assert routing.state(db, OWNER)["reviews"][0]["questions"] == []
+        strong_review = RoutingReview(owner_id=OWNER, period="strong", status="pending",
+                                      questions=[question(strong, "Strong?", routing.MIN_RULE_SUPPORT)])
+        db.add(strong_review)
+        db.flush()
+        assert routing.offer_context(db, OWNER) == strong_review.id
+        assert [i["question"] for i in review_questions.items(db, OWNER) if i["kind"] == "routing"] == ["Strong?"]

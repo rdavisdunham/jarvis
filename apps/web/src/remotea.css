@@ -214,11 +214,13 @@
 .remotea-setup-problems li span { color: var(--ink-2); }
 .remotea-setup-code code { overflow-wrap: anywhere; }
 /* Host self-check (remotea doctor) inside the setup view. */
-.remotea-self-check { display: grid; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
-.remotea-self-check > p { margin: 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+.remotea-self-check { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.remotea-self-check[open] { display: grid; gap: 6px; }
+.remotea-self-check > summary { cursor: pointer; }
+.remotea-self-check > p, .remotea-self-check > summary { margin: 0; font-size: 0.85rem; overflow-wrap: anywhere; }
 .remotea-self-check.tone-todo { border-color: var(--danger); }
 .remotea-self-check.tone-warn { border-color: var(--due-today); }
-.remotea-self-check.tone-unknown > p span { color: var(--ink-3); }
+.remotea-self-check.tone-unknown > summary span { color: var(--ink-3); }
 .remotea-self-check small { color: var(--ink-2); }
 .remotea-check-level { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin-right: 4px; }
 /* Worktree maintenance (S-Q4). */

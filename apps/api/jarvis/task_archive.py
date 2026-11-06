@@ -22,6 +22,9 @@ def apply_lifecycle(task, changes, *, automatic=False, external=False):
     """Call before assigning a patch, so unchanged statuses never slide the clock."""
     instant = now()
     status = changes.get("status", task.status)
+    if status != task.status and not external and (task.external or {}).get("finished_via"):
+        # A status change made in Eridani is no longer a sync's finish (see linear_sync.apply_remote).
+        task.external = {**task.external, "finished_via": None}
     if status != task.status:
         if status in FINISHED:
             task.finished_at = instant

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Pencil, RotateCcw, Trash2, X } from "lucide-react";
+import { FileText, Pencil, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
 import type { Memory, MemoryMaintenance } from "./types";
@@ -53,13 +53,31 @@ export function MemoryStatus({status, worker, reviews, maintenance, timezone, bu
   </section>;
 }
 
+const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"});
+
+/** Where a fact came from. A fact Dani learned on its own names the conversation it came from (a link that opens
+ * it) so a wrong fact can be traced; facts you stated or asked Dani to save say so. */
+export function MemorySource({memory, onOpenConversation}: {memory: Memory; onOpenConversation?: (id: string) => void}) {
+  if (memory.attribution === "owner_statement") return <span>You told Dani</span>;
+  if (memory.attribution === "agent_capture") return <span>Saved by Dani at your request</span>;
+  const source = memory.source, conversation = source?.conversation_id;
+  if (!source || !conversation) return <span>Learned from a saved source</span>;
+  const label = (source.origin === "voice" ? "a voice conversation" : "a conversation") + " on " + shortDate(source.created_at);
+  return <span>Learned from {onOpenConversation
+    ? <button type="button" className="memory-source-link" onClick={() => onOpenConversation(conversation)}>{label}</button>
+    : label}</span>;
+}
+
 /** One remembered fact as a list row: the fact, quiet provenance, an expandable evidence line and hover actions. */
-export function MemoryRow({memory, onCorrect, onForget}: {memory: Memory; onCorrect: () => void; onForget: (deleteSource: boolean) => Promise<unknown>}) {
+export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversation}: {
+  memory: Memory; onCorrect: () => void; onForget: (deleteSource: boolean) => Promise<unknown>; onWrong: () => Promise<unknown>;
+  onOpenConversation?: (id: string) => void;
+}) {
   return <article className="memory row memory-row">
     <div className="memory-main">
       <p className="memory-content">{memory.content}</p>
       <div className="memory-meta">
-        <span>{memory.attribution === "owner_statement" ? "You told Dani" : memory.attribution === "agent_capture" ? "Saved by Dani at your request" : "Learned from a saved source"}</span>
+        <MemorySource memory={memory} onOpenConversation={onOpenConversation}/>
         <time className="tabular" dateTime={memory.created_at}>{new Date(memory.created_at).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"})}</time>
         {memory.tags?.map(tag => <span className="chip" key={tag}>{tag}</span>)}
       </div>
@@ -69,15 +87,18 @@ export function MemoryRow({memory, onCorrect, onForget}: {memory: Memory; onCorr
       </details>}
     </div>
     <div className="row-actions memory-actions">
-      <MemoryActions memory={memory} onCorrect={onCorrect} onForget={onForget}/>
+      <MemoryActions memory={memory} onCorrect={onCorrect} onForget={onForget} onWrong={onWrong}/>
     </div>
   </article>;
 }
 
-export function MemoryActions({memory, onCorrect, onForget}: {memory:Memory; onCorrect:()=>void; onForget:(deleteSource:boolean)=>Promise<unknown>}) {
-  const [mode, setMode] = useState<"source"|"forget"|null>(null);
+export function MemoryActions({memory, onCorrect, onForget, onWrong}: {memory:Memory; onCorrect:()=>void; onForget:(deleteSource:boolean)=>Promise<unknown>; onWrong:()=>Promise<unknown>}) {
+  const [mode, setMode] = useState<"source"|"forget"|null>(null), [rejecting, setRejecting] = useState(false);
   return <><button className="btn btn-ghost btn-sm" onClick={() => setMode("source")}><FileText size={14} aria-hidden/>View source</button>
     <button className="btn btn-ghost btn-sm" onClick={onCorrect}><Pencil size={14} aria-hidden/>Correct</button>
+    {/* One click: removes the fact and records the rejection so automatic learning never saves it again. */}
+    <button className="btn btn-ghost btn-sm memory-wrong" disabled={rejecting} title="Remove this fact and stop Dani from learning it again"
+      onClick={async () => {setRejecting(true);try {await onWrong();} finally {setRejecting(false);}}}><ThumbsDown size={14} aria-hidden/>This is wrong</button>
     <button className="btn btn-danger btn-sm" onClick={() => setMode("forget")}><Trash2 size={14} aria-hidden/>Forget</button>
     {mode && <MemoryActionDialog memory={memory} mode={mode} onClose={() => setMode(null)} onForget={onForget}/>}</>;
 }

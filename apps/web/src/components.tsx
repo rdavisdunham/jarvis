@@ -5,7 +5,7 @@ import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
 import { emptyOrganization, type Organization } from "./productivity";
 import { UsageReport } from "./UsageReport";
-import { BudgetHolds } from "./BudgetHolds";
+import { MonthSpend } from "./BudgetHolds";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import { NameAliases } from "./NameAliases";
 import { useEffect, useState, type ReactNode } from "react";
@@ -935,7 +935,7 @@ export function SettingsPanel({
           ) : (
             <>
               {boot.budget.report && <UsageReport report={boot.budget.report} />}
-              {!enforced && <p className="footnote">Tracking is on. Spending limits are off during development; estimates and unconfirmed usage will not pause Dani.</p>}
+              {!enforced && <p className="footnote">Spending limits are off, so model costs never pause Dani.</p>}
               {enforced && (
                 <SettingRow className="setting-row-form" label="Monthly limit ($)" labelId="monthly-limit-label" hint="Dani pauses optional model work near this limit.">
                   <form
@@ -963,35 +963,17 @@ export function SettingsPanel({
                   </form>
                 </SettingRow>
               )}
-              <div className="budget-line">
-                <strong>
-                  ${boot.budget.spent_usd.toFixed(2)}
-                  <span>{enforced && " / $" + boot.budget.limit_usd.toFixed(0)} this calendar month</span>
-                </strong>
-                <span>
-                  ${boot.budget.active_reserved_usd.toFixed(2)} reserved for
-                  active work
-                </span>
-              </div>
-              {boot.budget.uncertain_usd > 0 && (
-                <p className="footnote">
-                  ${boot.budget.uncertain_usd.toFixed(2)} is unconfirmed possible usage, separate from recorded costs
-                  {boot.budget.buckets?.unconfirmed.historic_sessions
-                    ? ` ($${boot.budget.buckets.unconfirmed.historic_usd.toFixed(2)} from ${boot.budget.buckets.unconfirmed.historic_sessions} ${boot.budget.buckets.unconfirmed.historic_sessions === 1 ? "session" : "sessions"} in earlier months)`
-                    : ""}
-                  . It stays unconfirmed until provider records settle it; it is never assumed to be zero.
-                </p>
-              )}
-              <BudgetHolds enforced={enforced} />
-              {boot.budget.projected_month_usd != null && <p className="footnote">
-                At this month's pace: about $
-                {boot.budget.projected_month_usd.toFixed(2)} this month.
-              </p>}
+              <MonthSpend
+                spent={boot.budget.spent_usd}
+                limit={enforced ? boot.budget.limit_usd : undefined}
+                projected={boot.budget.projected_month_usd}
+                inFlight={boot.budget.reserved_usd}
+              />
               {enforced && boot.budget.budget_mode !== "normal" && (
                 <p role="status" className="footnote">
                   {["defer_optional", "paused"].includes(boot.budget.budget_mode)
                     ? "Optional memory processing is paused near your limit. Saved tasks and reminders still work."
-                    : "Your usage and reservations have reached 80% of the monthly limit."}
+                    : "Spending has reached 80% of the monthly limit."}
                 </p>
               )}
               {enforced && <progress
