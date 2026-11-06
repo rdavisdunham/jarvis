@@ -1,7 +1,7 @@
 """Inspect usage buckets and holds, or settle unconfirmed sessions from provider evidence.
 
 No model calls or guessed costs. Without --apply nothing is written. A session without an entry in the
-provider evidence stays unconfirmed; it is never cleared as zero.
+provider evidence stays unconfirmed until it lapses after 30 days (budget.sweep_lapsed).
 
   one:   --reservation ID --final-usd 0.0123 --evidence "OpenAI usage export 2026-10, req_..." --apply
   many:  --evidence-file statement.json [--apply]
