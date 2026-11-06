@@ -512,6 +512,7 @@ def place(db, owner, conn, targets, *, write, links=None, names=None):
     record's provenance), or, never placed before, while it is unfiled or in the legacy "· Linear" project.
     Any other Home is the owner's choice and stays. Subtasks follow their Linear parent issue instead."""
     from .hierarchy import for_task
+    from .routing import observe_linear
     from .structure import ensure
 
     query = select(LinearIssue).where(LinearIssue.owner_id == owner, LinearIssue.workspace_id == conn.workspace_id)
@@ -568,6 +569,7 @@ def place(db, owner, conn, targets, *, write, links=None, names=None):
             counts["unchanged"] += 1
             if write and provenance.get("linear_home") != target:
                 record.provenance = {**provenance, "linear_home": target}
+                observe_linear(db, record, link)
             continue
         if home not in automatic:
             counts["kept"] += 1
@@ -578,6 +580,8 @@ def place(db, owner, conn, targets, *, write, links=None, names=None):
         else:
             counts["moved"] += 1
             outcome = "moved"
+            if write:
+                observe_linear(db, record, link)
         if len(sample) < 100:
             sample.append({"task_id": link.task_id, "title": task.title if task else "", "outcome": outcome,
                            "from": label(home), "to": label(target)})

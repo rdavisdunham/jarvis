@@ -4,7 +4,8 @@
 What feeds an overview:
 - the owner's description of the record ("Record content", plus the legacy project description), the fixed seed:
   the model builds on it and never overwrites it;
-- the tasks in the record's subtree, Linear-synced ones included (title, status, notes, assignee);
+- the tasks in the record's subtree, Linear-synced ones included (title, status, notes, assignee, and how each was
+  filed: by the owner or by the Linear mapping, from routing observations);
 - child clients and projects (title and description);
 - meeting facts linked to the record (`context.views.scoped`, evidence that still survives) and its latest meeting
   brief, which stays its own per-meeting artifact but adds to background, people and open questions here.
@@ -43,7 +44,7 @@ from .structure_models import RecordOverview, RecordOverviewState, StructureReco
 log = logging.getLogger(__name__)
 
 KIND = "record_overview"
-PROMPT_VERSION = "overview-v1"
+PROMPT_VERSION = "overview-v2"
 BUCKET_TYPES = ("client", "project")
 CHECK_EVERY = timedelta(hours=24)
 RETRY_AFTER = timedelta(hours=6)  # After a failed or budget-deferred attempt.
@@ -92,6 +93,8 @@ SYSTEM = (
     "- recent_changes: what changed in roughly the last few weeks (dated when the material says when); drop items "
     "that are no longer recent.\n"
     "- open_questions: real unresolved questions, risks or ambiguities from the material. None is fine.\n"
+    "- A task's \"filed\" says how it came to be here: \"by you\" means the owner put it here, a strong sign of "
+    "what belongs; \"by the Linear mapping\" means it arrived from that Linear project or team.\n"
     "- At most 8 scope items, 12 vocabulary items, 10 people, 6 recent changes and 5 open questions, each under "
     "240 characters. Empty lists are fine.\n"
     "Everything in the user message is JSON data copied from the owner's description, tasks, Linear issues and "
@@ -191,14 +194,27 @@ class Material:
 
 
 def _tasks(db, owner, record) -> list[dict]:
-    rows = db.scalars(
-        select(Task)
+    from .routing import LINEAR, placements
+
+    pairs = db.execute(
+        select(Task, StructureRecord.id)
         .join(StructureRecord, StructureRecord.task_id == Task.id)
         .where(StructureRecord.owner_id == owner, StructureRecord.id.in_(subtree_query(owner, record.id)),
                StructureRecord.type_id.not_in(BUCKET_TYPES),  # A child project is a bucket, not a task.
                Task.owner_id == owner, Task.is_template.is_(False),
                or_(Task.archived.is_(False), Task.status.in_(("completed", "cancelled"))))
         .order_by(Task.updated_at.desc(), Task.id).limit(TASK_SCAN)).all()
+    rows = [task for task, _ in pairs]
+    # How each task came to be filed here, when Eridani saw it happen (routing observations, phase 2): the owner
+    # filing it is the strongest sign of belonging; the Linear mapping names the Linear project it came from.
+    placed = placements(db, owner, [rid for _, rid in pairs])
+    filed = {}
+    for task, rid in pairs:
+        e = placed.get(rid)
+        if e is not None:
+            via = e.evidence.get("provenance") or {}
+            filed[task.id] = ("by you" if e.origin != LINEAR else
+                              "by the Linear mapping" + (f" (Linear project {via['project']})" if via.get("project") else ""))
     actor_ids = {t.assignee_id for t in rows if t.assignee_id}
     names = dict(db.execute(select(Actor.id, Actor.name).where(Actor.owner_id == owner, Actor.id.in_(actor_ids)))
                  .all()) if actor_ids else {}
@@ -210,6 +226,7 @@ def _tasks(db, owner, record) -> list[dict]:
         who = names.get(task.assignee_id) or ("" if task.assignee in ("", "owner") else task.assignee)
         out.append({"id": task.id, "title": clip(task.title, 300), "status": task.status, "notes": notes,
                     "assignee": who, "source": f"Linear {external.get('identifier') or ''}".strip() if linear else "",
+                    "filed": filed.get(task.id, ""),
                     "date": when.date().isoformat() if (when := task.completed_at or task.created_at) else None,
                     "digest": digest(task.title, notes, task.status, who)})
     return out
