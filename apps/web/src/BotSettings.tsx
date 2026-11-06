@@ -11,6 +11,34 @@ export function permissionScopes(levels: Record<string, string>, queued: boolean
     ...(queued ? ["work:run"] : []), ...(runTools ? ["agents:session"] : []), ...(runRead ? ["agents:read"] : []),
     ...(sources ? ["sources:write"] : [])];
 }
+const scopeLabel = (scope: string) => scope === "work:run" ? "Dani requests" : scope === "agents:session" ? "Run tools" : scope === "agents:read" ? "Runs, read" : scope === "agents:control" ? "remotea link" : scope === "sources:write" ? "Meeting submission"
+  : scope.replace("organization", "Goals & projects").replace(":write", ", edit").replace(":read", ", read").replace(/^./, c => c.toUpperCase());
+/** A key that can still act: neither revoked nor past its expiry. */
+export const liveKey = (item: BotKey, now = Date.now()) => !item.revoked_at && new Date(item.expires_at).getTime() > now;
+
+/** Live keys first; revoked and expired ones fold into a closed "Revoked and expired keys" disclosure. */
+export function BotKeyList({ items, busy, onRevoke, now = Date.now() }: { items: BotKey[]; busy: boolean; onRevoke: (id: string) => void; now?: number }) {
+  const live = items.filter(item => liveKey(item, now)), inactive = items.filter(item => !liveKey(item, now));
+  const row = (item: BotKey) => {
+    const active = liveKey(item, now);
+    return <article className="settings-item bot-key-row" key={item.id}><div className="settings-item-main"><strong className="settings-item-title">{item.name}</strong>
+      <span className="settings-item-meta"><span className={"chip" + (active ? " chip-done" : "")}>{item.revoked_at ? "Revoked" : !active ? "Expired" : `Expires ${new Date(item.expires_at).toLocaleDateString()}`}</span><code>{item.prefix}…</code>
+        {item.last_used_at && <span>Last used {new Date(item.last_used_at).toLocaleString()}</span>}</span>
+      <span className="chip-row">{item.scopes.filter(scope => !scope.endsWith(":read") || !item.scopes.includes(scope.replace(":read",":write"))).map(scope =>
+        <span className="chip" key={scope}>{scopeLabel(scope)}</span>)}</span></div>
+      {active && <div className="settings-item-actions"><button className="btn btn-danger btn-sm" disabled={busy} onClick={() => onRevoke(item.id)}>Revoke</button></div>}
+    </article>;
+  };
+  return <>
+    <div className="settings-list bot-key-list">{!live.length && <p className="settings-empty">{inactive.length ? "No active agent keys." : "No agents connected yet."}</p>}
+      {live.map(row)}</div>
+    {!!inactive.length && <details className="settings-block bot-key-inactive">
+      <summary>Revoked and expired keys ({inactive.length})</summary>
+      <div className="settings-list bot-key-list">{inactive.map(row)}</div>
+    </details>}
+  </>;
+}
+
 export function BotSettings({ workspace, readOnly = false, canDesign = true }: { workspace: string; readOnly?: boolean; canDesign?: boolean }) {
   const [data, setData] = useState<KeyList | null>(null), [error, setError] = useState("");
   const [adding, setAdding] = useState(false), [busy, setBusy] = useState(false), [name, setName] = useState("");
@@ -44,8 +72,6 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
     catch(e) { setError((e as Error).message); }
     finally { setBusy(false); }
   }
-  const scopeLabel = (scope: string) => scope === "work:run" ? "Dani requests" : scope === "agents:session" ? "Run tools" : scope === "agents:read" ? "Runs, read" : scope === "agents:control" ? "remotea link" : scope === "sources:write" ? "Meeting submission"
-    : scope.replace("organization", "Goals & projects").replace(":write", ", edit").replace(":read", ", read").replace(/^./, c => c.toUpperCase());
   return <SettingsGroup className="bot-settings" icon={<KeyRound size={18}/>} title="Connected agents"
     description={`Let other assistants work in ${workspace}. Their changes appear in Activity.`}
     action={<button className={adding ? "btn btn-ghost" : "btn btn-soft"} disabled={busy || !data} onClick={() => { setAdding(!adding); setSecret(""); }}>
@@ -79,17 +105,7 @@ export function BotSettings({ workspace, readOnly = false, canDesign = true }: {
         <button className="btn btn-ghost btn-sm" onClick={() => setVisible(!visible)}>{visible ? "Hide" : "Reveal"}</button>
         <button className="btn btn-ghost btn-sm" onClick={() => setSecret("")}>Done</button></div>
     </div>}
-    {!!data && <div className="settings-list bot-key-list">{!data.items.length && <p className="settings-empty">No agents connected yet.</p>}
-      {data.items.map(item => {
-        const expired = new Date(item.expires_at).getTime() <= Date.now();
-        return <article className="settings-item bot-key-row" key={item.id}><div className="settings-item-main"><strong className="settings-item-title">{item.name}</strong>
-          <span className="settings-item-meta"><span className={"chip" + (item.revoked_at || expired ? "" : " chip-done")}>{item.revoked_at ? "Revoked" : expired ? "Expired" : `Expires ${new Date(item.expires_at).toLocaleDateString()}`}</span><code>{item.prefix}…</code>
-            {item.last_used_at && <span>Last used {new Date(item.last_used_at).toLocaleString()}</span>}</span>
-          <span className="chip-row">{item.scopes.filter(scope => !scope.endsWith(":read") || !item.scopes.includes(scope.replace(":read",":write"))).map(scope =>
-            <span className="chip" key={scope}>{scopeLabel(scope)}</span>)}</span></div>
-          {!item.revoked_at && !expired && <div className="settings-item-actions"><button className="btn btn-danger btn-sm" disabled={busy} onClick={() => void revoke(item.id)}>Revoke</button></div>}
-        </article>;
-      })}</div>}
+    {!!data && <BotKeyList items={data.items} busy={busy} onRevoke={id => void revoke(id)}/>}
     {!!data && <details className="settings-block bot-connection"><summary>Connection details</summary>
       <p className="footnote">Use your agent’s key as a Bearer token.</p>
       {[["MCP", data.mcp_url], ["API", data.api_url]].map(([label,value]) => <div className="copy-field" key={label}>

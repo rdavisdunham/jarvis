@@ -15,6 +15,7 @@ import { AddSubtask, BugReportDetails, LinkedNotes, RelatedTasks, SaveTemplate, 
 import { TASK_CARD_SECTIONS } from "./task-card-sections";
 import type { Task } from "./types";
 import { ReviewProps } from "./Reviews";
+import { HomePathChip } from "./HomePath";
 import type { Schema, SchemaField, CustomRecord } from "./structure-types";
 import "./details.css";
 
@@ -112,7 +113,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
   return <Dialog className="detail-card" aria-label={t.name+" details"} onBackdrop={()=>{if(!busy)close();}}>
     <header className="detail-head">
       <span className="detail-kind">{t.name}</span>
-      {home&&<span className="chip chip-home detail-path" title={home}>{home}</span>}
+      {home&&<HomePathChip className="detail-path" path={home}/>}
       {row.source?.url&&/^https:\/\//i.test(row.source.url)&&<a className="chip detail-source-link" href={row.source.url} target="_blank" rel="noreferrer" title={"Open in "+(row.source.label||"the source")}>{row.source.identifier||"Open in "+(row.source.label||"source")}<ExternalLink size={12} aria-hidden="true"/></a>}
       <span className={"detail-save-state"+(busy?" busy":error?" attention":"")} aria-live="polite">{busy?"Saving…":error?"Changes need attention":canEdit?"Changes save automatically":"View only"}</span>
       <button className="btn-icon" aria-label="Close record" disabled={busy} onClick={close}><X size={20}/></button>

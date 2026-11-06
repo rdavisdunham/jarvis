@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { WorkCard, type WorkItem } from "./Activity";
+import { ActivityPanel, attentionFirst, WorkCard, type WorkItem } from "./Activity";
+import { FooterStatus, NotificationBell } from "./app-chrome";
 
 const base: WorkItem = { id:"work-1",parent_id:null,conversation_id:"chat-1",request:"Um, actually, make that call tomorrow please.",
   status:"succeeded",revision:1,message:"Updated.",actions:[],children:[],cancel_requested:false,seen:false,
@@ -48,5 +49,46 @@ describe("compact conversation markers", () => {
     expect(html).toContain("Updated task: Call Alex");expect(html).toContain("Edit");expect(html).toContain("Revert");
     expect(html).toContain('aria-expanded="false"');expect(html).toContain("2026-09-18");
     expect(html).not.toContain("Original request");expect(html).not.toContain(base.request);expect(html).not.toContain("<dl>");
+  });
+});
+
+describe("work that needs attention", () => {
+  const done = { ...base, id: "done-1" }, done2 = { ...base, id: "done-2" };
+  const asking = { ...base, id: "ask-1", status: "needs_input", message: "Which task?" };
+  const failed = { ...base, id: "fail-1", status: "failed", message: "The connection failed." };
+  const order = (html: string) => [...html.matchAll(/data-work-id="([^"]+)"/g)].map(m => m[1]);
+  const panel = (items: WorkItem[], focus?: "attention") => renderToStaticMarkup(
+    <ActivityPanel focus={focus} items={items} error="" onClose={() => {}} onRefresh={async () => {}} onOpen={async () => {}}/>);
+
+  it("lists requests that need the user above completed ones", () => {
+    expect(attentionFirst([done, asking, done2, failed]).map(i => i.id)).toEqual(["ask-1", "fail-1", "done-1", "done-2"]);
+    const html = panel([done, asking, done2, failed]);
+    expect(order(html)).toEqual(["ask-1", "fail-1", "done-1", "done-2"]);
+    expect(html).toContain('aria-pressed="false"');
+  });
+
+  it("opens on just those requests from the status line, with a toggle back to all", () => {
+    const html = panel([done, asking, failed], "attention");
+    expect(order(html)).toEqual(["ask-1", "fail-1"]);
+    expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain("2 need attention");
+    // Nothing left to attend to: show everything rather than an empty drawer.
+    expect(order(panel([done], "attention"))).toEqual(["done-1"]);
+  });
+});
+
+describe("app chrome", () => {
+  it("names the notification bell, with the unread count when there is one", () => {
+    const quiet = renderToStaticMarkup(<NotificationBell unread={0} current={false} onOpen={() => {}}/>);
+    expect(quiet).toContain('aria-label="Notifications"');
+    const unread = renderToStaticMarkup(<NotificationBell unread={3} current onOpen={() => {}}/>);
+    expect(unread).toContain('aria-label="Notifications, 3 unread"');
+    expect(unread).toContain('aria-current="page"');
+  });
+
+  it("makes the needs-attention status line a button and leaves other statuses as text", () => {
+    expect(renderToStaticMarkup(<FooterStatus text="Dani has work that needs attention" onAttention={() => {}}/>))
+      .toBe('<button type="button" class="footer-status-link">Dani has work that needs attention</button>');
+    expect(renderToStaticMarkup(<FooterStatus text="Connected. Changes save automatically."/>)).toBe("<span>Connected. Changes save automatically.</span>");
   });
 });

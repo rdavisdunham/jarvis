@@ -101,7 +101,7 @@ def test_the_model_call_is_the_extraction_helper_on_its_own_cost_line(monkeypatc
     assert text == "Adding the parity test" and "latency_ms" in meta
     assert seen == {"feature": "agent_summaries", "model": EXTRACTION_MODEL, "path": "chat/completions",
                     "allowance": 0.01}
-    assert LABELS["agent_summaries"] == "Agent run summaries" and "agent_control" in LABELS
+    assert LABELS["agent_summaries"] == "Run summaries (Eridani)" and "agent_control" in LABELS
     monkeypatch.setattr(memory_learning, "extraction_request",
                         lambda *a, **k: {"choices": [{"message": {"refusal": "no"}}], "usage": {}})
     with pytest.raises(summaries.NoSummary) as caught:

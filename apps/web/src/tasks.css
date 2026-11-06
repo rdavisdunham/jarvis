@@ -686,6 +686,14 @@ button.row-title:hover {
 .work-page .timeline-bar.done {
   opacity: 0.45;
 }
+/* Overdue: the bar runs on to today in the overdue color; a square left edge means it began before this range. */
+.work-page .timeline-bar.overdue {
+  background: repeating-linear-gradient(135deg, var(--due-overdue) 0 6px, color-mix(in srgb, var(--due-overdue) 72%, var(--surface)) 6px 12px);
+}
+.work-page .timeline-bar.clipped {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
 .work-timeline-today {
   position: absolute;
   top: 2px;

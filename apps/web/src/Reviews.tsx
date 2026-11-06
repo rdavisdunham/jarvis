@@ -4,6 +4,7 @@ import { api, command } from "./api";
 import { Prop } from "./RecordCard";
 import { useStructureActions } from "./structure-actions";
 import { useUndoToast } from "./undo-toast";
+import { HomePathChip, homePathText } from "./HomePath";
 import type { CustomRecord, SchemaType } from "./structure-types";
 import { REVIEW_GLYPH, REVIEW_INTERVALS, localDay, reviewLabels, reviewOf, reviewPatch, type ReviewEvery, type ReviewFields } from "./review-model";
 import "./reviews.css";
@@ -117,7 +118,7 @@ export function ReviewQuestion({ q, onChanged, onMark }: { q: ReviewQuestionData
     <div className="review-question-facts">
       <span className="chip">{r.type_name}</span>
       <span className="chip">{r.every_label.charAt(0).toUpperCase() + r.every_label.slice(1)}</span>
-      {!!r.home.length && <span className="chip chip-home" title={r.home.map(h => h.title).join(" / ")}>{r.home.map(h => h.title).join(" / ")}</span>}
+      {!!r.home.length && <HomePathChip path={homePathText(r.home)}/>}
     </div>
     <p className="review-question-dates"><span>Last reviewed <strong className="tabular">{labels.last}</strong></span>
       <span>{q.status === "deferred" && q.deferred_until ? <>Snoozed until <strong className="tabular">{new Date(q.deferred_until).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</strong></> : <strong className="tabular">{labels.next}</strong>}</span></p>
