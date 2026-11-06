@@ -66,6 +66,26 @@ def visibility_rows(db, owner, *, archived=False, show_finished=False, status="a
     return eligible, visible, context
 
 
+def progress(eligible):
+    """Work done, open and total under each record, over all its descendants with finished work included
+    whatever the Atlas filter hides: the same definition (and so the same numbers) as Browse."""
+    from .record_contents import FINISHED, counts_as_work
+    out = defaultdict(lambda: [0, 0, 0])
+    for identity, r in eligible.items():
+        if not r[4] or not counts_as_work(archived=bool(r[3] or r[6]), status=r[5], template=bool(r[7])):
+            continue
+        done, open_ = r[5] == "completed", r[5] not in FINISHED
+        parent, seen = r[1], {identity}
+        while parent in eligible and parent not in seen:
+            seen.add(parent)
+            counts = out[parent]
+            counts[0] += done
+            counts[1] += open_
+            counts[2] += 1
+            parent = eligible[parent][1]
+    return out
+
+
 def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset(), archived=False, show_finished=False, status="all"):
     """Everything the Atlas needs to lay out the active workspace, capped at ``limit`` records.
 
@@ -80,6 +100,7 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset(), archived=False, sh
     from .record_reviews import cadence, is_due
     instant = now()
     eligible, visible, context = visibility_rows(db, owner, archived=archived, show_finished=show_finished, status=status)
+    work = progress(eligible)
     eligible = {identity: r for identity, r in eligible.items() if r[8] in types}
     visible &= eligible.keys()
     pairs = [(r[0], r[1], r[2] or 0) for r in eligible.values() if r[0] in visible or r[0] in context]
@@ -132,6 +153,7 @@ def skeleton(db, owner, *, limit=LIMIT, withhold=frozenset(), archived=False, sh
             "planned_date": task.planned_date.isoformat() if dated and task.planned_date else None,
             "review_due": row.id not in context and is_due(row, cadence(t), instant),
             "next_review_at": row.next_review_at.isoformat() if cadence(t) and row.next_review_at and not row.review_paused else None,
+            **dict(zip(("work_done", "work_open", "work_total"), work.get(row.id, (0, 0, 0)))),
         })
     behaviors = {r["id"]: r for r in schema.definition["relationships"]}
     links = []

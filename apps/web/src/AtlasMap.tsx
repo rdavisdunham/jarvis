@@ -1,6 +1,6 @@
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
-  chooseLabels, dueState, itemRadius, itemState, markKind, markName, project, visibleNodes,
+  chooseLabels, dueState, itemRadius, itemState, markKind, markName, progressLabel, project, visibleNodes,
   type AtlasIndex, type AtlasLayout, type AtlasLink, type PackedNode, type View,
 } from "./atlas-model";
 import { reviewLensDim } from "./review-model";
@@ -143,7 +143,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
       return <g key={"label-" + l.id} className="atlas-labels" aria-hidden="true">
         <text className={"atlas-label" + (l.kind === "item" ? " is-item" : "")} x={l.x} y={caption ? l.y - 2 : l.y} textAnchor="middle">{l.text}{n.record?.context_only?" ("+(n.record.archived?"archived":["completed","cancelled"].includes(n.record.status_meaning??"")?"finished":"ancestor")+" home)":""}</text>
         {caption && <text className="atlas-label is-caption" x={l.x} y={l.y + 12} textAnchor="middle">
-          <tspan>{index.types.get(n.record!.type_id)?.name}</tspan>{!!p?.total && <tspan dx="10">{p.done} of {p.total} done</tspan>}
+          <tspan>{index.types.get(n.record!.type_id)?.name}</tspan>{!!p?.total && <tspan dx="10">{progressLabel(p)}</tspan>}
         </text>}
       </g>;
     })}

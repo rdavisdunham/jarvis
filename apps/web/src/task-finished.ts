@@ -3,6 +3,8 @@ import type { CalendarEntry, Task } from "./types";
 import { localDateTime } from "./workspace";
 
 export const isFinishedTask = (task: Pick<Task, "status">) => ["completed", "cancelled"].includes(task.status);
+/** A finish a sync wrote (a Linear issue closed there, set by linear_sync.apply_remote), not one made in Eridani. */
+export const finishedBySync = (task: Pick<Task, "external">) => !!task.external?.finished_via;
 export function finishedToday(tasks: Task[], today: string, zone: string) {
   return tasks.filter(task => {
     const at = task.finished_at ?? (task.status === "completed" ? task.completed_at : null);

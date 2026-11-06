@@ -51,6 +51,8 @@ export interface Task {
     sync_state?: string;
     job_id?: string;
     held_remote_state?: HeldRemoteState | null;
+    /** Set when a sync (Linear) finished the task rather than a change made in Eridani. */
+    finished_via?: string | null;
   };
 }
 export interface Project {
