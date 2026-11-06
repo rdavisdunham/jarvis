@@ -528,6 +528,9 @@ def main():
 
     settings = get_settings()
     validate_deployment(settings)
+    from .observability import init_sentry
+
+    init_sentry("worker")
     stop = stop_event()
     logging.basicConfig(level=logging.INFO)
     if not settings.worker_enabled:

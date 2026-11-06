@@ -103,6 +103,10 @@ class Settings(BaseSettings):
     # "split": action pass + per-chunk detect/enrich/verify; "combined": one whole-meeting call for facts and
     # follow-ups, then one verify call (an experiment; context/native/extract.py).
     context_extraction_mode: Literal["split", "combined"] = "split"
+    # Error reporting (observability.py). Off unless set. The API and worker report to JARVIS_SENTRY_DSN; the
+    # browser app reads JARVIS_SENTRY_WEB_DSN from /bootstrap, and the CSP allows its ingest host only when set.
+    sentry_dsn: str = ""
+    sentry_web_dsn: str = ""
 
     @property
     def secure_cookie(self):
