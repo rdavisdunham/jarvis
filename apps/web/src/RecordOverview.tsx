@@ -20,7 +20,8 @@ export type OverviewData = {
   last_error: { kind: string } | null; has_seed: boolean;
 };
 
-const LISTS: (keyof Sections)[] = ["scope_and_themes", "vocabulary", "people", "recent_changes", "open_questions"];
+type ListName = Exclude<keyof Sections, "what_it_is">;
+const LISTS: ListName[] = ["scope_and_themes", "vocabulary", "people", "recent_changes", "open_questions"];
 const POLL_MS = 5000, POLL_FOR_MS = 3 * 60 * 1000;
 
 const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
