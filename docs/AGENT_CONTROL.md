@@ -428,9 +428,9 @@ checks on the host. When remotea adds a probe command, this route is where it is
 
 **Host self-check (remotea doctor, S-Q1).** Under each host, Settings → Connections → remotea and the readiness
 view show a **Host self-check** block (`RemoteaSetup.tsx` `HostSelfCheck`, `remotea-setup.ts` `selfCheck`): the
-counts ("2 failing · 1 warning · 30 ok", or "All 30 checks ok"), the report's age ("checked 5m ago", from the
-summary's `at`), and each warn and fail line with its fix and check id, fails first; "More findings than shown"
-when the host cut the list. A host that advertises `doctor` but has sent nothing yet reads "Not reported yet"; a
+counts ("2 failing · 1 warning · 30 ok", or "All 30 checks ok") and the report's age ("checked 5m ago", from the
+summary's `at`) as a collapsed disclosure that opens to each warn and fail line with its fix and check id, fails
+first; "More findings than shown" when the host cut the list. A host that advertises `doctor` but has sent nothing yet reads "Not reported yet"; a
 host without the cap reads "unknown (host too old)". The data is the host's `doctor` on `GET /remotea/setup` and
 `GET /remotea/status` (the `doctor` frame row under [Frames](#frames)). Self-check findings are shown, not turned
 into setup problems: they do not change a host's or target's readiness. Dani's `control_status` adds a
@@ -882,7 +882,7 @@ header's verify line says when the chosen (or an offered) command is not ready o
 When the preflight shows something the guided setup view fixes (`remotea-model.ts` `setupReason`: a target to
 choose, a problem in `SETUP_PROBLEMS` such as `HOST_OFFLINE`, `HARNESS_UNAVAILABLE`, `MCP_UNCONFIGURED`,
 `VERIFY_NOT_READY` or `TARGET_NOT_READY`, or the picked agent ruled out for the target), the dialog adds **Open
-remotea setup** (its tooltip is the problem): it closes the dialog, opens Settings → Connections and scrolls to the
+remotea setup** (its tooltip is the problem): it closes the dialog, opens Settings → Connections → remotea and scrolls to the
 readiness view ([Setup readiness](#setup-readiness-e-q1), `remotea-setup.ts` `revealSetup`).
 
 ### Commands

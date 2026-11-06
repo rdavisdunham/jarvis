@@ -6,6 +6,8 @@ import { VoiceDrafts } from "./VoiceDrafts";
 import { useAppHistory } from "./app-history";
 import { SettingsLayout, SettingsGroup, SettingRow } from "./SettingsLayout";
 import { readSettingsSection, type SettingsSection } from "./settings-sections";
+import { readConnectionTab, type ConnectionTab } from "./connection-tabs";
+import { ConnectionsSettings } from "./ConnectionsSettings";
 import "./shell.css";
 import { NoticeSnooze } from "./NoticeSnooze";
 import { StructureWorkspace } from "./Structure";
@@ -243,6 +245,7 @@ export default function App() {
     if (section) return readSettingsSection(section);
     return params.has("sharing") ? "sharing" : params.has("google") ? "integrations" : "profile";
   });
+  const [connectionTab, setConnectionTab] = useState<ConnectionTab>(() => readConnectionTab(new URLSearchParams(location.search)));
   const [density, setDensity] = useState<"compact" | "comfortable">(() =>
     localStorage.getItem("eri-density") === "comfortable"
       ? "comfortable"
@@ -1306,6 +1309,8 @@ export default function App() {
       const target = action.view ?? "all";
       if (target === "settings") {
         const phrase = (action.query ?? "").toLowerCase();
+        if (/linear/.test(phrase)) setConnectionTab("linear");
+        else if (/google|calendar/.test(phrase)) setConnectionTab("google");
         setSettingsSection(
           /shar|invit|member|account|permission/.test(phrase)
             ? "sharing"
@@ -2072,12 +2077,13 @@ export default function App() {
     previousLayer.current = {record, structure};
   }, [editors.summary?.kind, editors.summary?.record_id, collectionContext.design]);
   const detailKey = (detail: typeof editors.summary) => detail ? `${detail.kind}:${detail.record_id ?? "new"}:${detail.mode}` : "";
-  const navigation = {view, settingsSection, query, savedViewState, collectionContext, calendarMode, calendarDay,
+  const navigation = {view, settingsSection, connectionTab, query, savedViewState, collectionContext, calendarMode, calendarDay,
     noteListId, notesMode, showArchived, todayList, companion, activityOpen, sidebar, searchOpen, detail: editors.summary, runPanel: remotea.panel.run, meetingSource, personActor,
     selected, reminder, scheduleEditor, noteEditor, googleEvent, calendarDetail, bulkEditor, editingMemory, organizationEditor};
   const navigationUrl = isTaskTab(view) && !dashboard ? viewLink(savedViewState) : new URL(location.href);
   if (!isTaskTab(view) || dashboard) {navigationUrl.searchParams.set("view", view); navigationUrl.searchParams.delete("tab"); navigationUrl.searchParams.delete("state");}
   if (view === "settings") navigationUrl.searchParams.set("section", settingsSection); else navigationUrl.searchParams.delete("section");
+  if (view === "settings" && settingsSection === "integrations") navigationUrl.searchParams.set("connection", connectionTab); else navigationUrl.searchParams.delete("connection");
   if (editors.summary?.record_id && ["record", "task", "note", "project", "goal", "area", "space", "actor"].includes(editors.summary.kind)) {
     navigationUrl.searchParams.set("record", editors.summary.kind + ":" + editors.summary.record_id);
     navigationUrl.searchParams.set("workspace", boot?.workspace?.id ?? "personal");
@@ -2097,7 +2103,7 @@ export default function App() {
     if (boot) recordNavigation(view, remotea.panel.run, navigationUrl.pathname + navigationUrl.search);
   }, [!!boot, view, remotea.panel.run, openRecord, meetingSource, personActor]);
   useAppHistory({enabled: !!boot && !loading, snapshot: navigation,
-    page: view + (view === "settings" ? ":" + settingsSection : view === "notes" ? ":" + noteListId : view === "organize" ? ":" + String(collectionContext.parent_id??"") + ":" + String(collectionContext.layout??"browse") + ":" + String(collectionContext.section??"groups") : view === "meetings" ? ":" + (meetingSource ?? "") : view === "person" ? ":" + (personActor ?? "") : ""),
+    page: view + (view === "settings" ? ":" + settingsSection + (settingsSection === "integrations" ? ":" + connectionTab : "") : view === "notes" ? ":" + noteListId : view === "organize" ? ":" + String(collectionContext.parent_id??"") + ":" + String(collectionContext.layout??"browse") + ":" + String(collectionContext.section??"groups") : view === "meetings" ? ":" + (meetingSource ?? "") : view === "person" ? ":" + (personActor ?? "") : ""),
     layers: [sidebar ? "navigation" : "", searchOpen ? "search" : "", companion ? "chat" : "", activityOpen ? "activity" : "", remotea.panel.run ? "run:" + remotea.panel.run : "", collectionContext.design ? "structure" : "", detailKey(editors.summary)].filter(Boolean),
     url: navigationUrl.href, onError: setError,
     restore: async target => {
@@ -2108,7 +2114,7 @@ export default function App() {
       if (detailChanged && editors.current()) await editors.act({operation: "close"});
       if (isTaskTab(target.view)) applySavedView(target.savedViewState); else setView(target.view);
       setTodayList(target.todayList);
-      setQuery(target.query); setSettingsSection(target.settingsSection); setCalendarMode(target.calendarMode);
+      setQuery(target.query); setSettingsSection(target.settingsSection); setConnectionTab(target.connectionTab ?? "agents"); setCalendarMode(target.calendarMode);
       setCalendarDay(target.calendarDay); setNotesMode(target.notesMode); setNoteListId(target.noteListId); setShowArchived(target.showArchived);
       setCompanion(target.companion); setActivityOpen(target.activityOpen); setSidebar(target.sidebar); setSearchOpen(target.searchOpen);
       setMeetingSource(target.meetingSource); setPersonActor(target.personActor);
@@ -3017,19 +3023,20 @@ export default function App() {
                       <button type="button" onClick={()=>{if(coordinator.current)void coordinator.current.enable(true,true);else location.reload();}}>Retry wake</button>}
                   </SettingsGroup>
                 )}
-                {settingsSection === "integrations" && <BotSettings canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} key={boot.workspace?.id ?? boot.account_id} workspace={boot.workspace?.name ?? "Personal"} readOnly={boot.workspace?.role === "viewer"}/>}
-                {settingsSection === "integrations" && <RemoteaSettings key={"remotea-" + (boot.workspace?.id ?? boot.account_id)} readOnly={boot.workspace?.role === "viewer"}
-                  onChanged={() => { void api<Bootstrap>("/bootstrap").then(setBoot); }}/>}
-                {settingsSection === "integrations" && !boot.workspace?.id && (
-                  <>
-                    <LinearSettings revision={noteRevision} mutate={mutate} onOpenTask={id => void openNoteTask(id)} />
-                    <GoogleSettings
+                {settingsSection === "integrations" && <ConnectionsSettings key={boot.workspace?.id ?? boot.account_id}
+                  tab={connectionTab} onTab={setConnectionTab} meetings={!boot.workspace?.id && meetingsOn} panels={{
+                  agents: <BotSettings canDesign={!boot.workspace?.id||boot.workspace?.role==="owner"} key={boot.workspace?.id ?? boot.account_id} workspace={boot.workspace?.name ?? "Personal"} readOnly={boot.workspace?.role === "viewer"}/>,
+                  remotea: <RemoteaSettings key={"remotea-" + (boot.workspace?.id ?? boot.account_id)} readOnly={boot.workspace?.role === "viewer"}
+                    onChanged={() => { void api<Bootstrap>("/bootstrap").then(setBoot); }}/>,
+                  ...(!boot.workspace?.id ? {
+                    linear: <LinearSettings revision={noteRevision} mutate={mutate} onOpenTask={id => void openNoteTask(id)} />,
+                    google: <GoogleSettings
                       revision={noteRevision}
                       voiceActive={!!voiceState && !voiceState.closed}
                       mutate={mutate}
-                    />
-                  </>
-                )}
+                    />,
+                  } : {}),
+                }}/>}
                 {settingsSection !== "sharing" && !boot.workspace?.id && (
                   <SettingsPanel
                     section={settingsSection}
@@ -3269,7 +3276,7 @@ export default function App() {
       {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
       {remotea.start && <Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
         onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}
-        onSetup={() => { remoteaActions.closeStart(); setView("settings"); setSettingsSection("integrations"); revealSetup(); }}/></Suspense>}
+        onSetup={() => { remoteaActions.closeStart(); setView("settings"); setSettingsSection("integrations"); setConnectionTab("remotea"); revealSetup(); }}/></Suspense>}
       {remotea.swarm && <Suspense fallback={null}><SwarmDialog taskId={remotea.swarm} onClose={remoteaActions.closeSwarm}
         onOpenRun={remoteaActions.openRun} onRunProject={() => { const id = remotea.swarm!; remoteaActions.closeSwarm(); remoteaActions.openStart(id); }}/></Suspense>}
       <div className="tabbar" role="navigation" aria-label="Phone navigation">
@@ -3543,6 +3550,7 @@ export default function App() {
             setGoogleEvent(null);
             setView("settings");
             setSettingsSection("integrations");
+            setConnectionTab("google");
           }}
           onSaved={(keepOpen) => {
             if (!keepOpen) setGoogleEvent(null);

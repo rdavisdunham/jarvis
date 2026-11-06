@@ -2,7 +2,7 @@
 
 ## Create a connection
 
-Open **Settings → Connections → Connected agents** in the intended workspace. Add an agent, choose its permissions and expiration, and copy the key once. It is stored only as a hash; losing it requires a new key. Revoke obsolete keys in the same panel.
+Open **Settings → Connections → Agent keys** in the intended workspace. Add an agent, choose its permissions and expiration, and copy the key once. It is stored only as a hash; losing it requires a new key. Revoke obsolete keys in the same panel; revoked and expired keys fold into a closed list below the active ones.
 
 Each key is tied to one workspace and the account that created it. Switching the browser workspace does not move the key. A shared-workspace membership downgrade limits writes immediately; leaving or being removed ends access. Workspace owners can revoke keys in that workspace; other members manage their own keys.
 
@@ -207,7 +207,7 @@ a new revision, `metadata` when only display details changed, `none` for an iden
 the meeting was deleted and this content is not new) and `processing_status`. Repeating a delivery is safe; the
 client keeps its own watermark. Bodies over the limit are `SOURCE_TOO_LARGE` (413); malformed files are refused
 with the problem and its location, never echoing content. `scripts/bridge_submit.py` submits a folder of exports
-this way. Limits and the endpoint are shown in Settings → Connections → Meeting sources.
+this way. Limits and the endpoint are shown in Settings → Connections → Meetings.
 
 Source reads: `GET /sources?status=&limit=&offset=` and `GET /sources/{id}` need `context:read`;
 `DELETE /sources/{id}` needs `context:write` and removes the meeting's content from every read at once (a purge job
