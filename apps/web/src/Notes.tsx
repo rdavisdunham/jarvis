@@ -300,7 +300,8 @@ export function NotesPage({
           )}
         </div>
       )}
-      {loading && (
+      {/* Refreshes and "Load more" keep the cards drawn; only an empty first load says so. */}
+      {loading && !items.length && (
         <p role="status" className="notes-status">
           Loading notes…
         </p>
@@ -316,7 +317,7 @@ export function NotesPage({
           {hint}
         </p>
       )}
-      <div className="note-grid">
+      <div className="note-grid" aria-busy={loading || undefined}>
         {items.map((n) => {
           const home = projects.find((p) => p.id === n.project_id)?.name;
           const preview = notePreview(n);
