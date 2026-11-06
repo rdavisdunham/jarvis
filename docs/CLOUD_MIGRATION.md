@@ -91,6 +91,16 @@ WEB_CONCURRENCY=1
 
 Do not set `JARVIS_OWNER_TOKEN` in cloud services. The public sign-in route is Google. API may set `FORWARDED_ALLOW_IPS=*` only while all inbound HTTP traffic enters through Railway's trusted HTTP proxy; do not expose a separate raw TCP route to that API. Railway supplies `PORT`.
 
+Sign-in rate limits (pairing login and Google sign-in start) key on the browser's address from `jarvis/client_ip.py`, not on uvicorn's rewritten client: with `FORWARDED_ALLOW_IPS=*` uvicorn takes the leftmost `X-Forwarded-For` entry, which the browser writes itself. The limiter instead takes the rightmost entry (the address Railway's edge saw); when that is a Cloudflare edge it uses `CF-Connecting-IP`, which Cloudflare overwrites. `CF-Connecting-IP` on a request that did not come from a Cloudflare range is ignored, so a request sent straight to Railway cannot pick its own bucket. With a specific `FORWARDED_ALLOW_IPS` list, the peer uvicorn resolves is used the same way.
+
+Error reporting (optional, off unless set; see `jarvis/observability.py` and `apps/web/src/monitoring.ts`):
+
+- `JARVIS_SENTRY_DSN` on API and worker: server errors and worker failures (`logger.exception`). Errors only, no tracing. Reports leave out cookies, headers, CSRF tokens, query strings, request bodies and stack-frame variables.
+- `JARVIS_SENTRY_WEB_DSN` on API: the browser app's DSN, served to signed-in pages by `/bootstrap`. The page CSP adds that DSN's ingest host to `connect-src` only while it is set. Use a separate Sentry project from the server one if you want the two apart.
+- `VITE_SENTRY_DSN` (build-time, optional): the same browser DSN baked into the build so errors before sign-in are reported too. Railway passes it to the Docker build (`Dockerfile.upgrade` declares the ARG). The CSP still needs `JARVIS_SENTRY_WEB_DSN` set to the same value, or the browser cannot send.
+
+The page CSP allows the Cloudflare Web Analytics beacon (`static.cloudflareinsights.com` script, `cloudflareinsights.com` connect) that the proxied zone injects.
+
 Staging startup enforces both pause flags. The worker parks without starting DBOS; chat, voice, Calendar/Linear clients and linking are blocked from external effects. Google login remains available for checking access. Model and push credentials are cleared in memory while external services are paused. Edits may still change the staging database or queue work, so discard the rehearsal database and restore afresh before cutover.
 
 For deliberately enabled controlled integration tests, use a separate synthetic environment labeled `production`, with test accounts and records. Do not enable a worker on a restored personal database while the original worker is active.

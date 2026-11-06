@@ -103,10 +103,12 @@ function detailRows(context: BugContext, screenshot: boolean, shot: Shot) {
   ] as const;
 }
 
-export function BugReportDialog({ shot, context, onClose, onSent }: {
+export function BugReportDialog({ shot, context, onClose, onSent, initialDescription = "" }: {
   shot: Shot; context: BugContext; onClose: () => void; onSent: (result: BugReportResult) => void;
+  /** Prefilled by the crash notice (ErrorBoundary.tsx). */
+  initialDescription?: string;
 }) {
-  const [description, setDescription] = useState(""), [expected, setExpected] = useState("");
+  const [description, setDescription] = useState(initialDescription), [expected, setExpected] = useState("");
   const [include, setInclude] = useState(!!shot.url), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const close = () => { if (!busy) onClose(); };
   async function send() {

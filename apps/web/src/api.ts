@@ -1,4 +1,5 @@
 import { recordRequest } from "./bug-report";
+import { reportReachable, reportUnreachable } from "./connectivity";
 let csrf = "";
 let device = "";
 let persistenceScope: string | null = null;
@@ -26,10 +27,18 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public data?: unknown,
+    /** HTTP status; 0 when no response arrived. */
+    public status = 0,
   ) {
     super(message);
   }
 }
+/** The API or the network is down (no answer, a proxy page, or a 5xx): retry, don't sign out. */
+export function isOutage(error: unknown) {
+  return error instanceof ApiError && (error.code === "NETWORK" || error.status >= 500);
+}
+/** Fired when a signed-in request gets a 401: the session expired or was signed out elsewhere. */
+export const SESSION_EXPIRED = "eri-session-expired";
 export async function api<T>(
   url: string,
   options: RequestInit = {},
@@ -55,6 +64,7 @@ export async function api<T>(
     });
   } catch {
     note(0, "NETWORK");
+    reportUnreachable();
     throw new ApiError(
       "NETWORK",
       "Connection lost. Your request may have saved. Retry the same request to check.",
@@ -65,11 +75,17 @@ export async function api<T>(
     value = await response.json();
   } catch {
     note(response.status, "BAD_RESPONSE");
+    // A proxy or error page instead of the API: the same as no answer.
+    reportUnreachable();
     throw new ApiError(
       "NETWORK",
       "Eridani is reconnecting. Retry the same request to check whether it saved.",
+      undefined,
+      response.status,
     );
   }
+  if (response.status >= 500) reportUnreachable();
+  else reportReachable();
   note(response.status, response.ok ? undefined : value?.error?.code ?? "ERROR");
   if (
     !response.ok &&
@@ -81,6 +97,9 @@ export async function api<T>(
     );
   }
   if (!response.ok && value.error?.code === "NOT_AUTHORIZED") setDurableScope(null);
+  // A wrong pairing code is also a 401; any other 401 means the session is gone.
+  if (response.status === 401 && value.error?.code === "NOT_AUTHORIZED" && url !== "/auth/login")
+    window.dispatchEvent(new CustomEvent(SESSION_EXPIRED));
   if (!response.ok)
     throw new ApiError(
       value.error?.code ?? "ERROR",
@@ -88,6 +107,7 @@ export async function api<T>(
         value.detail?.[0]?.msg ??
         "Something went wrong. Please try again.",
       value.error?.data,
+      response.status,
     );
   if (url === "/bootstrap" && typeof value.account_id === "string") setDurableScope(value.account_id + ":" + (value.workspace?.id ?? "personal"));
   return value as T;

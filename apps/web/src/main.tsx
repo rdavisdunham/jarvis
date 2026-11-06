@@ -4,6 +4,8 @@ import "@fontsource-variable/outfit";
 import { PublicPages } from "./PublicPages";
 import { applyTheme, watchSystemTheme } from "./theme";
 import { installDiagnostics } from "./bug-report";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { buildTimeDsn, startMonitoring } from "./monitoring";
 import "./theme.css";
 import "./public.css";
 import "./style.css";
@@ -15,9 +17,13 @@ const PlannerApp = lazy(() => import("./PlannerApp"));
 const publicPage = ["/welcome", "/privacy", "/terms", "/support"].includes(location.pathname) || ["eridani.app", "www.eridani.app"].includes(location.hostname);
 // Report a bug's console, error and request buffers start with the app (bug-report.ts).
 if (!publicPage) installDiagnostics();
+// Error reporting is off unless a DSN is configured (monitoring.ts); /bootstrap may supply one later.
+if (!publicPage) void startMonitoring(buildTimeDsn());
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {publicPage ? <PublicPages/> : <Suspense fallback={<div className="splash">Opening Eridani…</div>}><PlannerApp/></Suspense>}
+    <ErrorBoundary name="app" scope="app">
+      {publicPage ? <PublicPages/> : <Suspense fallback={<div className="splash">Opening Eridani…</div>}><PlannerApp/></Suspense>}
+    </ErrorBoundary>
   </React.StrictMode>,
 );
 if (!publicPage && "serviceWorker" in navigator)

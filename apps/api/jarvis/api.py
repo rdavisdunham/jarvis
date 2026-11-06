@@ -20,9 +20,11 @@ from starlette.routing import Route
 
 from . import agent_models, budget
 from .auth import Identity, authenticate, digest, sign_in
+from .client_ip import client_ip
 from .config import get_settings
 from .db import session_scope
 from .latency import mark
+from .observability import content_security_policy, init_sentry
 from .domain import DomainError, execute, owned, preferences, serial
 from .google_routes import router as google_router
 from .memory_service import semantic_search
@@ -76,6 +78,8 @@ async def lifespan(app):
         from .live_http import close as close_live_http
         await close_live_http()
 
+# Before the app exists so Sentry's FastAPI integration wraps it; a no-op unless JARVIS_SENTRY_DSN is set.
+init_sentry("api")
 app = FastAPI(title="Jarvis", version="1.0.0", lifespan=lifespan)
 app.include_router(google_router)
 from .saved_views import router as saved_views_router
@@ -198,9 +202,7 @@ async def security(request, call_next):
     # Stage F, L9: browsers only reach the app over HTTPS once they have seen it there.
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Permissions-Policy"] = "microphone=(self), camera=(), geolocation=()"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://api.openai.com wss://api.openai.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'"
-    )
+    response.headers["Content-Security-Policy"] = content_security_policy(settings)
     if request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     return response
@@ -258,7 +260,7 @@ def ready():
 
 @app.post("/api/v1/auth/login")
 def login(body: Login, request: Request):
-    key = request.client.host if request.client else "unknown"
+    key = client_ip(request)
     attempts = login_attempts[key]
     clock = time.monotonic()
     while attempts and attempts[0] < clock - 60:
@@ -320,6 +322,8 @@ def bootstrap(user: User):
             "agent_options": [m.public() for m in agent_models.catalog().values()],
             "csrf": user.csrf,
             "device_id": user.device_id,
+            # Browser error reporting (observability.py); null keeps it off.
+            "sentry_dsn": settings.sentry_web_dsn.strip() or None,
             "preferences": prefs,
             "budget": budget.summary(db, user.owner_id),
             "capabilities": {

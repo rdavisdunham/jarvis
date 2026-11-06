@@ -1,4 +1,5 @@
 // Server change feed (SSE) plus the coalesced workspace loader that consumes it.
+import { SESSION_EXPIRED } from "./api";
 
 export type EventSignal =
   | { reason: "event"; id: number | null; kind: string; entity_id?: string }
@@ -20,11 +21,31 @@ function setOnline(online: boolean) {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("eri-events-status", { detail: online }));
 }
 
+/**
+ * The HTTP status the change feed answers with, or null when nothing answered. EventSource hides the
+ * status of a refused stream, so a closed stream is re-requested once to tell a 401 from an outage.
+ */
+export async function probeEventStatus(url: string): Promise<number | null> {
+  const controller = new AbortController();
+  try {
+    const response = await fetch(url, { credentials: "same-origin", cache: "no-store", signal: controller.signal });
+    return response.status;
+  } catch {
+    return null;
+  } finally {
+    controller.abort(); // A 200 is a live stream; only its status was needed.
+  }
+}
+
+const CLOSED = 2; // EventSource.CLOSED: the browser refused the response and will not retry by itself.
+
 // Explicit retries also recover from HTTP errors for which EventSource stops retrying.
+// A 401 ends the session instead (api.ts SESSION_EXPIRED): retrying a signed-out stream never succeeds.
 export function subscribeEvents(
   after: number,
   refresh: (signal: EventSignal) => void,
   connection: (online: boolean) => void,
+  probe: (url: string) => Promise<number | null> = probeEventStatus,
 ) {
   let cursor = after;
   let stopped = false;
@@ -38,18 +59,29 @@ export function subscribeEvents(
   };
   const connect = () => {
     if (stopped) return;
-    const current = new EventSource("/api/v1/events?after=" + cursor);
+    const url = "/api/v1/events?after=" + cursor;
+    const current = new EventSource(url);
     stream = current;
     const active = () => !stopped && stream === current;
+    const retry = () => {
+      timer = setTimeout(connect, delay);
+      delay = Math.min(delay * 2, 15000);
+    };
     const fail = () => {
       if (!active()) return;
+      const refused = current.readyState === CLOSED;
       if (silence) clearTimeout(silence);
       silence = null;
       current.close();
       stream = null;
       report(false);
-      timer = setTimeout(connect, delay);
-      delay = Math.min(delay * 2, 15000);
+      if (!refused) return retry();
+      void probe(url).then((status) => {
+        if (stopped) return;
+        if (status !== 401) return retry();
+        stopped = true;
+        window.dispatchEvent(new CustomEvent(SESSION_EXPIRED));
+      });
     };
     const heard = () => {
       if (silence) clearTimeout(silence);

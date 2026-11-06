@@ -221,6 +221,8 @@ export interface Bootstrap {
   agent_model: string;
   name: string;
   csrf: string;
+  /** Browser error-reporting DSN (JARVIS_SENTRY_WEB_DSN); null keeps reporting off. */
+  sentry_dsn?: string | null;
   device_id: string;
   preferences: Preferences;
   budget:

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .auth import Identity, authenticate, digest
+from .client_ip import client_ip
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, parse_when
@@ -62,7 +63,7 @@ def options():
 
 @router.post("/api/v1/auth/google/start")
 def start(body: Start, request: Request):
-    key = request.client.host if request.client else "unknown"
+    key = client_ip(request)
     attempts, clock = oauth_attempts[key], time.monotonic()
     while attempts and attempts[0] < clock - 60:
         attempts.popleft()

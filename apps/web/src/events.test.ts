@@ -6,11 +6,51 @@ class Stream {
   onerror?: () => void;
   onmessage?: (event: { lastEventId: string }) => void;
   close = vi.fn();
+  readyState = 0;
   addEventListener() {}
   constructor(public url: string) {
     Stream.all.push(this);
   }
 }
+test("a stream refused with 401 stops retrying and ends the session", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("EventSource", Stream);
+  const target = new EventTarget(), expired = vi.fn();
+  target.addEventListener("eri-session-expired", expired);
+  vi.stubGlobal("window", target);
+  const probe = vi.fn(async () => 401), online = vi.fn();
+  const stop = subscribeEvents(5, vi.fn(), online, probe);
+  Stream.all[0].readyState = 2; // the browser refused the response
+  Stream.all[0].onerror?.();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(probe).toHaveBeenCalledWith("/api/v1/events?after=5");
+  expect(expired).toHaveBeenCalledOnce();
+  expect(Stream.all).toHaveLength(1);
+  expect(online).toHaveBeenLastCalledWith(false);
+  stop();
+});
+test("a refused stream that is not a 401 (outage, 502) keeps retrying with backoff", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("EventSource", Stream);
+  vi.stubGlobal("window", new EventTarget());
+  const statuses = [null, 502];
+  const probe = vi.fn(async () => statuses.shift() ?? null);
+  const stop = subscribeEvents(0, vi.fn(), vi.fn(), probe);
+  Stream.all[0].readyState = 2;
+  Stream.all[0].onerror?.();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(Stream.all).toHaveLength(2);
+  Stream.all[1].readyState = 2;
+  Stream.all[1].onerror?.();
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(Stream.all).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(Stream.all).toHaveLength(3);
+  // A dropped connection the browser is still retrying needs no probe.
+  Stream.all[2].onerror?.();
+  expect(probe).toHaveBeenCalledTimes(2);
+  stop();
+});
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();

@@ -102,7 +102,11 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
-import { api, ApiError, command, post, setCsrf, setDevice } from "./api";
+import { api, ApiError, command, isOutage, post, SESSION_EXPIRED, setCsrf, setDevice } from "./api";
+import { backoff } from "./connectivity";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { startMonitoring } from "./monitoring";
+import { OutageBanner, OutageScreen, useReachable } from "./Outage";
 import { Voice, type VoiceState } from "./voice";
 import { bridgeInterval, createLoader, signalScope, subscribeEvents } from "./events";
 import {
@@ -256,6 +260,10 @@ export default function App() {
   }, [density]);
   const [boot, setBoot] = useState<Bootstrap | null>(null),
     [loading, setLoading] = useState(true);
+  // The first load could not reach the API (network or 5xx): show "Can't reach Eridani", not sign-in.
+  const [bootOutage, setBootOutage] = useState(false);
+  const bootFailures = useRef(0);
+  const reachable = useReachable();
   const [view, setView] = useState<View>(
     () => initialSavedView?.tab ?? initialView(location.search),
   );
@@ -599,6 +607,26 @@ export default function App() {
     window.addEventListener("eri-access-ended", recover);
     return () => window.removeEventListener("eri-access-ended", recover);
   }, []);
+  // A 401 while signed in (api.ts, or the change feed in events.ts): the session expired or was ended
+  // elsewhere. Go to sign-in with the reason once, instead of a red banner on every action.
+  const signedIn = useRef(false);
+  signedIn.current = !!boot;
+  useEffect(() => {
+    const expired = () => {
+      if (!signedIn.current || workspaceSwitching.current) return;
+      signedIn.current = false;
+      void voice.current?.stop();
+      setTasks([]);
+      setProjects([]);
+      setMemories([]);
+      setMessages([]);
+      setCalendarDetail(null);
+      setBoot(null);
+      setError("Your session ended. Sign in again to continue.");
+    };
+    window.addEventListener(SESSION_EXPIRED, expired);
+    return () => window.removeEventListener(SESSION_EXPIRED, expired);
+  }, []);
   const searchRef = useRef<HTMLInputElement>(null),
     messageEnd = useRef<HTMLDivElement>(null);
   // One coalesced, single-flight loader for the workspace snapshot (see events.ts).
@@ -688,9 +716,19 @@ export default function App() {
       }
       await load();
       setError("");
+      bootFailures.current = 0;
+      setBootOutage(false);
+      void startMonitoring(info.sentry_dsn);
     } catch (e) {
-      if (!(e instanceof ApiError && e.code === "NOT_AUTHORIZED"))
-        setError((e as Error).message);
+      if (isOutage(e)) {
+        // Not a sign-out: keep the session and retry once the API answers (effect below).
+        bootFailures.current += 1;
+        setBootOutage(true);
+      } else {
+        setBootOutage(false);
+        if (!(e instanceof ApiError && e.code === "NOT_AUTHORIZED"))
+          setError((e as Error).message);
+      }
       setBoot(null);
     } finally {
       setLoading(false);
@@ -702,6 +740,20 @@ export default function App() {
       void voice.current?.stop();
     };
   }, [initialize]);
+  // connectivity.ts probes with backoff; when the API answers again, retry the first load (backing off
+  // further if the probe passes but the load keeps failing).
+  useEffect(() => {
+    if (!bootOutage || !reachable) return;
+    const timer = setTimeout(() => void initialize(), bootFailures.current > 1 ? backoff(bootFailures.current - 2) : 0);
+    return () => clearTimeout(timer);
+  }, [bootOutage, reachable, initialize]);
+  // Signed in through an outage: refresh what may have changed meanwhile once the API is back.
+  const wasReachable = useRef(true);
+  useEffect(() => {
+    const recovered = reachable && !wasReachable.current;
+    wasReachable.current = reachable;
+    if (recovered && boot) void load().catch(() => {});
+  }, [reachable]);
   useEffect(() => {
     if (!boot) return;
     // Warm the on-demand chunks once the first screen has settled.
@@ -2156,6 +2208,7 @@ export default function App() {
         <p>Opening Eridani…</p>
       </div>
     );
+  if (!boot && bootOutage) return <OutageScreen/>;
   if (!boot)
     return (
       <div className="login-page">
@@ -2549,6 +2602,7 @@ export default function App() {
             <NotificationBell unread={unread} current={view === "notifications"} onOpen={() => setView("notifications")}/>
           </div>
         </header>
+        <OutageBanner/>
         {linkWorkspace && <div className="error-banner" role="status"><span>This record link belongs to another workspace. Switch to open it; the link does not grant access.</span><button onClick={async () => {try {await post("/accounts/switch", {workspace_id:linkWorkspace === "personal" ? null : linkWorkspace});location.reload();} catch {setError("That workspace is unavailable to your account. Ask its owner for access.");}}}>Open linked workspace</button><button onClick={() => setLinkWorkspace(null)}>Dismiss</button></div>}
         {error && (
           <div className="error-banner" role="alert">
@@ -2569,6 +2623,8 @@ export default function App() {
         )}
         <div className={"workspace " + (mobile && companion ? "chat-sheet-open" : "")}>
           <main className={"content" + (view === "settings" ? " settings-page" : "")} inert={(mobile && companion) || panelSheet}>
+            {/* One crashing view leaves the shell, chat and other views working; switching views clears it. */}
+            <ErrorBoundary name={view} resetKey={view}>
             {!dashboard && view !== "calendar" && <div className="page-heading">
               <h1>{titles[view]}</h1>
             </div>}
@@ -3058,6 +3114,7 @@ export default function App() {
                 </SettingsLayout>
               </>
             )}
+            </ErrorBoundary>
             <footer className="page-footer">
               <Shield size={13} />
               <FooterStatus text={syncWarning || (!boot.capabilities.worker ? "Background work is paused" : activeWork ? `${activeWork} request${activeWork === 1 ? "" : "s"} in progress` : attentionWork ? "Dani has work that needs attention" : "Connected. Changes save automatically.")}
