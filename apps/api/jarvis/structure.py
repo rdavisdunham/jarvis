@@ -1283,6 +1283,9 @@ def mutate(db, owner, tool, args, command_id):
     )
     observe(db, row, command_id, human=human)
     remember_core(db, row)
+    if tool == "record.create":
+        from .placement import queue_for
+        queue_for(db, owner, row)  # Still unfiled after any rule: placement by meaning, in the background.
     emit(db, owner, "record.changed", row.id, row.revision)
     return data(db, row, schema)
 
@@ -1375,6 +1378,8 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
         result["record_id"] = row.id
         result["routing"] = choice
         db.flush()
+        from .placement import queue_for
+        queue_for(db, owner, row)  # Still unfiled after any rule: placement by meaning, in the background.
     remember_core(db, row)
     if kind == "task":
         result.update(serial(core))

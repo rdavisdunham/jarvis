@@ -1,7 +1,6 @@
 # Organization knowledge: living overviews for clients and projects
 
-Status: agreed with the owner on 2026-11-06. Phases 1 and 2 built on 2026-11-06 (see "Phase 1 as built" and
-"Phase 2 as built").
+Status: agreed with the owner on 2026-11-06. Phases 1–3 built on 2026-11-06 (see the "as built" sections).
 
 ## Goal
 
@@ -115,3 +114,28 @@ task list.
 - **Visible:** Planner preferences, Organization learning shows "N Linear placements" next to the human example
   counts.
 - **For phase 3:** `placements` is the labeled example set for placement by meaning.
+
+## Phase 3 as built
+
+`apps/api/jarvis/placement.py`, job `place_by_meaning`, cost feature `placement_by_meaning` ("Filing tasks by
+meaning (Eridani)").
+
+- **Trigger.** `record.create` and `task.create` call `placement.queue_for` after phrase rules have run. A job is
+  queued only when the task is still unfiled, open, and not a template, quick list, subtask or Linear issue (Linear
+  issues follow their mapping). Routing mode "off" and shared workspaces turn it off.
+- **Candidates.** Every active client and project the task may legally live under, with its path, its overview
+  (`record_overviews.for_prompt`), the owner's description, and up to 8 tasks filed there (owner-filed first,
+  through `routing.placements`).
+- **Shortlist.** With more than 6 candidates, one embeddings call scores the task against every candidate profile
+  and keeps the 6 closest. There are no stored vectors to drift.
+- **Decision.** Luna returns a candidate key or "none", a confidence (high, medium or low) and a reason, under a
+  strict schema. All copied text is data.
+- **Outcome.** Under a row lock, and only if the task is unchanged, still unfiled and the Home still valid:
+  - "high" in automatic routing mode files the task there (`provenance.meaning.filed`);
+  - otherwise the pick is a suggestion.
+  Neither is human evidence. Accepting a suggestion, or moving an automatically filed task, goes through the
+  normal paths and is human evidence.
+- **UI.** Under Main home on a task's card: "Looks like X: reason · File here", or "Filed here by meaning".
+  Quick Sort proposes the suggestion ("File … under …?"). A "no" asks openly instead of repeating it.
+- **Endpoint:** `GET /api/v1/structure/records/{id}/placement`.
+- **Not yet:** calibration on real filings. The confidence bar is the model's "high", not a measured precision.

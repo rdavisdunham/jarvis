@@ -103,6 +103,10 @@ def perform_job(job_id):
         from .record_overviews import process
 
         return process(job_id)
+    if kind == "place_by_meaning":
+        from .placement import process
+
+        return process(job_id)
     if kind == "embed_note":
         from .notes import index_note
 
@@ -174,7 +178,7 @@ def dispatch_outbox(client, after=None):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview"}
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview", "place_by_meaning"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
