@@ -1,69 +1,37 @@
-import { useEffect, useState } from "react";
-import { api } from "./api";
-type Hold = {
-  id: string;
-  model: string;
-  state: string;
-  bucket?: "reserved" | "unconfirmed";
-  historic?: boolean;
-  created_at: string;
-  recorded_usd: number;
-  held_usd: number;
-  reason: string;
-};
-export function BudgetHolds({ enforced = true }: { enforced?: boolean }) {
-  const [holds, setHolds] = useState<Hold[]>([]),
-    [error, setError] = useState("");
-  useEffect(() => {
-    let active = true;
-    api<{ items: Hold[] }>("/budget/holds")
-      .then((r) => {
-        if (active) setHolds(r.items);
-      })
-      .catch((e) => {
-        if (active) setError(e.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-  const uncertain = holds.filter((h) => (h.bucket ?? (h.state === "uncertain" ? "unconfirmed" : "reserved")) === "unconfirmed");
-  if (error) return <p className="footnote">{error}</p>;
-  if (!uncertain.length) return null;
+/** One quiet line for model work still in progress. Nothing shows when there is none worth a cent. */
+export function BudgetHolds({ usd }: { usd: number }) {
+  if (!(usd >= 0.005)) return null;
   return (
-    <details className="settings-block budget-holds">
-      <summary>{uncertain.length} {uncertain.length === 1 ? "session" : "sessions"} awaiting final usage</summary>
-      <p>
-        {enforced ? "These estimates reserve room in your limit until provider billing is checked." : "These are estimates for sessions without a final usage report. They do not block Dani while spending limits are off."}
-        {" "}They are not confirmed charges.
-      </p>
-      {uncertain.map((h) => (
-        <div className="budget-hold" key={h.id}>
-          <span>
-            <strong>{h.model}</strong>
-            <span className="budget-hold-meta">
-              <span className="chip">{new Date(h.created_at).toLocaleString()}</span>
-              {h.historic && <span className="chip">Earlier month</span>}
-              <span className="chip">
-                {h.reason === "activity_lease_expired"
-                  ? "Connection ended without a final report"
-                  : "Final report unavailable"}
-              </span>
-              <span className="chip">Recorded ${h.recorded_usd.toFixed(4)}</span>
-            </span>
-          </span>
-          <span>${h.held_usd.toFixed(2)} held</span>
-        </div>
-      ))}
-      <div className="settings-links">
-        <a
-          href="https://platform.openai.com/usage"
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open provider usage
-        </a>
+    <p className="footnote">
+      Plus ${usd.toFixed(2)} set aside for work that is still finishing.
+    </p>
+  );
+}
+
+/** This calendar month: recorded spend, the month-end projection, and work still in progress. */
+export function MonthSpend({
+  spent,
+  limit,
+  projected,
+  inFlight,
+}: {
+  spent: number;
+  limit?: number;
+  projected: number | null;
+  inFlight: number;
+}) {
+  return (
+    <>
+      <div className="budget-line">
+        <strong>
+          ${spent.toFixed(2)}
+          <span>{limit != null && " / $" + limit.toFixed(0)} spent this month</span>
+        </strong>
+        {projected != null && (
+          <span>At this month's pace: about ${projected.toFixed(2)} by month end</span>
+        )}
       </div>
-    </details>
+      <BudgetHolds usd={inFlight} />
+    </>
   );
 }

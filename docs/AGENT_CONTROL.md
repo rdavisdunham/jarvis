@@ -1792,7 +1792,7 @@ summary job"), written by a small model (`run_summaries.py`).
   unavailable) keeps the old line but still marks that activity handled, so a broken provider costs at most one call
   per event window instead of a retry loop. A job that finds nothing new (`summary_seq ≥ activity_seq`) is cancelled
   without a call.
-- **Cost.** Cost feature `agent_summaries` ("Agent run summaries"): its own line in the usage report (Settings → System) next to the judge's
+- **Cost.** Cost feature `agent_summaries` ("Run summaries (Eridani)"): its own line in the usage report (Settings → System) next to the judge's
   `agent_control`. Each call also writes an `agent_attempts` row with `kind: "summary"` (status `done`/`failed`, model,
   `prompt_version`, cost, latency, the run tuple, and `result {seq, summary | non_verdict, detail}`) the way judge
   attempts do. Summary attempts are written settled (never queued or running, no deadline), so the attempt sweep,

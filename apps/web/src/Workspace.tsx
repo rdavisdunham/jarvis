@@ -18,6 +18,7 @@ import {
 } from "./work-views";
 import { CalendarView } from "./CalendarView";
 import type { GoogleStatus } from "./GoogleSettings";
+import { rangeView, rememberRange, type CalendarRangeData } from "./calendar-cache";
 import { api } from "./api";
 import { TaskRow, timeLabel } from "./components";
 import {
@@ -75,26 +76,24 @@ type Props = {
   onVisible: (ids: string[]) => void;
 };
 export function Workspace(p: Props) {
-  const [calendarData, setCalendarData] = useState<{
-    rangeKey: string;
-    items: CalendarEntry[];
-    truncated: boolean;
-    google?: GoogleStatus;
-    warnings?: { calendar: string; reason: string }[];
-  } | null>(null);
+  // Every range fetched this session, so switching month -> week -> day draws from rows
+  // already loaded instead of blanking the grid while the narrower range is fetched.
+  const [calendarCache, setCalendarCache] = useState<CalendarRangeData[]>([]);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const { days, from, end } = useMemo(
     () => calendarRange(p.day, p.calendarMode),
     [p.day, p.calendarMode],
   );
-  const rangeKey = from + ":" + end + ":" + p.zone;
-  const currentData = calendarData?.rangeKey === rangeKey ? calendarData : null;
+  const currentData = useMemo(
+    () => rangeView(calendarCache, from, end, p.zone),
+    [calendarCache, from, end, p.zone],
+  );
   useEffect(() => {
     if (!p.calendar) return;
     let current = true;
-    // Preserve rows and page height while refreshing this same date range.
-    // A genuinely different range uses its own loading state.
+    // Rows already loaded for this range (or a wider one) stay drawn while it refreshes;
+    // only a range nothing covers shows the loading state.
     setError("");
     api<{ items: CalendarEntry[]; truncated: boolean; google?: GoogleStatus }>(
       "/calendar?start=" +
@@ -105,7 +104,10 @@ export function Workspace(p: Props) {
         encodeURIComponent(p.zone),
     )
       .then((data) => {
-        if (current) setCalendarData({ ...data, rangeKey });
+        if (current)
+          setCalendarCache((cache) =>
+            rememberRange(cache, { ...data, from, end, zone: p.zone }),
+          );
       })
       .catch((e) => {
         if (current) setError(e.message);
@@ -122,7 +124,6 @@ export function Workspace(p: Props) {
     p.schedules,
     p.notices,
     retry,
-    rangeKey,
   ]);
   const query = p.query.trim().toLocaleLowerCase();
   const selectedProject = p.projects.find(

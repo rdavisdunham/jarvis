@@ -13,7 +13,8 @@ import { NoticeSnooze } from "./NoticeSnooze";
 import { StructureWorkspace } from "./Structure";
 import {QuickCapture} from "./QuickLists";
 import {Onboarding} from "./Onboarding";
-import { SETUP_REQUEST, typesFieldsRequest } from "./setup-model";
+import { FooterStatus, NotificationBell } from "./app-chrome";
+import { SETUP_REQUEST, setupEstablished, typesFieldsRequest } from "./setup-model";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
@@ -408,6 +409,7 @@ export default function App() {
     return () => { live = false; };
   }, [boot?.account_id, boot?.workspace?.id]);
   const [activityOpen, setActivityOpen] = useState(() => new URLSearchParams(location.search).get("activity") === "1");
+  const [activityFocus, setActivityFocus] = useState<"attention" | undefined>();
   const [runsOpen, setRunsOpen] = useState(false);
   const conversationRef = useRef<string | null>(null);
   const conversationEpoch = useRef(0);
@@ -2536,7 +2538,7 @@ export default function App() {
           <div className="top-actions">
             <button className={"btn btn-ghost activity-toggle " + (attentionWork ? "needs-attention" : "")}
               aria-label={"Dani activity, " + activeWork + " pending, " + attentionWork + " need attention"}
-              title="Dani activity" onClick={() => setActivityOpen(true)}>
+              title="Dani activity" onClick={() => { setActivityFocus(undefined); setActivityOpen(true); }}>
               <Clock3 size={18}/><span>Activity</span>{(activeWork + attentionWork > 0) && <b>{activeWork + attentionWork}</b>}
             </button>
             {remotea.enabled && (() => { const badge = runsBadge(remotea.activeRuns, remotea.pending, remotea.status?.hosts ?? []); return (
@@ -2544,17 +2546,7 @@ export default function App() {
                 title="Agent runs: active runs and the ones waiting for you" onClick={() => setRunsOpen(true)}>
                 <SquareTerminal size={18}/><span>Runs</span>{badge.count > 0 && <b>{badge.count}</b>}
               </button>); })()}
-            <button
-              className={"icon-button " + (unread ? "has-notice" : "")}
-              aria-label={
-                "Notifications" + (unread ? ", " + unread + " unread" : "")
-              }
-              aria-current={view === "notifications" ? "page" : undefined}
-              onClick={() => setView("notifications")}
-            >
-              <Bell size={19} />
-              {unread > 0 && <i />}
-            </button>
+            <NotificationBell unread={unread} current={view === "notifications"} onOpen={() => setView("notifications")}/>
           </div>
         </header>
         {linkWorkspace && <div className="error-banner" role="status"><span>This record link belongs to another workspace. Switch to open it; the link does not grant access.</span><button onClick={async () => {try {await post("/accounts/switch", {workspace_id:linkWorkspace === "personal" ? null : linkWorkspace});location.reload();} catch {setError("That workspace is unavailable to your account. Ask its owner for access.");}}}>Open linked workspace</button><button onClick={() => setLinkWorkspace(null)}>Dismiss</button></div>}
@@ -2599,7 +2591,7 @@ export default function App() {
               </div>
             </div>}
             {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "remotea" && view !== "meetings" && view !== "person" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
-            {!boot.workspace?.id && dashboard && <Onboarding compact onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
+            {!boot.workspace?.id && dashboard && <Onboarding compact established={setupEstablished(organization)} onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} finishedTasks={mergeFinishedTasks(dailyFinished, tasks)} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
               noteRevision={noteRevision} quick={quick} onQuick={setQuick} onAdd={add} onTask={openTaskCard} onToggle={task => void toggle(task)}
@@ -3068,7 +3060,8 @@ export default function App() {
             )}
             <footer className="page-footer">
               <Shield size={13} />
-              <span>{syncWarning || (!boot.capabilities.worker ? "Background work is paused" : activeWork ? `${activeWork} request${activeWork === 1 ? "" : "s"} in progress` : attentionWork ? "Dani has work that needs attention" : "Connected. Changes save automatically.")}</span>
+              <FooterStatus text={syncWarning || (!boot.capabilities.worker ? "Background work is paused" : activeWork ? `${activeWork} request${activeWork === 1 ? "" : "s"} in progress` : attentionWork ? "Dani has work that needs attention" : "Connected. Changes save automatically.")}
+                onAttention={!syncWarning && boot.capabilities.worker && !activeWork && attentionWork ? () => { setActivityFocus("attention"); setActivityOpen(true); } : undefined}/>
             </footer>
           </main>
           <aside
@@ -3310,7 +3303,7 @@ export default function App() {
         onOpenTask={id => { const task = tasks.find(t => t.id === id); if (task) openTaskCard(task); else void openNoteTask(id); }}/>
       <ChatLauncher open={companion} listening={!!voiceState && !voiceState.closed} onOpenChange={setCompanion}
         focus={() => { if (!voice.current) focusChat(); }}/>
-      {activityOpen && <ActivityPanel items={work.items} error={work.error} onClose={() => setActivityOpen(false)}
+      {activityOpen && <ActivityPanel items={work.items} error={work.error} focus={activityFocus} onClose={() => setActivityOpen(false)}
         onRefresh={work.refresh} onOpen={openWorkRecord}/>}
       {runsOpen && <RunsPanel onClose={() => setRunsOpen(false)} onOpenPage={() => setView("remotea")}/>}
       <div className="voice-glow" ref={glowRef} aria-hidden="true">

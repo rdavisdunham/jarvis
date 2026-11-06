@@ -51,8 +51,10 @@ export function SetupProposalDetails({ proposal }: { proposal: Proposal }) {
   </div>;
 }
 
-export function Onboarding({ compact = false, onChanged, onTalk }: {
+export function Onboarding({ compact = false, established = false, onChanged, onTalk }: {
   compact?: boolean; onChanged: () => void; onTalk: () => Promise<void>;
+  /** The account already has structure: the compact banner stays away (Settings still offers setup). */
+  established?: boolean;
 }) {
   const [progress, setProgress] = useState<SetupProgress | null>(null);
   const [draft, setDraft] = useState<SetupProgress | null>(null);
@@ -76,6 +78,7 @@ export function Onboarding({ compact = false, onChanged, onTalk }: {
     return () => clearInterval(timer);
   }, [open, dirty, busy, starting, load]);
 
+  if (compact && !open && established) return null;
   if (!progress || !draft) return compact ? null : <p role="status">{error || "Loading setup…"}</p>;
   if (compact && !open && ["completed", "skipped"].includes(progress.status)) return null;
   const blocked = busy || starting;
@@ -143,8 +146,8 @@ export function Onboarding({ compact = false, onChanged, onTalk }: {
           progress.status === "completed" ? "Refine with Dani" : "Resume with Dani"}
       </button>
       <button className="btn" disabled={blocked} onClick={() => setOpen(true)}>Use setup form</button>
-      {progress.status === "not_started" && <button className="btn" disabled={blocked}
-        onClick={() => void save("skipped").catch(() => {})}>Skip for now</button>}
+      {(progress.status === "not_started" || (compact && progress.status === "in_progress")) && <button className="btn" disabled={blocked}
+        onClick={() => void save("skipped").catch(() => {})}>{progress.status === "not_started" ? "Skip for now" : "Hide for now"}</button>}
     </div> : <>
       <SetupGuard dirty={dirty} busy={blocked} save={() => save()} close={() => setOpen(false)}/>
       <p>Fill this in yourself, or save these answers and continue with Dani. Example names do not create real work.</p>

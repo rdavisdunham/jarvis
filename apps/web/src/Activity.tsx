@@ -182,13 +182,21 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
     {error && <p className="work-error" role="alert">{error}</p>}
   </article>;
 }
-export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
+/** Requests that need the user come first (each group keeps its order), so they are never below the fold. */
+export const attentionFirst = (items: WorkItem[]) =>
+  [...items.filter(workAttention), ...items.filter(item => !workAttention(item))];
+
+export function ActivityPanel({ items, error, onClose, onRefresh, onOpen, focus }: {
   items: WorkItem[]; error: string; onClose: () => void; onRefresh: () => Promise<void>; onOpen: Props["onOpen"];
+  /** "attention" opens on just the requests that need the user (from the status line). */
+  focus?: "attention";
 }) {
   const [clearing, setClearing] = useState(false), [clearError, setClearError] = useState("");
+  const [onlyAttention, setOnlyAttention] = useState(focus === "attention");
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
   const attention = items.filter(workAttention).length, active = items.filter(workActive).length;
+  const ordered = attentionFirst(items), shown = onlyAttention && attention ? ordered.filter(workAttention) : ordered;
   return <Dialog onBackdrop={() => onClose()} backdropClassName="activity-backdrop" className="activity-panel" aria-label="Dani activity"
       onKeyDown={event => {if(event.key === "Escape") onClose();}}>
       <header><div><h2>Activity</h2><p>Saved changes and work in progress.</p></div>
@@ -196,7 +204,9 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
       {!!items.length && <div className="activity-toolbar">
         <span className="activity-count">{items.length} {items.length === 1 ? "request" : "requests"}</span>
         {active > 0 && <span className="chip">{active} in progress</span>}
-        {attention > 0 && <span className="chip chip-due-today">{attention} need attention</span>}
+        {attention > 0 && <button type="button" className="chip chip-due-today activity-filter" aria-pressed={onlyAttention}
+          title={onlyAttention ? "Show all requests" : "Show only requests that need attention"}
+          onClick={() => setOnlyAttention(value => !value)}>{attention} need attention</button>}
         <button className="btn btn-ghost btn-sm" disabled={clearing} onClick={async () => {
         if (!window.confirm("Clear your activity history in this workspace and stop unfinished requests? Saved tasks, notes, and other changes will stay.")) return;
         setClearing(true); setClearError("");
@@ -206,6 +216,6 @@ export function ActivityPanel({ items, error, onClose, onRefresh, onOpen }: {
       }}>{clearing ? "Clearing…" : "Clear activity history"}</button></div>}
       {(error || clearError) && <p role="alert">{error || clearError}</p>}
       {!items.length && <p className="activity-empty">Ask Dani to do something. Its progress and saved changes will appear here.</p>}
-      <div className="activity-items">{items.map(item => <WorkCard key={item.id} item={item} onRefresh={onRefresh} onOpen={onOpen}/>)}</div>
+      <div className="activity-items">{shown.map(item => <WorkCard key={item.id} item={item} onRefresh={onRefresh} onOpen={onOpen}/>)}</div>
     </Dialog>;
 }

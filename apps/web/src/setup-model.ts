@@ -1,10 +1,15 @@
 import type { Proposal, SchemaType } from "./structure-types";
+import type { Organization } from "./productivity";
 
 export type SetupProgress = {
   revision: number; status: string; step: string; preferred_name: string; timezone: string;
   purpose: string; classification_name: string; description: string; examples: string;
   design_notes: string; proposal_id?: string;
 };
+
+/** The account already has real structure (a space and a project), so Today's setup banner retires itself. */
+export const setupEstablished = (organization: Pick<Organization, "spaces" | "projects">) =>
+  organization.spaces.some(space => !space.archived) && organization.projects.some(project => !project.archived);
 
 export const SETUP_REQUEST = "Help me design or refine my organization in Eridani. Resume my saved setup, ask me one useful question at a time, and preview the types, fields and homes before applying changes. Treat examples as examples unless I ask you to create real items.";
 
