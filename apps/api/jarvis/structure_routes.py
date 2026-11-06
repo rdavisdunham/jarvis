@@ -6,7 +6,8 @@ from .structure_schema import InstantiatePlan
 from fastapi import APIRouter, Depends, Query
 from .auth import Identity, authenticate
 from .db import session_scope
-from .domain import owned
+from .domain import DomainError, owned
+from pydantic import BaseModel
 from . import structure
 from .structure_models import StructureProposal, StructureRecord
 
@@ -178,3 +179,25 @@ def instantiate_preview(args: InstantiatePlan, user: User):
     from .record_templates import plan
     with session_scope() as db:
         return plan(db, user.owner_id, args)
+
+
+class OverviewRefresh(BaseModel):
+    rebuild: bool = False
+
+
+@router.get("/records/{record_id}/overview")
+def overview(record_id: str, user: User, version: int | None = Query(default=None, ge=1)):
+    """A client or project's living overview (record_overviews.py); viewers may read it like the record."""
+    from . import record_overviews
+    with session_scope() as db:
+        return record_overviews.read(db, user.owner_id, record_id, version)
+
+
+@router.post("/records/{record_id}/overview/refresh")
+def overview_refresh(record_id: str, args: OverviewRefresh, user: User):
+    """Queue a refresh now (or a rebuild from all the material) instead of waiting for the daily check."""
+    from . import record_overviews
+    if user.role == "viewer":
+        raise DomainError("FORBIDDEN", "Viewers cannot refresh overviews.", 403)
+    with session_scope() as db:
+        return record_overviews.refresh(db, user.owner_id, record_id, rebuild=args.rebuild)

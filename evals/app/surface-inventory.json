@@ -2452,6 +2452,20 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/structure/records/{record_id}/overview",
+      "handler": "overview",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/structure/records/{record_id}/overview/refresh",
+      "handler": "overview_refresh",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/structure/reviews",
       "handler": "reviews",
       "source": "apps/api/jarvis/structure_routes.py",

@@ -95,6 +95,7 @@ job, and the Settings task agent (Luna at the Fast tier by default) for Eri chat
 | field_understanding | field_understanding | routing.assess | luna |
 | run_judge | agent_control | agent_judge.ask | luna |
 | run_summary | agent_summaries once run_summaries lands (agent_control until then) | run_summaries.ask | luna |
+| record_overview | record_overviews | record_overviews.ask (daily client and project overviews) | luna |
 | memory_extraction | memory_learning | memory_learning.process | luna |
 | note_tasks | note_tasks | notes.suggest_tasks | luna |
 | swarm_plan | agent_control | swarm.ask (Play on a project: which tasks run in parallel) | luna |

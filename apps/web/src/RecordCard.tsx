@@ -1,4 +1,5 @@
 import { LinearComments } from "./LinearComments";
+import { OVERVIEW_TYPES, RecordOverview } from "./RecordOverview";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import { z } from "zod";
 import { SourceDetails } from "./SourceDetails";
@@ -128,6 +129,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
       <div className="detail-main">
         <textarea rows={1} className="detail-title" aria-label="Record title" value={title} disabled={locked} onChange={e=>setTitle(e.target.value)} onBlur={()=>{if(title.trim()&&title!==row.title)void save({title}).catch(()=>{});}}/>
         <textarea aria-label="Record content" className="detail-body" value={body} disabled={locked} rows={4} placeholder="Add details" onChange={e=>setBody(e.target.value)} onBlur={()=>{if(body!==row.body)void save({body}).catch(()=>{});}}/>
+        {OVERVIEW_TYPES.includes(row.type_id)&&!row.archived&&<RecordOverview recordId={row.id} canEdit={canEdit} revision={row.revision}/>}
         <details className="detail-section" aria-label={TASK_CARD_SECTIONS.localNotes}><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
         <SourceDetails source={row.source}/>
         {row.task_id&&row.source?.provider==="linear"&&<LinearComments taskId={row.task_id}/>}
