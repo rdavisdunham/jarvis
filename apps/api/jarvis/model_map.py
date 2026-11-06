@@ -105,6 +105,8 @@ JOBS = {
         Job("run_judge", "agent_control", "agent_judge.ask", "extraction", "Run judge verdicts"),
         Job("run_summary", _summaries_feature(), "run_summaries.ask", "extraction",
             "Run-card one-line summaries"),
+        Job("record_overview", "record_overviews", "record_overviews.ask", "extraction",
+            "Client and project overviews"),
         Job("memory_extraction", "memory_learning", "memory_learning.process", "extraction",
             "Memory fact extraction"),
         Job("note_tasks", "note_tasks", "notes.suggest_tasks", "extraction", "Tasks extracted from notes"),

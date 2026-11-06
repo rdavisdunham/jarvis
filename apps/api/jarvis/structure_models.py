@@ -161,3 +161,35 @@ class QuickSortSession(Base):
     state: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class RecordOverview(Base):
+    """One version of a client or project's living overview (record_overviews.py). Versions are never edited."""
+    __tablename__ = "record_overviews"
+    __table_args__ = (UniqueConstraint("record_id", "version"),
+                      Index("ix_record_overviews_owner_record", "owner_id", "record_id"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100))
+    record_id: Mapped[str] = mapped_column(ForeignKey("structure_records.id", ondelete="CASCADE"))
+    version: Mapped[int] = mapped_column(Integer)
+    sections: Mapped[dict] = mapped_column(JSONB, default=dict)
+    seed: Mapped[str] = mapped_column(Text, default="")  # The owner's description this version was built on.
+    mode: Mapped[str] = mapped_column(String(20))  # rebuild | update
+    origin: Mapped[str] = mapped_column(String(20), default="scheduled")  # scheduled | manual
+    stats: Mapped[dict] = mapped_column(JSONB, default=dict)
+    model: Mapped[str | None] = mapped_column(String(80))
+    prompt_version: Mapped[str | None] = mapped_column(String(40))
+    cost: Mapped[float | None] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class RecordOverviewState(Base):
+    """What the latest overview was built from (digests), and when the record is next looked at."""
+    __tablename__ = "record_overview_states"
+    record_id: Mapped[str] = mapped_column(ForeignKey("structure_records.id", ondelete="CASCADE"), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    seen: Mapped[dict] = mapped_column(JSONB, default=dict)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_error: Mapped[dict | None] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

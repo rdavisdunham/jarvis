@@ -99,6 +99,10 @@ def perform_job(job_id):
         from .run_summaries import process
 
         return process(job_id)
+    if kind == "record_overview":
+        from .record_overviews import process
+
+        return process(job_id)
     if kind == "embed_note":
         from .notes import index_note
 
@@ -170,7 +174,7 @@ def dispatch_outbox(client, after=None):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink"}
+                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -475,6 +479,9 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     isolated("prepare_deliveries", prepare_deliveries)
     isolated("send_deliveries", send_deliveries)
     if iteration % 12 == 0:
+        from .record_overviews import queue_due as queue_due_overviews
+
+        isolated("record_overviews", in_session, queue_due_overviews)
         isolated("housekeeping", housekeeping)
         isolated("reap_agent_work", reap_agent_work)
         isolated("agent_retention", agent_retention)
