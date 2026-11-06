@@ -2466,6 +2466,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/structure/records/{record_id}/placement",
+      "handler": "placement",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/structure/reviews",
       "handler": "reviews",
       "source": "apps/api/jarvis/structure_routes.py",

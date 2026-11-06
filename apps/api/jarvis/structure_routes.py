@@ -201,3 +201,11 @@ def overview_refresh(record_id: str, args: OverviewRefresh, user: User):
         raise DomainError("FORBIDDEN", "Viewers cannot refresh overviews.", 403)
     with session_scope() as db:
         return record_overviews.refresh(db, user.owner_id, record_id, rebuild=args.rebuild)
+
+
+@router.get("/records/{record_id}/placement")
+def placement(record_id: str, user: User):
+    """Placement by meaning (placement.py): the suggested or automatically chosen client or project for a task."""
+    from . import placement as placing
+    with session_scope() as db:
+        return placing.read(db, user.owner_id, record_id)

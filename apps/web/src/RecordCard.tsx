@@ -1,5 +1,6 @@
 import { LinearComments } from "./LinearComments";
 import { OVERVIEW_TYPES, RecordOverview } from "./RecordOverview";
+import { PlacementNote } from "./PlacementNote";
 import {useEffect, useRef, useState, type ReactNode} from "react";
 import { z } from "zod";
 import { SourceDetails } from "./SourceDetails";
@@ -164,7 +165,8 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
       </div>
       <aside className="detail-props" aria-label={t.name+" properties"}>
         <div className="prop-list">
-          <Prop label="Main home"><HomePicker row={row} schema={schema} disabled={locked} onChoose={id=>{if(id!==row.parent_id)setContentsAction({operation:"move",parentId:id});}}/></Prop>
+          <Prop label="Main home"><HomePicker row={row} schema={schema} disabled={locked} onChoose={id=>{if(id!==row.parent_id)setContentsAction({operation:"move",parentId:id});}}/>
+            {row.task_id&&!OVERVIEW_TYPES.includes(row.type_id)&&<PlacementNote recordId={row.id} revision={row.revision} canEdit={!locked} onFile={id=>{if(id!==row.parent_id)setContentsAction({operation:"move",parentId:id});}}/>}</Prop>
           {!!t.statuses.length&&<Prop label="Status"><select aria-label="Status" value={row.status_id??""} disabled={locked} onChange={e=>void save({status_id:e.target.value||null}).catch(()=>{})}>{!t.capabilities.includes("work")&&<option value="">Empty</option>}{t.statuses.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Prop>}
           {!!due.length&&<Prop label="Due" hint={due.map(f=>f.description).join(" ")}><div className="prop-inline">
             {due.map(f=>field(f,f.binding==="due_date"?"prop-date":f.binding==="due_time"?"prop-time":"prop-zone"))}</div>{due.map(f=><span key={f.id}>{inherited(f)}</span>)}</Prop>}

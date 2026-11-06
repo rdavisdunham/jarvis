@@ -107,6 +107,8 @@ JOBS = {
             "Run-card one-line summaries"),
         Job("record_overview", "record_overviews", "record_overviews.ask", "extraction",
             "Client and project overviews"),
+        Job("place_by_meaning", "placement_by_meaning", "placement.ask", "extraction",
+            "Filing new tasks by meaning"),
         Job("memory_extraction", "memory_learning", "memory_learning.process", "extraction",
             "Memory fact extraction"),
         Job("note_tasks", "note_tasks", "notes.suggest_tasks", "extraction", "Tasks extracted from notes"),

@@ -163,7 +163,15 @@ def state(db, owner, session_id=None):
     return {"sessions": [public(db, row) for row in rows]}
 
 
-def ask(db, row, work, *, prefix="", candidates=None, proposal=None):
+def meaning_proposal(db, item, schema):
+    """A placement-by-meaning suggestion for this unfiled item (placement.py), as a Quick Sort proposal."""
+    meaning = (item.provenance or {}).get("meaning") or {}
+    if item.parent_id or meaning.get("filed") or not meaning.get("home_id"):
+        return None
+    return next((h for h in homes(db, item.owner_id, item, schema) if h["id"] == meaning["home_id"]), None)
+
+
+def ask(db, row, work, *, prefix="", candidates=None, proposal=None, suggest=True):
     from .structure import ensure, reconcile_core
     data = copy.deepcopy(row.state)
     while data["cursor"] < len(data["items"]):
@@ -183,6 +191,8 @@ def ask(db, row, work, *, prefix="", candidates=None, proposal=None):
     schema = ensure(db, row.owner_id)
     reconcile_core(db, item, schema)
     selected = (candidates or [])[:5]
+    if suggest and not proposal and not selected:
+        proposal = meaning_proposal(db, item, schema)
     if proposal:
         question = f'File "{item.title[:200]}" under {proposal["path"]}?'
     elif selected:
@@ -310,7 +320,7 @@ def reply(db, owner, args, command_id, work):
         if not chosen:
             return ask(db, row, work, prefix="That proposed Home changed. Please choose again.")
     elif value in NO:
-        return ask(db, row, work)
+        return ask(db, row, work, suggest=False)  # Declined: ask openly instead of repeating the suggestion.
     elif row.state.get("candidates") and (value in ordinals or value.isdecimal()):
         index = ordinals.get(value, int(value)-1 if value.isdecimal() else -1)
         candidates = row.state["candidates"]
