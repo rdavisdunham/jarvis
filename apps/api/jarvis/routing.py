@@ -349,6 +349,21 @@ class Candidates(BaseModel):
     candidates: list[Candidate]
 
 
+# Independent human-filed records a learned rule needs before the weekly review even proposes it. One title is an
+# anecdote ("fix linear log in settings." -> Eridani roadmap), not a pattern. The automatic gate needs the same.
+MIN_RULE_SUPPORT = 3
+
+
+def proposable(question):
+    """A learned-rule question with enough support to ask the owner. Search-vocabulary suggestions
+    (search_learning.routing_candidates) carry no record evidence by design and are judged there."""
+    return question.get("source") == "search_alias" or question.get("evidence_count", 0) >= MIN_RULE_SUPPORT
+
+
+def offerable(review):
+    return bool(review.summary.get("definition_id")) or any(proposable(q) for q in review.questions)
+
+
 # The weekly review's instruction to the model (routing.process); scripts/model_eval.py sends it too.
 REVIEW_PROMPT = (
     "Find precise task or note title phrases that reliably identify an existing main home from the human-labeled examples. Return at most 30 candidates. A home must be an existing ID in homes. Do not invent projects or clients. Prefer distinctive phrases over generic verbs. A phrase must occur verbatim ignoring punctuation/case in evidence. Also identify reliable non-operational classification values from the evidence using exact field and option/record IDs in the schema. Encode each value as JSON in values.value_json, or return values=[]. Never infer empty/cleared fields, dates, priority, assignee or access. No work-hour-only rules. For content records, note_tags may contain exact tags independently assigned by humans; otherwise return an empty array. List descriptions explain the tag meanings. Never learn a status or personal fact."
@@ -583,7 +598,9 @@ def process(job_id):
                 if e.evidence["type_id"] == candidate.type_id
                 and matches(e.evidence["title"], candidate.phrase)
             ]
-            if not support or any(not agrees(e.evidence["assignment"], assignment) for e in support):
+            if len(support) < MIN_RULE_SUPPORT or any(
+                not agrees(e.evidence["assignment"], assignment) for e in support
+            ):
                 continue
             condition = {"type_id": candidate.type_id, "phrase": " ".join(tokens(candidate.phrase))}
             if not condition["phrase"]:continue
@@ -621,7 +638,7 @@ def process(job_id):
             )
             strong = (
                 "content" not in record_type(schema, candidate.type_id)["capabilities"]
-                and len(support) >= 3
+                and len(support) >= MIN_RULE_SUPPORT
                 and len(evaluated) >= 100
                 and precision >= 0.95
                 and ready(db, schema, candidate.type_id, values, candidate.parent_id)
@@ -692,7 +709,8 @@ def state(db, owner):
                 .order_by(RoutingPattern.created_at.desc())
             )
         ],
-        "reviews": [serial(r) for r in reviews],
+        # Rule questions proposed before MIN_RULE_SUPPORT existed are not asked.
+        "reviews": [{**serial(r), "questions": [q for q in r.questions if proposable(q)]} for r in reviews],
         "understandings": [
             serial(s)
             for s in db.scalars(select(FieldUnderstanding).where(FieldUnderstanding.owner_id == owner))
@@ -704,7 +722,7 @@ def state(db, owner):
         },
         # Current human evidence by split, so an empty training set is never mistaken for missing capture.
         "split": split_counts(latest_evidence(db, owner)),
-        "quality_gate": "Learned automatic rules require 3 independent examples, 100 held-out human-reviewed matches and at least 95% precision. Explicitly confirmed rules can start immediately.",
+        "quality_gate": f"Dani proposes a learned rule only after {MIN_RULE_SUPPORT} independent examples. Learned automatic rules also require 100 held-out human-reviewed matches and at least 95% precision. Explicitly confirmed rules can start immediately.",
     }
 
 
@@ -725,7 +743,9 @@ def offer_context(db, owner):
         for r in db.scalars(select(RoutingReview).where(RoutingReview.owner_id == owner))
     ):
         return ""
-    review = next((r for r in reviews if not r.deferred_until or r.deferred_until <= now()), None)
+    review = next(
+        (r for r in reviews if (not r.deferred_until or r.deferred_until <= now()) and offerable(r)), None
+    )
     if not review:
         return ""
     return review.id
@@ -983,16 +1003,7 @@ def append_offer(db, row, message):
     )
     if pending:
         return message
-    review = db.scalar(
-        select(RoutingReview)
-        .where(
-            RoutingReview.owner_id == row.owner_id,
-            RoutingReview.status == "pending",
-            (RoutingReview.deferred_until.is_(None)) | (RoutingReview.deferred_until <= now()),
-        )
-        .order_by(RoutingReview.created_at)
-        .limit(1)
-    )
+    review = db.get(RoutingReview, offer_context(db, row.owner_id))
     if not review:
         return message
     row.result = {**row.result, "routing_offer_id": review.id}

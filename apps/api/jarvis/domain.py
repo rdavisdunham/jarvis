@@ -200,6 +200,8 @@ class Correct(Args):
 class Forget(Args):
     memory_id: str
     delete_source: bool = False
+    # "This is wrong": also record a rejection so the learner never saves this fact, or a reworded copy, again.
+    wrong: bool = False
 
 
 class ResolveMemory(Args):
@@ -1009,7 +1011,12 @@ def mutate(db, owner, tool, args, command_id):
         return serial(memory)
     if tool in {"memory.correct", "memory.forget"}:
         old = owned(db, Memory, args.memory_id, owner, lock=True)
-        old.suppressed, old.embedding = True, None
+        if tool == "memory.forget" and args.wrong:
+            from .memory_learning import reject
+
+            reject(db, old)  # Keeps the wording and vector as the rejection record.
+        else:
+            old.suppressed, old.embedding = True, None
         if tool == "memory.correct":
             source = capture_source(db, owner, args.content, f"correction:{command_id}", explicit=True)
             from .memory_review import attribution
@@ -1029,12 +1036,13 @@ def mutate(db, owner, tool, args, command_id):
             enqueue_job(db, owner, "embed_memory", {"memory_id": row.id})
             emit(db, owner, "memory.changed", row.id)
             return serial(row)
-        old.content, old.evidence, old.tags = "", "", []
+        if not args.wrong:
+            old.content, old.evidence, old.tags = "", "", []
         if args.delete_source:
             source = owned(db, Source, old.source_id, owner, lock=True)
             delete_source(db, source)
         emit(db, owner, "memory.changed", old.id)
-        return {"id": old.id, "forgotten": True}
+        return {"id": old.id, "forgotten": True, **({"rejected": True} if args.wrong else {})}
     if tool.startswith("notification."):
         from .notices import VEHICLES, apply, carried
 

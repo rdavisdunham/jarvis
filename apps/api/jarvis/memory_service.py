@@ -24,6 +24,36 @@ def search(db, owner, query="", limit=10):
     return [serial(m) for m in db.scalars(q.limit(limit))]
 
 
+# Source.native_id prefixes (capture_source callers) by where the fact came from.
+ORIGINS = {
+    "chat": "conversation",
+    "work": "conversation",
+    "voice": "voice",
+    "live": "voice",
+    "capture": "capture",
+    "correction": "correction",
+    "memory-review": "review",
+}
+
+
+def with_sources(db, owner, items):
+    """Where each listed fact came from, for the Memory page: the source's origin, date and conversation (to open
+    it), never the source text itself (GET /sources/{id} serves that on request)."""
+    ids = {item["source_id"] for item in items}
+    rows = {
+        s.id: s
+        for s in db.scalars(select(Source).where(Source.owner_id == owner, Source.id.in_(ids)))
+    } if ids else {}
+    for item in items:
+        source = rows.get(item["source_id"])
+        item["source"] = {
+            "origin": ORIGINS.get(source.native_id.split(":", 1)[0], "other"),
+            "conversation_id": source.conversation_id,
+            "created_at": source.created_at.isoformat(),
+        } if source and not source.deleted_at else None
+    return items
+
+
 @feature("memory_retrieval")
 async def semantic_search(owner, query="", limit=10):
     """Hybrid retrieval over canonical facts, with lexical fallback when the cloud is unavailable."""

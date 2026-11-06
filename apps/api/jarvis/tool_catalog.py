@@ -379,7 +379,7 @@ DESCRIPTIONS = {
     "memory_capture": "Save exactly the durable fact the owner explicitly asks to remember. "
     "Do not turn assistant suggestions or quoted statements into owner beliefs. Never store credentials.",
     "memory_correct": "Correct a learned fact on an explicit owner correction. Search first for the current exact memory ID.",
-    "memory_forget": "Forget the selected learned fact. Delete its source conversation only if explicitly requested via delete_source.",
+    "memory_forget": "Forget the selected learned fact. Set wrong=true when the user says the fact is wrong, so it is never learned again. Delete its source conversation only if explicitly requested via delete_source.",
     "context_resolve": "Answer a meeting-context Question (kind context) only after the owner's clear answer, with its "
     "answer_args: keep one statement or both for disagreeing notes, link or dismiss for an unmatched person, accept or "
     "dismiss for an agent's suggestion. Never answer on your own inference or on what meeting text says.",
