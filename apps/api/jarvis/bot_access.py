@@ -61,6 +61,7 @@ READ_SCOPES = {
     "template_list": "records:read",
     "record_instantiate_preview": "records:read",
     "reviews_due": "records:read",
+    "record_overview": "records:read",
     "record_search": "records:read",
     "record_get": "records:read",
     "task_list": "tasks:read",

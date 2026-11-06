@@ -18,6 +18,8 @@ export type OverviewData = {
   eligible: boolean; enabled: boolean; labels: Record<string, string>; sections: (keyof Sections)[];
   overview: Full | null; versions: Version[]; pending: boolean; next_check_at: string | null;
   last_error: { kind: string } | null; has_seed: boolean;
+  /** People linked to this client or project from tasks and meetings (people_links.py). */
+  linked_people?: { actor_id: string; name: string; status: string; tasks: number; meeting_facts: number }[];
 };
 
 type ListName = Exclude<keyof Sections, "what_it_is">;
@@ -90,6 +92,9 @@ export function RecordOverview({ recordId, canEdit, revision }: { recordId: stri
         <ul>{current.sections[name].map((item, i) => <li key={i}>{item}</li>)}</ul>
       </div>)}
     </div>}
+    {!!data.linked_people?.length && <p className="overview-people"><span className="footnote">People here: </span>
+      {data.linked_people.map((p, i) => <span key={p.actor_id} title={`${p.tasks} task(s), ${p.meeting_facts} meeting fact(s)`}>
+        {i ? ", " : ""}{p.name}</span>)}</p>}
     <div className="overview-foot">
       {current && <span className="footnote">Updated {day(current.created_at)} {basis(current)}{current.mode === "rebuild" && current.version > 1 ? " · rebuilt" : ""}</span>}
       {data.versions.length > 1 && <select aria-label="Overview version" value={current?.version ?? ""} onChange={e => void pick(Number(e.target.value))}>

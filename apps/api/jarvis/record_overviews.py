@@ -412,9 +412,11 @@ def _budget_allows(db, owner):
 
 
 def queue_due(db, clock=None):
-    """Worker sweep: eligible records not looked at in CHECK_EVERY get a cheap check, and a job only on change."""
-    if not enabled():
-        return 0
+    """Worker sweep: eligible records not looked at in CHECK_EVERY get a cheap check, and a job only on change.
+    The same daily pass refreshes each bucket's people links (people_links.py), which need no model."""
+    from .people_links import refresh_bucket
+
+    model = enabled()
     clock = clock or now()
     s = RecordOverviewState
     due = db.execute(
@@ -427,12 +429,16 @@ def queue_due(db, clock=None):
         if per_owner.get(owner, 0) >= SWEEP_LIMIT:
             continue
         per_owner[owner] = per_owner.get(owner, 0) + 1
-        if owner not in budgets:
+        if model and owner not in budgets:
             budgets[owner] = _budget_allows(db, owner)
         try:
             with db.begin_nested():  # One unreadable record must not hold back the others.
                 state = state_for(db, owner, record_id)
                 state.checked_at = clock
+                refresh_bucket(db, owner, db.get(StructureRecord, record_id))
+                if not model:
+                    state.next_check_at = clock + CHECK_EVERY
+                    continue
                 if not budgets[owner]:
                     state.next_check_at = clock + RETRY_AFTER
                     continue
@@ -568,6 +574,44 @@ def read(db, owner, record_id, version: int | None = None) -> dict:
         "next_check_at": state.next_check_at if state else None,
         "last_error": state.last_error if state else None,
         "has_seed": bool(seed_text(db, record)),
+        "linked_people": _linked_people(db, owner, record_id),
+    }
+
+
+def _linked_people(db, owner, record_id):
+    from .people_links import for_bucket
+
+    return [{k: p[k] for k in ("actor_id", "name", "status", "tasks", "meeting_facts")}
+            for p in for_bucket(db, owner, record_id)]
+
+
+KNOWLEDGE_FACTS, KNOWLEDGE_CLAIMS, KNOWLEDGE_TASKS = 20, 10, 15
+
+
+def knowledge(db, owner, record_id) -> dict:
+    """What Eridani knows about one client or project, for Dani's `record_overview` tool: the owner's description,
+    the latest overview, linked people, supported meeting facts, the latest meeting brief and recent tasks."""
+    record = owned(db, StructureRecord, record_id, owner)
+    if record.type_id not in BUCKET_TYPES:
+        raise DomainError("NOT_A_BUCKET", "record_overview reads clients and projects; use record_get for other "
+                                          "records.", 400)
+    row = latest(db, owner, record_id)
+    facts, brief = _facts_and_brief(db, owner, record)
+    tasks = _tasks(db, owner, record)
+    open_tasks = [t for t in tasks if t["status"] not in ("completed", "cancelled")]
+    return {
+        "record_id": record.id, "title": record.title, "type_id": record.type_id, "archived": record.archived,
+        "description": seed_text(db, record),
+        "overview": {"version": row.version, "updated_at": row.created_at.isoformat(), **row.sections} if row else None,
+        "people": _linked_people(db, owner, record_id),
+        "meeting_facts": [{k: f[k] for k in ("kind", "statement", "date")} for f in facts[:KNOWLEDGE_FACTS]],
+        "more_meeting_facts": max(0, len(facts) - KNOWLEDGE_FACTS),
+        "latest_brief": brief["claims"][:KNOWLEDGE_CLAIMS] if brief else [],
+        "child_buckets": [{"record_id": c["id"], "type_id": c["type"], "title": c["title"]}
+                          for c in _children(db, owner, record)],
+        "tasks": {"open": len(open_tasks), "done": len(tasks) - len(open_tasks),
+                  "recent_open": [{k: t[k] for k in ("title", "status", "assignee", "source") if t[k]}
+                                  for t in open_tasks[:KNOWLEDGE_TASKS]]},
     }
 
 

@@ -106,3 +106,16 @@ button.chip { border: 0; cursor: pointer; }
 .meeting-updated { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 8px 0; padding: 10px 14px;
   border-radius: var(--r-md); background: var(--violet-soft); color: var(--ink); font-size: 14px; }
 .meeting-updated span { flex: 1 1 240px; }
+
+.chip .chip-action {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  padding: 1px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.chip .chip-action:hover:not(:disabled) { color: var(--ink); background: rgba(127, 127, 127, 0.15); }

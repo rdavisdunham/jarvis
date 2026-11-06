@@ -209,3 +209,18 @@ def placement(record_id: str, user: User):
     from . import placement as placing
     with session_scope() as db:
         return placing.read(db, user.owner_id, record_id)
+
+
+class PersonLink(BaseModel):
+    status: Literal["confirmed", "rejected", "inferred"]
+
+
+@router.post("/records/{record_id}/people/{actor_id}")
+def person_link(record_id: str, actor_id: str, args: PersonLink, user: User):
+    """Confirm a person's link to a client or project, remove it (rejected, kept that way), or reset it to follow
+    the evidence again (people_links.py)."""
+    from . import people_links
+    if user.role == "viewer":
+        raise DomainError("FORBIDDEN", "Viewers cannot change people links.", 403)
+    with session_scope() as db:
+        return people_links.decide(db, user.owner_id, actor_id, record_id, args.status)

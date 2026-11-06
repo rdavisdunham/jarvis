@@ -551,10 +551,18 @@ def person(db, owner: str, actor_id: str, *, at: datetime | None = None) -> dict
     return {"actor": {"id": actor.id, "name": actor.name, "kind": actor.kind, "archived": actor.archived,
                       "revision": actor.revision, "is_me": actor.id == me(db, owner)},
             "identities": identities, "context": context, "projects": _projects(db, owner, actor.id, kept),
+            "buckets": _buckets(db, owner, actor.id),
             "responsible_for": responsible, "owed_to_them": owed, "tasks": tasks,
             "meetings": _meetings(db, owner, actor.id, kept), "links_to_review": to_review, "merges": merges,
             "gaps": [f"{n} item(s) about this person lost their supporting evidence."]
             if (n := len(rows) - len(kept)) else []}
+
+
+def _buckets(db, owner: str, actor_id: str) -> list[dict]:
+    """Stored person-to-client/project links (people_links.py), refreshed daily; the owner can confirm or remove."""
+    from ..people_links import for_actor
+
+    return for_actor(db, owner, actor_id)
 
 
 def _projects(db, owner: str, actor_id: str, rows: Sequence[ContextAssertion]) -> list[dict]:

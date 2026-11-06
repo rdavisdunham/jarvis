@@ -193,3 +193,21 @@ class RecordOverviewState(Base):
     next_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_error: Mapped[dict | None] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class PersonBucketLink(Base):
+    """A person's connection to a client or project (people_links.py): non-exclusive, with evidence counts.
+    Inferred links follow the evidence; the owner can confirm one or reject it, and that decision is kept."""
+    __tablename__ = "person_bucket_links"
+    __table_args__ = (UniqueConstraint("actor_id", "record_id"),
+                      Index("ix_person_bucket_links_owner_record", "owner_id", "record_id"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    actor_id: Mapped[str] = mapped_column(ForeignKey("actors.id", ondelete="CASCADE"), index=True)
+    record_id: Mapped[str] = mapped_column(ForeignKey("structure_records.id", ondelete="CASCADE"))
+    tasks: Mapped[int] = mapped_column(Integer, default=0)
+    meeting_facts: Mapped[int] = mapped_column(Integer, default=0)
+    evidence: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="inferred")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

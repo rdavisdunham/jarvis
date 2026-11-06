@@ -465,6 +465,10 @@ READ_TOOLS["reviews_due"] = {
         "within_days":{"type":"integer","minimum":0,"maximum":366},"type_id":{"type":"string"},
         "limit":{"type":"integer","minimum":1,"maximum":100},"offset":{"type":"integer","minimum":0,"maximum":100000}},
         "additionalProperties":False}}
+READ_TOOLS["record_overview"] = {
+    "description":"What Eridani knows about one client or project: the owner's description, its living overview (scope, vocabulary, people, recent changes, open questions), linked people, meeting facts, the latest meeting brief and open tasks. Use for questions like what is going on with a client or what a project covers. Changes nothing.",
+    "parameters":{"type":"object","properties":{"record_id":{"type":"string","format":"uuid"}},
+                  "required":["record_id"],"additionalProperties":False}}
 READ_TOOLS["record_browse"] = {
     "description":"Browse a home with complete counts and pagination. scope children is direct contents; subtree includes descendants; related is extra links only. parent_id omitted means Unfiled. Work/content/groups are views, not additional homes. groups lists records whose opens_as is container (the type's Organizing container setting; auto infers it). Each record reports opens_as: container opens as contents, item as its detail card.",
     "parameters":{"type":"object","properties":{
@@ -708,6 +712,9 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
     if name == "routing_state":
         from .routing import state
         with session_scope() as db:return state(db,owner)
+    if name == "record_overview":
+        from .record_overviews import knowledge
+        with session_scope() as db:return knowledge(db,owner,arguments["record_id"])
     if name == "reviews_due":
         from .record_reviews import listing as reviews
         with session_scope() as db:return reviews(db,owner,**arguments)

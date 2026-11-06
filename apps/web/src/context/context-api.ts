@@ -43,6 +43,9 @@ export async function meetingsAvailable() {
   catch (e) { if (isUnavailable(e)) return false; throw e; }
 }
 
+/** Confirm or remove a person's link to a client or project (people_links.py; a structure route, not context). */
+export const linkBucket = (recordId: string, actorId: string, status: "confirmed" | "rejected" | "inferred") =>
+  api(`/structure/records/${id(recordId)}/people/${id(actorId)}`, { method: "POST", body: JSON.stringify({ status }) });
 export const getReview = (sourceId: string) => api<Review>(`${BASE}/reviews/${id(sourceId)}`);
 export function transcript(sourceId: string, start = 0, end?: number) {
   const query = new URLSearchParams({ segment_start: String(start) });
@@ -103,6 +106,9 @@ export type PersonView = {
   context: { assertion_id: string; revision: number; kind: string; statement: string; lifecycle: string; inferred: boolean;
     modality: string; valid_from: string | null; citation: PersonCitation }[];
   projects: { project_id: string; name: string; context_items: number; tasks: number }[];
+  /** Stored links to clients and projects (people_links.py); confirmed ones stay without evidence. */
+  buckets?: { record_id: string; title: string; type_id: string; status: "inferred" | "confirmed"; tasks: number;
+    meeting_facts: number; evidence: { tasks?: string[]; meeting_facts?: string[] } }[];
   tasks: PersonTask[];
   meetings: { source_id: string; title: string | null; occurred_at: string | null }[];
   links_to_review: { link_id: string; revision: number; mention: string | null; status: string; role: string | null;

@@ -75,6 +75,19 @@ function type(el: HTMLInputElement, value: string) {
 }
 
 describe("PersonPage", () => {
+  it("lists linked clients and projects and lets the owner confirm or remove one", async () => {
+    current = person({ buckets: [{ record_id: "rec-abc", title: "ABC", type_id: "client", status: "inferred", tasks: 2,
+      meeting_facts: 1, evidence: { tasks: ["Rubric review"] } }] });
+    await render();
+    const chips = section("Projects and relationships").querySelector('[aria-label="Clients and projects"]')!;
+    expect(chips.textContent).toContain("ABC");
+    expect(section("Projects and relationships").textContent).not.toContain("Pricing");  // Stored links replace the guess.
+    await click(chips.querySelector<HTMLButtonElement>('button[aria-label="Remove ABC"]')!);
+    const post = calls.find(c => c.method === "POST" && c.url === "/api/v1/structure/records/rec-abc/people/act-sam")!;
+    expect(post.body).toEqual({ status: "rejected" });
+    expect(text()).toContain("Removed ABC.");
+  });
+
   it("shows current context, open work by direction, projects, observations, meetings and identity from the context API only", async () => {
     await render();
     expect(host.querySelector("h2")?.textContent).toBe("Sam Lee");

@@ -717,7 +717,7 @@ class BotCredential(Base):
     rate_count: Mapped[int] = mapped_column(Integer, default=0)
 
 # Register configurable planner tables with the shared metadata.
-from .structure_models import (StructureSchema, StructureProposal, StructureRecord, StructureLink, FieldUnderstanding, RoutingObservation, RoutingPattern, RoutingReview, RecordOverview, RecordOverviewState)  # noqa: E402,F401
+from .structure_models import (StructureSchema, StructureProposal, StructureRecord, StructureLink, FieldUnderstanding, RoutingObservation, RoutingPattern, RoutingReview, RecordOverview, RecordOverviewState, PersonBucketLink)  # noqa: E402,F401
 
 from .search_models import SearchDocument, SearchIndexState, SearchPreference, SearchAlias, SearchSession  # noqa: E402,F401
 

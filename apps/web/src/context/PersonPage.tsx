@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, RefreshCw, UserRound } from "lucide-react";
+import { ArrowLeft, Check, RefreshCw, UserRound, X } from "lucide-react";
 import * as context from "./context-api";
 import type { OpenLoop, PersonBrief, PersonChoice, PersonCitation, PersonView } from "./context-api";
 import { KIND_LABELS, SECTION_LABELS, type Evidence } from "./context-model";
@@ -65,6 +65,17 @@ export function PersonPage({ actorId, onMeetings, onMeeting, onPerson }: Props) 
   const name = view?.actor.name ?? "Person";
   const mergedInto = view?.actor.archived ? view.merges.find(m => m.loser_actor_id === view.actor.id && !m.undone_at) : undefined;
   const relationships = view?.context.filter(c => c.kind === "relationship") ?? [];
+  const buckets = view?.buckets ?? [];
+  /** Confirm or remove a person's link to a client or project, then reload the page. */
+  async function linkBucket(recordId: string, status: "confirmed" | "rejected", done: string) {
+    if (!view) return;
+    setBusy(true); setNotice(""); setError("");
+    try {
+      await context.linkBucket(recordId, view.actor.id, status);
+      setView(await context.person(view.actor.id)); setNotice(done);
+    } catch (e) { setError((e as Error).message); }
+    finally { setBusy(false); }
+  }
   const observations = view?.context.filter(c => c.kind !== "relationship") ?? [];
   return <section className="meetings-page meeting-review person-page" aria-label="Person">
     <header className="meeting-review-head">
@@ -91,8 +102,17 @@ export function PersonPage({ actorId, onMeetings, onMeeting, onPerson }: Props) 
 
       <section className="meeting-section" aria-label="Projects and relationships">
         <h3>Projects and relationships</h3>
-        {!view.projects.length && !relationships.length && <p className="meetings-hint">No projects or relationships recorded yet.</p>}
-        {!!view.projects.length && <div className="chip-row">{view.projects.map(p => <span key={p.project_id} className="chip"
+        {!buckets.length && !view.projects.length && !relationships.length && <p className="meetings-hint">No projects or relationships recorded yet.</p>}
+        {!!buckets.length && <div className="chip-row" aria-label="Clients and projects">{buckets.map(b => <span key={b.record_id}
+          className={"chip" + (b.status === "confirmed" ? " chip-done" : "")}
+          title={[`${b.tasks} task(s), ${b.meeting_facts} meeting fact(s)`, ...(b.evidence.tasks ?? []), ...(b.evidence.meeting_facts ?? [])].join("\n")}>
+          {b.title}
+          {b.status !== "confirmed" && <button className="chip-action" aria-label={`Confirm ${b.title}`} title="Confirm this link" disabled={busy}
+            onClick={() => void linkBucket(b.record_id, "confirmed", `Linked to ${b.title}.`)}><Check size={12}/></button>}
+          <button className="chip-action" aria-label={`Remove ${b.title}`} title="Not connected: remove this link" disabled={busy}
+            onClick={() => void linkBucket(b.record_id, "rejected", `Removed ${b.title}.`)}><X size={12}/></button>
+        </span>)}</div>}
+        {!buckets.length && !!view.projects.length && <div className="chip-row">{view.projects.map(p => <span key={p.project_id} className="chip"
           title={`${p.context_items} meeting item(s), ${p.tasks} task(s)`}>{p.name}</span>)}</div>}
         {relationships.map(c => <Observation key={c.assertion_id} item={c} onMeeting={onMeeting}/>)}
       </section>

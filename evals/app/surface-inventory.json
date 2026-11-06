@@ -532,6 +532,10 @@
       "feature": "custom_records"
     },
     {
+      "name": "record_overview",
+      "feature": "custom_records"
+    },
+    {
       "name": "record_search",
       "feature": "search"
     },
@@ -2461,6 +2465,13 @@
       "method": "POST",
       "path": "/api/v1/structure/records/{record_id}/overview/refresh",
       "handler": "overview_refresh",
+      "source": "apps/api/jarvis/structure_routes.py",
+      "feature": "custom_records"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/structure/records/{record_id}/people/{actor_id}",
+      "handler": "person_link",
       "source": "apps/api/jarvis/structure_routes.py",
       "feature": "custom_records"
     },
