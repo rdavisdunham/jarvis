@@ -140,6 +140,11 @@ def test_many_buckets_are_shortlisted_by_embeddings(on):
     assert len(data["candidates"]) == placement.SHORTLIST and data["candidates"][0]["title"] == "Transcript Intelligence"
 
 
+def test_nothing_is_queued_without_clients_or_projects(on):
+    create("task", "QA dispute review")
+    assert jobs() == []
+
+
 def test_failures_leave_the_task_alone(on):
     buckets()
     task = create("task", "QA dispute review")

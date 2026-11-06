@@ -106,6 +106,10 @@ def queue_for(db, owner, row):
     """Called when a task record is created. Queues one job when the task ended up unfiled."""
     if not enabled() or not placeable(db, row) or not active(db, owner):
         return None
+    if not db.scalar(select(StructureRecord.id).where(  # Nowhere to file it: no job, no model call.
+            StructureRecord.owner_id == owner, StructureRecord.type_id.in_(BUCKET_TYPES),
+            StructureRecord.archived.is_(False)).limit(1)):
+        return None
     return pending_job(db, owner, row.id) or enqueue_job(db, owner, KIND, {"record_id": row.id}).id
 
 
