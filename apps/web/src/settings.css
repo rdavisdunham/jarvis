@@ -104,6 +104,21 @@
 .settings-content p {
   line-height: 1.55;
 }
+/* Connections: one tab at a time (agent keys, remotea, Linear, Google, meetings). */
+.connections-settings,
+.connection-panel,
+.connection-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.connection-tab-body[hidden] {
+  display: none;
+}
+.connection-tabs {
+  max-width: 100%;
+}
 .settings-content > section > p,
 .settings-content .settings-sections > section > p,
 .settings-panel > p,

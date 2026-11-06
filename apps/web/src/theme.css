@@ -625,6 +625,19 @@ progress::-moz-progress-bar {
 .chip-home svg {
   color: var(--ink-3);
 }
+/* A long home path keeps its last segment: right-to-left flow puts the overflow, and the ellipsis, at the start;
+   the <bdi> keeps the path itself left-to-right. One line everywhere, including phones. */
+.chip-home .chip-text.home-path {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  direction: rtl;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-line-clamp: unset;
+}
 button.chip {
   border: 0;
   cursor: pointer;

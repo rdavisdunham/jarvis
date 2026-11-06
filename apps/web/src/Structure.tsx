@@ -9,9 +9,11 @@ import { useStructureActions } from "./structure-actions";
 import { OrganizationBrowse } from "./OrganizationBrowse";
 import { ContentsDialog } from "./ContentsDialog";
 import "./organization.css";
-import { nestedRows, childSpan } from "./nested-timeline";
+import { nestedRows, childSpan, timelinePlacement } from "./nested-timeline";
 import { OrganizationTree } from "./OrganizationTree";
 import { SourceBadge } from "./SourceDetails";
+import { HomePathChip, homePathText } from "./HomePath";
+import { boardColumns, boardMeaning, statusForColumn } from "./board-status";
 import {QuickListDetail} from "./QuickLists";
 import { RecordCard } from "./RecordCard";
 import { RunButton } from "./RunButton";
@@ -159,10 +161,12 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     await run("record.update",{record_id:row.id,expected_revision:row.revision,schema_revision:schema.revision,...changes});await refreshAll();};
   const create=async()=>{if(!title.trim()||!captureType)return;await run<CustomRecord>("record.create",{type_id:captureType.id,title:title.trim(),schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});setTitle("");await refreshAll();};
   const gf=type?.fields.find(f=>f.id===group);
-  const groups=group==="status"?(type?.statuses??meanings.filter(m=>visible.some(r=>r.status_meaning===m)).map(m=>({id:m,name:describe(m),meaning:m}))):group==="parent"?items.filter(r=>visible.some(v=>v.parent_id===r.id)).map(r=>({id:r.id,name:r.title,meaning:""})):gf?.kind==="relation"?items.filter(r=>gf.target_types.includes(r.type_id)).map(r=>({id:r.id,name:r.title,meaning:""})):(gf?.options.length?gf.options.map(o=>({...o,meaning:""})):Array.from(new Set(visible.map(r=>String(r.values[group]??"")).filter(Boolean))).map(v=>({id:v,name:v,meaning:""})));
-  const groupValue=(r:CustomRecord)=>group==="status"?(type?r.status_id:r.status_meaning):group==="parent"?r.parent_id:String(r.values[group]??"");
+  const typedStatus=type?boardColumns(type.statuses):null;
+  const groups=group==="status"?(typedStatus?.columns??meanings.filter(m=>visible.some(r=>boardMeaning(r.status_meaning)===m)).map(m=>({id:m,name:describe(m),meaning:m}))):group==="parent"?items.filter(r=>visible.some(v=>v.parent_id===r.id)).map(r=>({id:r.id,name:r.title,meaning:""})):gf?.kind==="relation"?items.filter(r=>gf.target_types.includes(r.type_id)).map(r=>({id:r.id,name:r.title,meaning:""})):(gf?.options.length?gf.options.map(o=>({...o,meaning:""})):Array.from(new Set(visible.map(r=>String(r.values[group]??"")).filter(Boolean))).map(v=>({id:v,name:v,meaning:""})));
+  const groupValue=(r:CustomRecord)=>group==="status"?(typedStatus?typedStatus.column(r.status_id):boardMeaning(r.status_meaning)):group==="parent"?r.parent_id:String(r.values[group]??"");
   const columns=[...groups,{id:"",name:"Unassigned",meaning:""}];
-  const move=async(id:string,column:string)=>{const row=items.find(r=>r.id===id);if(!row||!canEdit||busy)return;const rt=schema.types.find(t=>t.id===row.type_id)!;const statusId=type?column:rt.statuses.find(s=>s.meaning===column)?.id;if(group==="status"&&!statusId)throw new Error("Choose a workflow status for this record.");const changes=group==="status"?{status_id:statusId}:group==="parent"?{parent_id:column||null}:{values:{[group]:column||null}};await edit(row,changes);};
+  // A drop on the card's own column changes nothing (a Backlog card dropped on Open stays Backlog, in Linear too).
+  const move=async(id:string,column:string)=>{const row=items.find(r=>r.id===id);if(!row||!canEdit||busy||(groupValue(row)??"")===column)return;const rt=schema.types.find(t=>t.id===row.type_id)!;const statusId=type?column:statusForColumn(rt.statuses,column);if(group==="status"&&!statusId)throw new Error("Choose a workflow status for this record.");const changes=group==="status"?{status_id:statusId}:group==="parent"?{parent_id:column||null}:{values:{[group]:column||null}};await edit(row,changes);};
   const saveView=async()=>{if(!viewName.trim())return;await post("/task-views",{id:crypto.randomUUID(),name:viewName.trim(),expected_revision:0,state:{collection_view:true,collection_type:typeId,collection_parent:parent,collection_group:group,collection_field:filterField,collection_value:filterValue,tab:capability?tab:"all",query,status,layout}});setViewName("");await load();};
   const applyView=(v:Record<string,unknown>)=>{
     if(!v.collection_view){onApplyTaskView?.(v);return;}
@@ -186,8 +190,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     if(r.is_quick_list)out.push(<span key="quick" className="chip">Quick list · {r.quick_done}/{r.quick_total}</span>);
     const showType=!typeId&&(!capability||r.type_id!=="task");
     if(home&&(r.home.length||showType)){const Icon=typeIcon(r.home.at(-1)?.type_id??r.type_id);
-      out.push(<span key="home" className="chip chip-home" title={[r.type_name,...r.home.map(p=>p.title)].join(" in ")}>
-        <Icon aria-hidden="true"/><span className="chip-text">{r.home.length?r.home.map(p=>p.title).join(" / "):r.type_name}</span></span>);}
+      out.push(<HomePathChip key="home" path={r.home.length?homePathText(r.home):r.type_name} icon={<Icon aria-hidden="true"/>}/>);}
     const due=bound(r,"due_date"),time=bound(r,"due_time"),planned=bound(r,"planned_date");
     const doneish=["completed","cancelled"].includes(r.status_meaning??"");
     if(due){const bucket=doneish?"none":dueBucket(due,today);
@@ -296,7 +299,8 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
       <div className="work-timeline-axis" aria-hidden="true"><span/>
         <div className="work-timeline-scale">{[0,7,14,21,28].map(d=><span key={d} style={{left:pct(d)}}>{monthDay(shiftDate(timelineStart,d))}</span>)}</div>
       </div>
-      {nestedRows(visible,timelineClosed).map(({row:r,depth,hasChildren})=>{const span=childSpan(r,items,bound);const start=bound(r,"start_date")||bound(r,"planned_date")||bound(r,"due_date");const finish=bound(r,"target_date")||start;const a=offset(start),b=offset(finish);const Icon=typeIcon(r.type_id);
+      {nestedRows(visible,timelineClosed).map(({row:r,depth,hasChildren})=>{const span=childSpan(r,items,bound);const start=bound(r,"start_date")||bound(r,"planned_date")||bound(r,"due_date");const finish=bound(r,"target_date")||start;const Icon=typeIcon(r.type_id);
+        const place=timelinePlacement(start,finish,{rangeStart:timelineStart,today,days:TIMELINE_DAYS,finished:["completed","cancelled"].includes(r.status_meaning??"")});
         return <div key={r.id} className="work-timeline-row">
           <div className="work-timeline-name" data-record-id={r.id} style={{paddingLeft:12+Math.min(depth,8)*16}}>
             {hasChildren&&<button className="btn-icon" aria-label={(timelineClosed.has(r.id)?"Expand ":"Collapse ")+r.title} aria-expanded={!timelineClosed.has(r.id)} onClick={()=>setTimelineClosed(v=>{const n=new Set(v);if(n.has(r.id))n.delete(r.id);else n.add(r.id);return n;})}>{timelineClosed.has(r.id)?"▸":"▾"}</button>}
@@ -304,15 +308,16 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
             <div className="row-main">
               <button className="row-title" onClick={()=>open(r)}>{r.title}</button>
               {(r.home.length>0||start)&&<div className="chip-row">
-                {r.home.length>0&&<span className="chip chip-home">{r.home.map(p=>p.title).join(" / ")}</span>}
-                {start&&<span className="chip tabular">{shortDate(start,today)}{finish!==start?" – "+shortDate(finish,today):""}</span>}
+                {r.home.length>0&&<HomePathChip path={homePathText(r.home)}/>}
+                {start&&<span className={"chip tabular"+(place.overdue?" chip-due-overdue":"")} title={place.overdue?"Overdue":undefined}>{shortDate(start,today)}{finish!==start?" – "+shortDate(finish,today):""}</span>}
               </div>}
             </div>
           </div>
           <div className="timeline-track">
             {span&&offset(span[1])>=0&&offset(span[0])<TIMELINE_DAYS&&<span className="timeline-child-span" title={"Children: "+span.join(" – ")} style={{left:pct(Math.max(0,offset(span[0]))),width:pct(Math.max(0,Math.min(TIMELINE_DAYS,offset(span[1])+1)-Math.max(0,offset(span[0]))))}}/>}
             {todayOffset>=0&&todayOffset<TIMELINE_DAYS&&<span className="work-timeline-today" style={{left:pct(todayOffset+.5)}}/>}
-            {start?(b>=0&&a<TIMELINE_DAYS?<span className={"timeline-bar"+(r.status_meaning==="completed"?" done":"")} title={start+(finish!==start?" – "+finish:"")} style={{left:pct(Math.max(0,a)),width:"max(6px, "+pct(Math.min(TIMELINE_DAYS,b+1)-Math.max(0,a))+")"}}/>:<span className="work-timeline-out">{b<0?"Before this range":"After this range"}</span>):<span className="work-timeline-out">Unscheduled</span>}
+            {place.kind==="bar"?<span className={"timeline-bar"+(r.status_meaning==="completed"?" done":"")+(place.overdue?" overdue":"")+(place.clipped?" clipped":"")} title={start+(finish!==start?" – "+finish:"")+(place.overdue?" · overdue":"")} style={{left:pct(place.from),width:"max(6px, "+pct(place.to-place.from)+")"}}/>
+              :<span className="work-timeline-out">{place.kind==="unscheduled"?"Unscheduled":place.kind==="before"?"Before this range":"After this range"}</span>}
           </div>
         </div>;})}
     </div>
