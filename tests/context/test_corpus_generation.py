@@ -24,7 +24,7 @@ from jarvis.context.models import (
 from jarvis.context.native.retrieve import NativeRetriever
 from jarvis.context.schema import EntityRef, ExtractRequest, RetrieveQuery, ScopePredicate
 from jarvis.db import session_scope
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from evals.context.bench import Expect
 from evals.context.corpus import CorpusSpec, generate, load, meeting, queries
@@ -112,6 +112,10 @@ def test_lifecycle_history_is_consistent(corpus):
 def test_loads_and_retrieval_stays_inside_scope(corpus):
     with session_scope() as db:
         counts = load(db, corpus)
+    # Fresh statistics: the per-test cleanup only DELETEs, so without this the planner sees the dead rows and
+    # stale estimates left by earlier tests and picks plans that took this test from seconds to many minutes.
+    with session_scope() as db:
+        db.execute(text("ANALYZE"))
     with session_scope() as db:
         assert db.scalar(select(func.count()).select_from(ContextSegment)) == counts["context_segments"]
         assert db.scalar(select(func.count()).select_from(ContextAssertion)) == counts["context_assertions"]
