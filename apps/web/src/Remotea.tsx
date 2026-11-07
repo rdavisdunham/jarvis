@@ -892,14 +892,16 @@ export function RunDrawer({ id, onClose, preloaded }: {
     <header className="remotea-chat-head">
       <div className="remotea-chat-title">
         <h2>{run?.task?.title ?? "Run"}</h2>
+        {/* Auto-merge (run_merge.py): in the title row, so the header keeps its height on a phone with the keyboard up. */}
+        {run && bound && run.auto_merge && !isSettled(run) && <label className="run-auto-merge" title={run.auto_merge.why ?? "Merge the pull request by itself once the checks pass."}>
+          <input type="checkbox" checked={run.auto_merge.enabled} disabled={!!busy || !run.auto_merge.available}
+            aria-describedby={run.auto_merge.why ? "run-auto-merge-why" : undefined} onChange={e => void autoMerge(e.target.checked)}/>Auto-merge
+          {run.auto_merge.why && <span id="run-auto-merge-why" className="sr-only">{run.auto_merge.why}</span>}</label>}
         {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title="Open terminal in Remotea"
           disabled={!!busy || !bound || !run.surf} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
         <button type="button" className="btn-icon run-drawer-close" aria-label="Close run" title="Close run" onClick={onClose}><X size={20} aria-hidden="true"/></button>
       </div>
       {run && <StageHeader run={run} status={<p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}/>}
-      {run && bound && run.auto_merge && !isSettled(run) && <label className="run-auto-merge" title={run.auto_merge.why ?? "Merge the pull request by itself once the checks pass."}>
-        <input type="checkbox" checked={run.auto_merge.enabled} disabled={!!busy || !run.auto_merge.available}
-          onChange={e => void autoMerge(e.target.checked)}/>Auto-merge{run.auto_merge.why ? <small> · {run.auto_merge.why}</small> : null}</label>}
       {run && !bound && <p role="status" className="footnote">Loading the selected run…</p>}
     </header>
     <div className="remotea-chat-log run-drawer-middle" ref={log} onScroll={onScroll}>
