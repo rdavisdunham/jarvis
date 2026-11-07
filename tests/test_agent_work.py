@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 import httpx
 from cryptography.fernet import Fernet
-from jarvis import agent_work, work_intake, work_runner
+from jarvis import agent_work, work_intake, work_runner, work_stream
 from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, execute
@@ -93,23 +93,44 @@ async def test_none_profile_is_explicit_and_frozen_for_accepted_work(client, mon
         execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna"})
     bodies = []
 
+    streamed = []
+    monkeypatch.setattr(work_stream.Deltas, "add", lambda self, piece: streamed.append((self.work_id, piece)))
+
+    class Stream:
+        """A streamed Responses reply: text deltas, then the whole response in `response.completed`."""
+        status_code, is_error = 200, False
+
+        def __init__(self, response):
+            self.response = response
+        async def __aenter__(self): return self
+        async def __aexit__(self, *_): pass
+        async def aread(self): return b""
+        async def aiter_lines(self):
+            for item in self.response["output"]:
+                for part in item.get("content", []):
+                    for word in part["text"].split(" "):
+                        yield "data: " + json.dumps({"type": "response.output_text.delta", "delta": word + " "})
+                        yield ""
+            yield "data: " + json.dumps({"type": "response.completed", "response": self.response})
+
     class Client:
         def __init__(self, **_): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *_): pass
-        async def post(self, url, *, json, headers):
+        def stream(self, method, url, *, json, headers):
             bodies.append(json)
             output = ([{"type": "function_call", "call_id": "call_alpha", "name": "task_create",
                         "arguments": '{"title":"Alpha"}', "status": "completed"}]
                       if len(bodies) == 1 else
                       [{"type": "message", "role": "assistant", "content":
                         [{"type": "output_text", "text": "Added Alpha."}]}])
-            return httpx.Response(200, request=httpx.Request("POST", url),
-                json={"id": "resp_" + str(len(bodies)), "status": "completed", "output": output,
-                      "usage": {"input_tokens": 100, "output_tokens": 20}})
+            return Stream({"id": "resp_" + str(len(bodies)), "status": "completed", "output": output,
+                           "usage": {"input_tokens": 100, "output_tokens": 20}})
     monkeypatch.setattr(work_runner.httpx, "AsyncClient", Client)
     await work_runner.run(work["id"])
-    assert len(bodies) == 2
+    assert len(bodies) == 2 and all(body["stream"] for body in bodies)
+    assert "".join(piece for _, piece in streamed).strip() == "Added Alpha."  # Previewed as it was written.
+    assert {work_id for work_id, _ in streamed} == {work["id"]}
     assert all(body["model"] == "gpt-5.6-luna" and body["reasoning"] == {"effort": "none"}
                and body["max_output_tokens"] == 8192 for body in bodies)
     assert all(body["tools"] for body in bodies)
