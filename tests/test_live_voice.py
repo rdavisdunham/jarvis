@@ -705,16 +705,6 @@ async def test_gratitude_during_work_keeps_both_accounts_open_with_delayed_polli
         assert all(not w.cancel_requested for w in db.scalars(select(AgentWork).where(AgentWork.voice_session_id==c.id)))
 
 
-def voice_child(c, parent_id, message):
-    from uuid import uuid4
-    from jarvis.agent_work import enqueue
-    with session_scope() as db:
-        row = enqueue(db, c.owner, c.owner, c.device, c.conversation_id, str(uuid4()), message,
-                      parent_id=parent_id, voice_session_id=c.id)
-        row.transient = False
-        return row.id
-
-
 def quiet_since_last_input(c, seconds=5):
     from datetime import timedelta
     from jarvis.models import now
@@ -725,31 +715,6 @@ def quiet_since_last_input(c, seconds=5):
 def spoken(c):
     return [call.args[0]["content"] for call in c.send.await_args_list
             if call.args[0]["type"] == "session.commentary.append"]
-
-
-async def test_split_request_reports_each_part_as_it_lands(controller, monkeypatch):
-    from jarvis.agent_work import finish
-    c = controller
-    c.state = "listening"
-    root = queued_voice_work(c)
-    first, second = voice_child(c, root, "Move the dentist"), voice_child(c, root, "Add a prep task")
-    quiet_since_last_input(c)
-    with session_scope() as db:
-        finish(db, db.get(AgentWork, first), "succeeded", "Dentist moved to Friday.")
-    await c.report_work()
-    [note] = spoken(c)
-    assert "Dentist moved to Friday." in note and "Other parts of that request are still running." in note
-    assert await voice_state(c, monkeypatch) == "working"
-    await c.report_work()
-    assert len(spoken(c)) == 1  # A part is spoken once.
-    with session_scope() as db:
-        finish(db, db.get(AgentWork, second), "succeeded", "Prep task added.")
-    await c.report_work()
-    last = spoken(c)[-1]
-    assert "Prep task added." in last and "Dentist moved" not in last and "still running" not in last
-    await c.report_work()
-    assert len(spoken(c)) == 2
-    assert await voice_state(c, monkeypatch) == "listening"
 
 
 async def test_long_request_gets_one_still_working_note(controller):

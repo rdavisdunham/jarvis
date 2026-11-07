@@ -370,9 +370,7 @@ windows and the closing controller's timers stay with the backend, which receive
 delegated request.
 
 Progress while work runs. The server checks the session's requests every second and speaks each
-result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. A
-request the backend split into parts reports each finished part as it lands ("Other parts of that
-request are still running"), instead of waiting for the slowest part. A request still running after
+result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. A request still running after
 12 seconds gets one "still working" note that names the request and never guesses the outcome.
 
 Saved memory during a session. The session starts with up to six relevant saved facts in its
