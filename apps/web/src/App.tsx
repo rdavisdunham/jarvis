@@ -14,8 +14,9 @@ import { StructureWorkspace } from "./Structure";
 import {QuickCapture} from "./QuickLists";
 import {Onboarding} from "./Onboarding";
 import { FooterStatus, NotificationBell } from "./app-chrome";
-import { setupActive, setupEstablished, typesFieldsRequest, type SetupMode, type SetupSession } from "./setup-model";
+import { setupActive, setupEstablished, typesFieldsRequest, type OrganizationProposal, type SetupMode, type SetupSession } from "./setup-model";
 import { SetupConversation } from "./SetupConversation";
+import { SetupTreeReview } from "./SetupTreeReview";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
@@ -430,6 +431,7 @@ export default function App() {
   const [setupSession, setSetupSession] = useState<SetupSession | null>(null);
   const inSetup = setupActive(setupSession) && !!activeConversation && setupSession?.conversation_id === activeConversation;
   const setupVoice = useRef(false);
+  const [treeReview, setTreeReview] = useState<OrganizationProposal | null>(null);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
   const chatAnchors = useRef({conversation: conversationRef.current, items: new Map<string, string | null>()});
   if (chatAnchors.current.conversation !== conversationRef.current) chatAnchors.current = {conversation: conversationRef.current, items: new Map()};
@@ -1833,6 +1835,13 @@ export default function App() {
       setupVoice.current = true;
       await startVoice();
     } catch (e) { setError((e as Error).message); }
+  }
+  async function openTreeReview(proposalId: string) {
+    try { setTreeReview(await api<OrganizationProposal>("/setup/proposals/" + encodeURIComponent(proposalId))); }
+    catch (e) { setError((e as Error).message); }
+  }
+  async function refreshSetup() {
+    setSetupSession(await api<SetupSession>("/setup"));
   }
   async function openWorkRecord(action: ActionChange) {
     if (!action.entity_id) return;
@@ -3239,7 +3248,9 @@ export default function App() {
             )}
             {inSetup && setupSession && <SetupConversation session={setupSession} voiceActive={voiceLive}
               voiceAvailable={!!boot.capabilities.voice} busy={thinking || voiceState?.state === "closing"}
-              onSwitchToVoice={() => void switchSetupToVoice()}/>}
+              onSwitchToVoice={() => void switchSetupToVoice()}
+              onReview={setupSession.status === "reviewing" && setupSession.tree_proposal_id
+                ? () => void openTreeReview(setupSession.tree_proposal_id!) : undefined}/>}
             <div
               className="messages"
               onScroll={(event) => {
@@ -3391,7 +3402,14 @@ export default function App() {
         </div>
       </div>
       {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
-      {remotea.start && <Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
+      {treeReview && <SetupTreeReview key={treeReview.id} proposal={treeReview} onClose={() => setTreeReview(null)}
+        onKeepTalking={() => { setTreeReview(null); setCompanion(true); focusChat(); }}
+        onByHand={() => { setTreeReview(null); setCompanion(false); setView("organize"); }}
+        onApplied={result => {
+          setTreeReview(null); void load().catch(() => {}); void refreshSetup().catch(() => {});
+          setToast(result.created_count === 1 ? "Created 1 record." : "Created " + result.created_count + " records.");
+        }}/>}
+      {remotea.start &&<Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
         onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}
         onSetup={() => { remoteaActions.closeStart(); setView("settings"); setSettingsSection("integrations"); setConnectionTab("remotea"); revealSetup(); }}/></Suspense>}
       {remotea.swarm && <Suspense fallback={null}><SwarmDialog taskId={remotea.swarm} onClose={remoteaActions.closeSwarm}

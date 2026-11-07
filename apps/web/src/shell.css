@@ -725,6 +725,58 @@ body:has(.modal-backdrop) .bug-report-launcher {
 .setup-conversation .footnote {
   margin: 0;
 }
+/* Set up with Dani: the proposed organization review. */
+.setup-tree-rows {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.setup-tree-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0 8px 12px;
+  border-inline-start: 2px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.setup-tree-row.flagged {
+  border-inline-start-color: var(--danger);
+}
+.setup-tree-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.setup-tree-title {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-weight: 600;
+}
+.setup-tree-description {
+  width: 100%;
+  min-width: 0;
+  color: var(--ink-2);
+}
+.setup-tree-kind {
+  width: auto;
+}
+.setup-tree-archive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.setup-tree-archive input {
+  width: auto;
+}
+.setup-tree-row > .btn {
+  justify-self: start;
+}
+.setup-tree-impact {
+  margin: 12px 0 0;
+  color: var(--ink-2);
+}
 .history-note {
   display: flex;
   align-items: center;

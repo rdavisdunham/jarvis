@@ -408,6 +408,9 @@ def restore(db, owner, args, command_id):
     if rows and all(r.tool in {"record.mark_reviewed", "record.review"} for r in rows):
         # The Undo toast after Mark reviewed: each review change carries its own date guard.
         return undo_reviews(db, owner, rows, command_id)
+    if rows and all(r.tool == "setup.tree_apply" for r in rows):
+        from .setup_tree import restore as undo_setup
+        return undo_setup(db, owner, rows, command_id)
     check_restore_guard(db, owner, receipt)
     if rows and all(r.tool == "record.instantiate" for r in rows):
         from .record_templates import restore as undo_template

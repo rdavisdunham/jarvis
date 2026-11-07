@@ -205,3 +205,10 @@ Move on after two or three concrete details, or after two short answers. Aim for
   - In the setup conversation, the composer's "Talk to Dani" voice button behaves like "Switch to voice".
   - "Propose my organization" appears only when the setup state reports `can_propose` (PR 4).
   - `batch-c.mjs` now walks the new launcher: mode choice, the fixed opening, a typed answer sent with `purpose: "setup"`, and resume.
+- **PR 5** (tree review and apply), built before PR 4: `apps/api/jarvis/setup_tree.py`, `SetupTreeReview.tsx`.
+  - Commands `setup.tree_preview {tree}` and `setup.tree_apply {proposal_id, preview_hash}`. Apply has no `expected_revision`: the preview hash covers the tree and the revision, name and archived state of every existing record it names, so any later change makes the preview stale (`PREVIEW_REQUIRED`).
+  - Created rows are matched to existing records by name before creating (spaces and projects across the owner, areas within their space, goals within their home), which also avoids the unique constraints. A match with an archived record, duplicate names under one parent, or a project name already in use are blocking issues.
+  - A project under a goal is homed where the goal is and linked to it. Archive rows apply only with `archive_confirmed` (the tick), which is off by default.
+  - Revert undoes the whole apply as one group (`record.restore_contents` dispatches to `setup_tree.restore`): created rows are archived deepest first, renamed and archived rows are restored. It is refused once anything changed or other records (such as a new task) point into the created rows.
+  - The review opens from a "Review proposed organization" button in the setup strip while the session is reviewing. The `ui_records` action for opening it arrives with the synthesis (PR 4).
+  - Existing rows keep their descriptions; only created rows take the proposed description.

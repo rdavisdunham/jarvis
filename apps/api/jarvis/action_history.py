@@ -150,6 +150,15 @@ def has_linked_records(db, model, identity):
 def inverse(db, change, *, lock=False, group=True):
     from .domain import COMMANDS
 
+    if group and change.tool == "setup.tree_apply":
+        # Set up with Dani: the applied organization is undone as one group (setup_tree.restore).
+        from .setup_tree import undo_problem
+        rows = list(db.scalars(select(ActionChange).where(
+            ActionChange.owner_id == change.owner_id, ActionChange.command_id == change.command_id)))
+        reason = undo_problem(db, change.owner_id, rows)
+        if reason:
+            return None, reason
+        return ("record.restore_contents", {"source_command_id": change.command_id}), "Undo this organization setup"
     if group and change.tool in {"record.contents", "record.instantiate"}:
         from .record_contents import check_restore_guard
         receipt = db.get(Command, (change.owner_id, change.command_id))
