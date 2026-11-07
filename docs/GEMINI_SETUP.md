@@ -19,8 +19,9 @@ and remains fixed throughout an in-progress request.
    docker compose --env-file .env.upgrade -f compose.upgrade.yml up -d --force-recreate api worker
    ```
 
-4. Refresh Dani, then select **Settings → Task agent → Backend model →
-   Gemini 3.8 Flash**. Switch to GPT-5.6 Luna in the same menu.
+4. Refresh Dani, then select **Settings → Task agent → Background work →
+   Gemini 3.8 Flash** (and under **Typed chat** to type on Gemini too). Switch to
+   GPT-5.6 Luna in the same menu.
 
 An option marked **API key needed** is unavailable until its key is loaded.
 A loaded key does not prove model access or available quota; the first real check
