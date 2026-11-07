@@ -3,6 +3,7 @@ import { api, ApiError, postAction, flushActions } from "./api";
 import { respondDecision, flushDrafts, type RunDecision } from "./RunWorkflow";
 import { flushRolePreferences } from "./RunModels";
 import { useAgentRefresh } from "./remotea-refresh";
+import { createLoader } from "./events";
 import {
   needsTargetData, PANEL_STORAGE_KEY, restorePanel, runsByTask, storedPanel,
   type NeedsTarget, type PanelState, type PendingControl, type RemoteaStatus, type Run,
@@ -76,29 +77,33 @@ export function RemoteaProvider({ children }: { children: ReactNode }) {
   const [start, setStart] = useState<string | null>(null);
   const [swarm, setSwarm] = useState<string | null>(null);
 
-  const refresh = useCallback(() => {
+  const refreshLoader = useMemo(() => createLoader(async ({ current }) => {
     if (!enabled) return;
     void flushActions();
     void flushDrafts();
     void flushRolePreferences();
-    void Promise.allSettled([
+    const [s, r, p, d] = await Promise.allSettled([
       api<RemoteaStatus>("/remotea/status"),
       api<{ items: Run[] }>("/remotea/runs?active=true&limit=100"),
       api<{ items: PendingControl[] }>("/remotea/pending"),
       api<{ items: RunDecision[] }>("/remotea/decisions"),
-    ]).then(([s, r, p, d]) => {
-      if (d.status === "fulfilled") setDecisions(d.value.items);
-      if (s.status === "fulfilled") setStatus(s.value);
-      if (r.status === "fulfilled") setActiveRuns(r.value.items);
-      if (p.status === "fulfilled") {
-        setPending(p.value.items);
-        const open = new Set(p.value.items.map(item => item.id));
-        setCards(current => Object.fromEntries(Object.entries(current).filter(([id]) => open.has(id))));
-      }
-      const failed = [s, r, p].find((x): x is PromiseRejectedResult => x.status === "rejected");
-      setError(failed ? message(failed.reason) : "");
-    });
-  }, [enabled]);
+    ]);
+    if (!current()) return;
+    if (d.status === "fulfilled") setDecisions(d.value.items);
+    if (s.status === "fulfilled") setStatus(s.value);
+    if (r.status === "fulfilled") setActiveRuns(r.value.items);
+    if (p.status === "fulfilled") {
+      setPending(p.value.items);
+      const open = new Set(p.value.items.map(item => item.id));
+      setCards(current => Object.fromEntries(Object.entries(current).filter(([id]) => open.has(id))));
+    }
+    const failed = [s, r, p].find((x): x is PromiseRejectedResult => x.status === "rejected");
+    setError(failed ? message(failed.reason) : "");
+  }), [enabled]);
+  useEffect(() => () => refreshLoader.cancel(), [refreshLoader]);
+  const refresh = useCallback(() => {
+    if (enabled) void refreshLoader.request({ immediate: true });
+  }, [enabled, refreshLoader]);
   useEffect(() => { if (!enabled) { setStatus(null); setActiveRuns([]); setPending([]); setDecisions([]); } refresh(); }, [enabled, refresh]);
   useAgentRefresh(refresh);
   useEffect(() => { window.addEventListener("online", refresh); return () => window.removeEventListener("online", refresh); }, [refresh]);
