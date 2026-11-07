@@ -1860,6 +1860,13 @@
       "feature": "agent_control"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/remotea/auto-merge",
+      "handler": "set_auto_merge",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/remotea/decisions",
       "handler": "decisions",
@@ -2031,6 +2038,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/approve",
       "handler": "approve",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/auto-merge",
+      "handler": "run_auto_merge",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },

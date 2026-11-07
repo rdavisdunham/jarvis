@@ -121,6 +121,10 @@ class ApproveInput(Input):
     note: str | None = Field(default=None, max_length=2000)
 
 
+class AutoMergeInput(Input):
+    enabled: bool
+
+
 class MergeInput(Input):
     # The pull request head the operator saw green (run_merge.check): a newer head refuses with HEAD_MOVED.
     expected_head_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
@@ -1318,6 +1322,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "ci": run_ci.public(db, run),
         # Merge from Eridani (run_merge.py): whether the pull request can be merged or updated now, and why not.
         "merge": run_merge.public(db, run),
+        "auto_merge": run_merge.public_auto(db, run),
         "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question") or harness.get("managed_questions")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,

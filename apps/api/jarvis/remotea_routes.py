@@ -123,6 +123,7 @@ def state(db, user):
     return {
         "enabled": agent_link.enabled(db, user.owner_id),
         "auto_complete": coordinator.auto_complete(db, user.owner_id),
+        "auto_merge": run_merge.auto_default(db, user.owner_id),
         "quiet_bypass": coordinator.quiet_bypass(db, user.owner_id),
         "retention_days": retention.window(db, user.owner_id).days,
         "key": bot_access.public(key) if key else None,
@@ -213,6 +214,15 @@ def set_auto_complete(body: AutoCompleteInput, user: User):
     with session_scope() as db:
         gated(db, user)
         set_enabled(db, user.owner_id, body.enabled, "remotea_auto_complete")
+        return state(db, user)
+
+
+@router.post("/auto-merge")
+def set_auto_merge(body: AutoCompleteInput, user: User):
+    """Default for new runs (off): a run with a real check (a verify entry or CI) merges its pull request by itself."""
+    with session_scope() as db:
+        gated(db, user)
+        set_enabled(db, user.owner_id, body.enabled, "remotea_auto_merge")
         return state(db, user)
 
 
@@ -458,6 +468,13 @@ def update_branch(identity: UUID, body: control.MergeInput, user: User):
         writable(db, user)
         return receipts.once(db, user.owner_id, str(identity), "update_branch", body, lambda: run_merge.update_branch(
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/auto-merge")
+def run_auto_merge(identity: UUID, body: control.AutoMergeInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return run_merge.set_auto(db, user.owner_id, str(identity), body, actor=actor_for(user))
 
 
 @router.post("/runs/{identity}/ci/refresh")

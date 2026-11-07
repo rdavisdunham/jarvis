@@ -184,11 +184,11 @@ def log_lines(failed_logs, limit=LOG_LINES):
     return lines[-limit:]
 
 
-def parse(result, stale_local=None):
+def parse(result, stale_local=()):
     """The host's `ci.status` result → {state, head_sha, pr_url, pr_number, run_url, checks, failed, log,
     worktree_head, pr_state, base, draft, mergeable, merge_state}. Never raises: anything malformed reads as no pull
-    request or no checks. `stale_local`: a worktree head known to be behind the PR only because Eridani updated the
-    branch on GitHub (run_merge) is not "unpushed" work."""
+    request or no checks. `stale_local`: worktree heads known to be behind the PR only because Eridani updated the
+    branch on GitHub (run_merge) are not "unpushed" work."""
     result = result if isinstance(result, dict) else {}
     pr = result.get("pr") if isinstance(result.get("pr"), dict) else None
     head = str((pr or {}).get("head_sha") or (pr or {}).get("headRefOid") or "").lower()[:64]
@@ -204,7 +204,7 @@ def parse(result, stale_local=None):
     buckets = {c["bucket"] for c in checks}
     if pr is None:
         state = "no_pr"
-    elif local and head and not local.startswith(head) and not head.startswith(local) and local != stale_local:
+    elif local and head and not local.startswith(head) and not head.startswith(local) and local not in stale_local:
         state = "unpushed"
     elif not checks:
         state = "absent"
@@ -416,7 +416,7 @@ def on_outcome(db, run, row, state, detail="", result=None):
         return None
     payload = row.payload or {}
     tuple_ = (row.generation, payload.get("turn_seq", run.turn_seq), payload.get("plan_revision", run.plan_revision))
-    facts = parse(result, ((run.sync_state or {}).get("merge") or {}).get("updated_from"))
+    facts = parse(result, ((run.sync_state or {}).get("merge") or {}).get("stale_heads") or ())
     attempt = record(db, run, tuple_, facts, clock)
     save(run, error=None, answered_at=clock.isoformat())
     emit(db, run.owner_id, "agent.changed", run.id)

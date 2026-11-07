@@ -1,6 +1,6 @@
 # Merge from Eridani: plan
 
-Status: approved 2026-11-07. Phase 1 is in progress: remotea #59 (host commands) and the Eridani merge panel (PR B).
+Status: approved 2026-11-07. Phase 1 and 1b are built: remotea #59 (host commands), the Eridani merge panel (#186) and auto-merge (PR C). Phase 2 (the GitHub App) is next.
 
 ## Goal
 
