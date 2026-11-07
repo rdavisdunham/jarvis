@@ -66,6 +66,7 @@ class LiveController(Controller):
         self.startup_state = None
         self.startup_pending = False
         self.end_candidate = None
+        self.setup_notes = None  # set by connect() for the Set up with Dani conversation
         self.end_candidate_deadline = 0.0
         self.close_lock, self.delegation_lock = asyncio.Lock(), asyncio.Lock()
         self.delegations, self.work = set(), set()
@@ -120,13 +121,17 @@ class LiveController(Controller):
             conv = owned(db, Conversation, self.conversation_id, self.owner)
             from .access import actor
             open_voice(db, self.id, self.owner, actor(db, self.owner), self.device, self.conversation_id)
-            if not conv.private and self.preferences["history_enabled"]:
+            from .setup import LIVE_HISTORY_WINDOW, active as setup_active
+            # Set up with Dani: GPT-Live holds the interview, so it reads more of the (always kept) setup transcript.
+            setup = None if self.preferences.get("shared_workspace") else setup_active(db, self.owner, conv.id)
+            self.setup_notes = dict(setup.notes or {}) if setup else None
+            if (not conv.private and self.preferences["history_enabled"]) or setup:
                 rows = list(
                     db.scalars(
                         select(Source)
                         .where(Source.conversation_id == conv.id, Source.deleted_at.is_(None))
                         .order_by(Source.created_at.desc())
-                        .limit(12)
+                        .limit(LIVE_HISTORY_WINDOW if setup else 12)
                     )
                 )
                 self.history = [
@@ -147,7 +152,9 @@ class LiveController(Controller):
             "store": False,
             "audio": {"output": {"voice": self.voice}},
             "delegation": {"type": "client"},
-            "instructions": live_instructions(self.preferences, self.voice)
+            "instructions": live_instructions(self.preferences, self.voice,
+                                              mode="setup" if self.setup_notes is not None else None,
+                                              setup_notes=self.setup_notes)
             + "\n"
             + self.memory_context,
             "input": [
