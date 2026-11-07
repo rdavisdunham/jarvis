@@ -508,6 +508,10 @@
       "feature": "organization"
     },
     {
+      "name": "person_lookup",
+      "feature": "organization"
+    },
+    {
       "name": "planning_compare",
       "feature": "planning"
     },

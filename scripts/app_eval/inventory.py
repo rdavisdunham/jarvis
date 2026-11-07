@@ -53,6 +53,7 @@ EXACT = {
     "note_lists": "note_lists",
     "note_list_items": "note_lists",
     "record_search": "search",
+    "person_lookup": "organization",
     "search_feedback": "search_aliases",
     "search_select": "search_aliases",
     "work_revert": "receipts",
