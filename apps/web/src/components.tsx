@@ -780,7 +780,7 @@ export function SettingsPanel({
               key: "live_memory_updates",
               label: "Memory during voice",
               description:
-                "While you talk with GPT-Live, quietly give Dani saved facts that match what you are saying.",
+                "Start each GPT-Live call with your About you summary, and quietly give Dani saved facts that match what you are saying.",
             },
             {
               key: "deep_sleep_enabled",
