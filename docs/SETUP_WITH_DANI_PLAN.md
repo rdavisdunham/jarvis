@@ -205,6 +205,10 @@ Move on after two or three concrete details, or after two short answers. Aim for
   - In the setup conversation, the composer's "Talk to Dani" voice button behaves like "Switch to voice".
   - "Propose my organization" appears only when the setup state reports `can_propose` (PR 4).
   - `batch-c.mjs` now walks the new launcher: mode choice, the fixed opening, a typed answer sent with `purpose: "setup"`, and resume.
+- **PR 3** (voice setup mode): `LIVE_SETUP` in `agent_instructions.py`, `live_instructions(..., mode="setup", setup_notes=...)`.
+  - `LiveController.connect` detects the setup conversation (`setup.active`), swaps in the setup delegation policy, passes the synthesizer's notes as DATA, and reads the newest 40 transcript sources (`LIVE_HISTORY_WINDOW`) even with history off, since the setup transcript is always kept.
+  - Voice-delegated setup turns get a narrower dynamic block (`SETUP_VOICE_TURN`) instead of the interview block.
+  - `enqueue` runs every turn in an active setup conversation (typed or voice-delegated) on `terra-6.1` when an OpenAI key is configured, whatever the typed-chat or task-agent choice; continuations keep it through `adopt` (#191). Bot requests are never overridden.
 - **PR 5** (tree review and apply), built before PR 4: `apps/api/jarvis/setup_tree.py`, `SetupTreeReview.tsx`.
   - Commands `setup.tree_preview {tree}` and `setup.tree_apply {proposal_id, preview_hash}`. Apply has no `expected_revision`: the preview hash covers the tree and the revision, name and archived state of every existing record it names, so any later change makes the preview stale (`PREVIEW_REQUIRED`).
   - Created rows are matched to existing records by name before creating (spaces and projects across the owner, areas within their space, goals within their home), which also avoids the unique constraints. A match with an archived record, duplicate names under one parent, or a project name already in use are blocking issues.

@@ -177,7 +177,7 @@ async def initial_state(row, agent, reservation=None, *, tool_policy="baseline")
         history = []
         from .setup import HISTORY_WINDOW, interview_block
         # Set up with Dani: the interview text (dynamic half only) and a longer transcript window.
-        setup = "" if row.credential_id or row.voice_session_id else interview_block(db, row.owner_id, row.conversation_id)
+        setup = "" if row.credential_id else interview_block(db, row.owner_id, row.conversation_id, voice=bool(row.voice_session_id))
         if not row.transient:
             sources = list(
                 db.scalars(
