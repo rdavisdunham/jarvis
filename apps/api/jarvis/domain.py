@@ -610,7 +610,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("review.", "quicksort.", "quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.", "template.")
+        ("review.", "quicksort.", "quicklist.", "onboarding.", "setup.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.", "template.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -688,6 +688,9 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("onboarding."):
         from .onboarding import mutate as setup_mutate
         return setup_mutate(db, owner, tool, args, command_id)
+    if tool.startswith("setup.tree_"):
+        from .setup_tree import mutate as tree_mutate
+        return tree_mutate(db, owner, tool, args, command_id)
     if tool.startswith("routing."):
         from .routing import mutate as routing_mutate
         return routing_mutate(db,owner,tool,args,command_id)
@@ -1272,6 +1275,9 @@ COMMANDS.update(QUICK_COMMANDS)
 
 from .onboarding import COMMANDS as SETUP_COMMANDS
 COMMANDS.update(SETUP_COMMANDS)
+
+from .setup_tree import COMMANDS as SETUP_TREE_COMMANDS
+COMMANDS.update(SETUP_TREE_COMMANDS)
 
 from .quick_sort_schema import COMMANDS as SORT_COMMANDS
 COMMANDS.update(SORT_COMMANDS)

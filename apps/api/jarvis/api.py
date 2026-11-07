@@ -426,6 +426,13 @@ def setup_mode(body: SetupMode, user: User):
         return set_mode(db, user.owner_id, ModeChange(**body.model_dump()))
 
 
+@app.get("/api/v1/setup/proposals/{proposal_id}")
+def setup_proposal(proposal_id: str, user: User):
+    from .setup_tree import read
+    with session_scope() as db:
+        return read(db, user.owner_id, proposal_id)
+
+
 @app.post("/api/v1/setup/finish")
 def setup_finish(body: SetupFinish, user: User):
     from .setup import Finish, finish

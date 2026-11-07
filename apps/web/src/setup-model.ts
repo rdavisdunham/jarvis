@@ -68,3 +68,69 @@ export function setupTypeRows(definition: Proposal["definition"]) {
   for (const type of definition.types) visit(type, 0);
   return result;
 }
+
+/** A proposed organization from Set up with Dani: spaces → areas → goals → projects. */
+export type TreeKind = "space" | "area" | "goal" | "project";
+export type TreeNode = {
+  id: string; kind: TreeKind; title: string; description: string;
+  existing_id?: string | null; action: "create" | "keep" | "rename" | "archive";
+  archive_confirmed?: boolean; children: TreeNode[];
+};
+export type OrganizationProposal = {
+  id: string; tree: TreeNode[]; preview_hash: string; applied_at: string | null; expires_at: string;
+  impact: { create: Record<TreeKind, number>; rename: number; archive: number; keep: number;
+    issues: { node_id: string | null; message: string }[]; blocking_count: number };
+};
+
+export const TREE_KIND_LABEL: Record<TreeKind, string> = { space: "Space", area: "Area", goal: "Goal", project: "Project" };
+/** What a row may hold (mirrors setup_tree.PARENTS). */
+export const childKinds = (kind: TreeKind | null): TreeKind[] =>
+  kind === null ? ["space"] : kind === "space" ? ["area", "goal", "project"] : kind === "area" ? ["goal", "project"] :
+    kind === "goal" ? ["project"] : [];
+
+export function mapTree(nodes: TreeNode[], fn: (node: TreeNode) => TreeNode | null): TreeNode[] {
+  return nodes.flatMap(node => {
+    const next = fn(node);
+    return next ? [{ ...next, children: mapTree(next.children, fn) }] : [];
+  });
+}
+
+export const editNode = (tree: TreeNode[], id: string, patch: Partial<TreeNode>) =>
+  mapTree(tree, node => node.id !== id ? node : {
+    ...node, ...patch,
+    // Retitling an existing record renames it; the backend turns an unchanged title back into "keep".
+    ...(patch.title !== undefined && node.existing_id && node.action === "keep" ? { action: "rename" as const } : {}),
+  });
+
+export const removeNode = (tree: TreeNode[], id: string) => mapTree(tree, node => node.id === id ? null : node);
+
+export function addNode(tree: TreeNode[], parentId: string | null, kind: TreeKind): TreeNode[] {
+  const node: TreeNode = { id: crypto.randomUUID(), kind, title: "New " + TREE_KIND_LABEL[kind].toLowerCase(),
+    description: "", action: "create", children: [] };
+  if (parentId === null) return [...tree, node];
+  return mapTree(tree, row => row.id === parentId ? { ...row, children: [...row.children, node] } : row);
+}
+
+export function walkTree(nodes: TreeNode[], depth = 0, parent: TreeNode | null = null): { node: TreeNode; depth: number; parent: TreeNode | null }[] {
+  return nodes.flatMap(node => [{ node, depth, parent }, ...walkTree(node.children, depth + 1, node)]);
+}
+
+const plural = (count: number, kind: TreeKind) =>
+  count + " " + (count === 1 ? TREE_KIND_LABEL[kind].toLowerCase() : TREE_KIND_LABEL[kind].toLowerCase() + "s");
+const list = (parts: string[]) => parts.length < 2 ? parts.join("") : parts.slice(0, -1).join(", ") + " and " + parts.at(-1);
+
+/** "4 areas, 6 goals and 9 projects will be created. Nothing is created until you confirm." */
+export function treeImpact(tree: TreeNode[]) {
+  const rows = walkTree(tree).map(row => row.node);
+  const counts = (["space", "area", "goal", "project"] as TreeKind[])
+    .map(kind => [kind, rows.filter(n => n.kind === kind && n.action === "create").length] as const)
+    .filter(([, count]) => count > 0).map(([kind, count]) => plural(count, kind));
+  const renamed = rows.filter(n => n.action === "rename").length;
+  const archived = rows.filter(n => n.action === "archive" && n.archive_confirmed).length;
+  const parts = [
+    counts.length ? list(counts) + " will be created." : "",
+    renamed ? (renamed === 1 ? "1 record will be renamed." : renamed + " records will be renamed.") : "",
+    archived ? (archived === 1 ? "1 record will be archived." : archived + " records will be archived.") : "",
+  ].filter(Boolean);
+  return (parts.length ? parts.join(" ") : "Nothing new will be created.") + " Nothing is created until you confirm.";
+}

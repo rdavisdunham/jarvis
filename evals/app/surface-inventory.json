@@ -334,6 +334,14 @@
       "feature": "browser_settings"
     },
     {
+      "name": "setup.tree_apply",
+      "feature": "onboarding"
+    },
+    {
+      "name": "setup.tree_preview",
+      "feature": "onboarding"
+    },
+    {
       "name": "space.create",
       "feature": "organization"
     },
@@ -2430,6 +2438,13 @@
       "method": "POST",
       "path": "/api/v1/setup/mode",
       "handler": "setup_mode",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "onboarding"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/setup/proposals/{proposal_id}",
+      "handler": "setup_proposal",
       "source": "apps/api/jarvis/api.py",
       "feature": "onboarding"
     },

@@ -2,11 +2,13 @@ import { Check, Mic } from "lucide-react";
 import { SETUP_TOPICS, type SetupSession } from "./setup-model";
 
 /** The companion's setup strip: topic chips, "Propose my organization" and, in typed mode, "Switch to voice". */
-export function SetupConversation({ session, voiceActive, voiceAvailable, busy, onSwitchToVoice, onPropose }: {
+export function SetupConversation({ session, voiceActive, voiceAvailable, busy, onSwitchToVoice, onPropose, onReview }: {
   session: SetupSession; voiceActive: boolean; voiceAvailable: boolean; busy: boolean;
   onSwitchToVoice: () => void;
   /** Absent until the backend can build a proposal from the interview. */
   onPropose?: () => void;
+  /** Reopens a proposed organization that is waiting for review. */
+  onReview?: () => void;
 }) {
   const covered = new Set(session.notes?.covered ?? []);
   return <div className="setup-conversation" aria-label="Setup progress" role="group">
@@ -17,7 +19,8 @@ export function SetupConversation({ session, voiceActive, voiceAvailable, busy, 
       </li>)}
     </ul>
     <div className="setup-conversation-actions">
-      {onPropose && <button type="button" className="btn btn-primary" disabled={busy} onClick={onPropose}>Propose my organization</button>}
+      {onReview && <button type="button" className="btn btn-primary" disabled={busy} onClick={onReview}>Review proposed organization</button>}
+      {onPropose && <button type="button" className={"btn" + (onReview ? "" : " btn-primary")} disabled={busy} onClick={onPropose}>Propose my organization</button>}
       {!voiceActive && <button type="button" className="btn" disabled={busy || !voiceAvailable} onClick={onSwitchToVoice}
         title={voiceAvailable ? undefined : "Voice is unavailable. Check Settings."}>
         <Mic size={16} aria-hidden="true"/>Switch to voice

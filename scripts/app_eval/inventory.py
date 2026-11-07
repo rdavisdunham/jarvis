@@ -6,7 +6,7 @@ import json
 from .catalog import CATALOG, ROOT
 
 PREFIX = {
-    "quicklist": "quick_capture", "onboarding": "onboarding", "quicksort": "quick_sort",
+    "quicklist": "quick_capture", "onboarding": "onboarding", "setup": "onboarding", "quicksort": "quick_sort",
     "actor": "organization",
     "area": "organization",
     "space": "organization",
