@@ -24,6 +24,16 @@ from .voice_end_policy import EndPolicy, candidate_valid
 from .work_crypto import seal, unseal
 from .domain import advisory
 
+SLOW_WORK_SECONDS = 12  # A request still running after this gets one spoken "still working" note.
+
+
+def part_stamp(snapshot):
+    """What makes one part's result new: status, message, question and each action's sync state."""
+    return (snapshot["id"], snapshot["status"], snapshot.get("message", ""),
+            (snapshot.get("clarification") or {}).get("id"),
+            tuple((a.get("id"), a.get("remote_status")) for a in snapshot["actions"]))
+
+
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
 LIVE_PRICE_PER_SECOND = 0.05 / 60
 # Mid-session memory updates (owner preference live_memory_updates). Retrieval waits for this much quiet
@@ -74,6 +84,8 @@ class LiveController(Controller):
         self.context_retrieved_at = None
         self.context_stats = {"retrievals": 0, "facts_sent": 0, "facts_acknowledged": 0, "facts_dropped": 0}
         self.announced_work = set()
+        self.announced_parts = set()  # Finished parts of a split request already spoken.
+        self.busy_since, self.slow_noted = {}, set()  # Root request -> first seen running; "still working" sent.
         self.review_delivery = None
         self.review_event = None
         self.review_offered = False
@@ -538,29 +550,42 @@ class LiveController(Controller):
             )
             if (now() - inbox.last_input_at).total_seconds() < 2.5:
                 return
-            notices, stamps, asking = [], [], None
+            notices, stamps, parts, asking, partial, slow = [], [], [], None, False, None
             for root, children, leaves, snapshots in entries:
-                if any(snapshot["status"] in busy_statuses for snapshot in snapshots):
+                settled = [(leaf, snapshot) for leaf, snapshot in zip(leaves, snapshots)
+                           if snapshot["status"] not in busy_statuses]
+                stamp = None
+                if len(settled) < len(leaves):
+                    # Still running. One long request gets a single "still working" note; a split request
+                    # also reports each finished part as it lands instead of waiting for the slowest one.
+                    started = self.busy_since.setdefault(root.id, time.monotonic())
+                    if (slow is None and root.id not in self.slow_noted
+                            and time.monotonic() - started >= SLOW_WORK_SECONDS):
+                        slow = (root.id, (unseal(root.input_ciphertext) or {}).get("message", "") if root.input_ciphertext else "")
+                    if not children:
+                        continue
+                else:
+                    # Content, not root.revision: touch_root/continuation bumps must not re-announce.
+                    stamp = (root.id, tuple(part_stamp(snapshot) for snapshot in snapshots))
+                    if stamp in self.announced_work:
+                        continue
+                fresh = [(leaf, snapshot) for leaf, snapshot in settled if part_stamp(snapshot) not in self.announced_parts]
+                if not fresh:
+                    if stamp:
+                        self.announced_work.add(stamp)
                     continue
-                # Content, not root.revision: touch_root/continuation bumps must not re-announce.
-                stamp = (root.id, tuple((snapshot["id"], snapshot["status"], snapshot.get("message", ""),
-                    (snapshot.get("clarification") or {}).get("id"),
-                    tuple((a.get("id"), a.get("remote_status")) for a in snapshot["actions"])) for snapshot in snapshots))
-                if stamp in self.announced_work:
-                    continue
-                questions = [snapshot["clarification"] for snapshot in snapshots if snapshot.get("clarification")]
-                if questions and self.superseded(db, root, questions[0]):
-                    # The conversation already moved on to later voice work; never ask a stale question.
-                    self.announced_work.add(stamp)
-                    continue
-                # A backend question is never a quiet result, however it was produced.
-                if not children and not questions and (root.result.get("route_kinds") == ["conversation"] or (
-                    root.result.get("quiet") and not root.result.get("tool_calls")
-                )):
-                    self.announced_work.add(stamp)
+                questions = [snapshot["clarification"] for _, snapshot in fresh if snapshot.get("clarification")]
+                if questions and self.superseded(db, root, questions[0]) or (
+                    # A backend question is never a quiet result, however it was produced.
+                    not children and not questions and (root.result.get("route_kinds") == ["conversation"] or (
+                        root.result.get("quiet") and not root.result.get("tool_calls")))):
+                    # A stale question (the conversation moved on) or a quiet reply: nothing to say.
+                    self.announced_parts.update(part_stamp(snapshot) for _, snapshot in fresh)
+                    if stamp:
+                        self.announced_work.add(stamp)
                     continue
                 texts = []
-                for leaf, snapshot in zip(leaves, snapshots):
+                for leaf, snapshot in fresh:
                     remote = [action for action in snapshot["actions"] if action.get("remote_status")]
                     if any(action["remote_status"] != "succeeded" for action in remote):
                         text = "A connected-service change needs attention. Review Activity."
@@ -575,18 +600,28 @@ class LiveController(Controller):
                     texts.append(text)
                 # One result per tick: never mark a question announced after truncating it out.
                 notices.extend(t for t in texts if t)
-                stamps.append(stamp)
+                parts.extend(part_stamp(snapshot) for _, snapshot in fresh)
+                if stamp:
+                    stamps.append(stamp)
+                else:
+                    partial = True
                 if questions:
                     asking = questions[0]
-                for snapshot in snapshots:
+                for _, snapshot in fresh:
                     self.receipts.extend(a["command_id"] for a in snapshot["actions"]
                         if a["command_id"] not in self.receipts)
                 if notices:
                     break
             if not notices:
+                self.announced_parts.update(parts)
+                self.announced_work.update(stamps)
+                if slow is not None and not self.pending_question and not self.input_speaking:
+                    await self.still_working(*slow)
                 return
         # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
         content = ("Verified background results: " + " ".join(notices)).encode()[:420].decode("utf-8", errors="ignore")
+        if partial:
+            content += " Other parts of that request are still running."
         # One spoken channel: a backend question is conveyed once, here, and owns the reply.
         suffix = (" The backend is waiting for the user's answer to this question. Ask it once, add no question of "
             "your own, then send the reply with <|SpawnThinking|>." if asking else " Full details are in Activity.")
@@ -595,11 +630,20 @@ class LiveController(Controller):
         for identity, *_ in stamps:
             mark("live_append_sent", identity)
         self.announced_work.update(stamps)
+        self.announced_parts.update(parts)
         if asking:
             self.asked.add(asking["id"])
             self.pending_question = True
             with session_scope() as db:
                 mark_asked(db, self.id, asking["id"])
+
+    async def still_working(self, identity, request):
+        """One spoken progress note for a request that is taking a while; never a result."""
+        self.slow_noted.add(identity)
+        about = (" (" + json.dumps(request[:80], ensure_ascii=False) + ")") if request else ""
+        await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
+            "content": "Progress, not a result: the backend is still working on an earlier request" + about
+                       + ". Say so in a few words, once, without guessing the outcome."})
 
     def superseded(self, db, root, question):
         asked = db.get(Job, question["request_id"])
