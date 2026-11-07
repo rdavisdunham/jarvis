@@ -10,7 +10,7 @@ from uuid import uuid4
 import httpx
 from sqlalchemy import or_, select, text
 
-from . import agent_models, budget, work_continuation, work_coordination
+from . import agent_models, budget, llm_trace, work_continuation, work_coordination
 from .access import assert_current, execution, person_preferences
 from .agent_work import checkpoint, finish, principal_for, reschedule
 from .config import get_settings, require_external_services
@@ -50,6 +50,20 @@ async def request_model(agent, messages, definitions, *, limited=False):
         for item in definitions
     ]
     trace = model_trace.get()
+    with llm_trace.call(feature="assistant", model=agent.model, input=messages,
+                        model_parameters={"profile": agent.profile_id, "reasoning": agent.reasoning_effort,
+                                          "service_tier": agent.service_tier, "tools": len(tools)}) as traced:
+        data = await _request_rounds(client, agent, messages, tools, trace, limited)
+        try:
+            usage = agent.usage_record(data)
+            traced.done(output=data["choices"][0]["message"], usage=usage, cost=agent.usage_cost(usage),
+                        metadata={"finish": data["choices"][0].get("finish_reason")})
+        except Exception:  # noqa: BLE001 - an unusual answer is still returned; the caller validates it
+            traced.done(output=data.get("choices"))
+    return data
+
+
+async def _request_rounds(client, agent, messages, tools, trace, limited):
     for attempt in range(3):
         if trace:
             mark("model_attempt", trace["request_id"], revision=trace["revision"],
@@ -415,7 +429,11 @@ async def perform(request_id):
     settings = get_settings()
     final_status, failure = "succeeded", None
     provider_pending, reservation = False, None
-    with principal_for(row):
+    # One Langfuse trace per assistant request; a voice request joins its voice session (llm_trace.py).
+    with principal_for(row), llm_trace.unit(
+            "voice" if row.voice_session_id else "assistant", seed="work:" + request_id, surface="assistant",
+            owner=row.owner_id, session=row.voice_session_id or row.conversation_id,
+            metadata={"request_id": request_id, "profile": profile, "tool_policy": tool_policy}):
         try:
             assert_current(row.owner_id, row.device_id)
             agent = model_for(profile, service_tier)
@@ -648,7 +666,8 @@ async def perform(request_id):
                             }
                     else:
                         work_coordination.reserve(row, fn["name"], args, state["tool_index"])
-                        with span("tool", row.id, revision=row.revision, tool_index=state["tool_index"], tool=fn["name"]):
+                        with span("tool", row.id, revision=row.revision, tool_index=state["tool_index"], tool=fn["name"]), \
+                                llm_trace.step(fn["name"], input=args, metadata={"tool_index": state["tool_index"]}) as traced:
                             outcome = await call_tool(
                                 row.owner_id,
                                 row.id,
@@ -658,6 +677,7 @@ async def perform(request_id):
                                 device=row.device_id,
                                 conversation_id=row.conversation_id,
                             )
+                            traced.done(output=outcome)
                     session.follow(outcome)
                     from .quick_sort import runner_question
                     sort_question = runner_question(row.owner_id, row.id, fn["name"], outcome)

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from .cost_features import feature
-from . import budget
+from . import budget, llm_trace
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, emit, enqueue_job, preferences
@@ -101,6 +101,8 @@ def provider_request(owner, path, payload, model, allowance, timeout=30, *, agen
     with session_scope() as db:
         budget.reserve(db, owner, reservation, allowance, model, optional=True)
     uncertain = True
+    traced = llm_trace.begin(model=model, owner=owner, kind="embedding" if path == "embeddings" else "generation",
+                             input=payload.get("input"), model_parameters=_parameters(payload))
     try:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(
@@ -135,6 +137,7 @@ def provider_request(owner, path, payload, model, allowance, timeout=30, *, agen
         with session_scope() as db:
             budget.record_usage(db, owner, reservation, reservation, model, usage, cost)
         uncertain = False
+        traced.done(output=_answer(path, data), usage=usage, cost=cost)
         if path == "responses":
             from .responses_adapter import normalize
             if data.get("status") != "completed":
@@ -149,9 +152,34 @@ def provider_request(owner, path, payload, model, allowance, timeout=30, *, agen
             if refusal:
                 data["choices"][0]["message"]["refusal"] = refusal
         return data
+    except BaseException as error:
+        traced.failed(error)
+        raise
     finally:
+        traced.end()
         with session_scope() as db:
             budget.close(db, owner, reservation, uncertain=uncertain)
+
+
+def _parameters(payload):
+    """The request settings worth showing next to a traced call (not the prompt or the output schema)."""
+    out = {k: payload[k] for k in ("max_output_tokens", "service_tier", "dimensions") if k in payload}
+    if isinstance(payload.get("reasoning"), dict) and payload["reasoning"].get("effort"):
+        out["reasoning_effort"] = payload["reasoning"]["effort"]
+    schema = ((payload.get("text") or {}).get("format") or {}).get("name")
+    if schema:
+        out["schema"] = schema
+    return out
+
+
+def _answer(path, data):
+    """What a traced call answered: the Responses output text (parsed when it is JSON), or the embedding count."""
+    if path == "embeddings":
+        return {"vectors": len(data.get("data") or [])}
+    texts = [p.get("text") or p.get("refusal") for item in data.get("output") or [] if item.get("type") == "message"
+             for p in item.get("content") or [] if p.get("type") in ("output_text", "refusal")]
+    text = "".join(t for t in texts if t)
+    return llm_trace.readable(text) if text else {"status": data.get("status")}
 
 
 def extraction_request(owner, path, payload, model, allowance, timeout=45, *, profile="luna"):
@@ -198,6 +226,9 @@ def anthropic_request(owner, payload, profile, allowance, timeout=45):
     with session_scope() as db:
         budget.reserve(db, owner, reservation, allowance, spec.model, optional=True)
     uncertain = True
+    traced = llm_trace.begin(model=spec.model, owner=owner, input=payload.get("messages"),
+                             model_parameters={"profile": profile, **({"effort": spec.reasoning_effort}
+                                                                      if spec.reasoning_effort else {})})
     try:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(spec.endpoint, headers=headers(spec, key), json=body)
@@ -212,13 +243,20 @@ def anthropic_request(owner, payload, profile, allowance, timeout=45):
             "prompt_tokens": raw["input_tokens"], "completion_tokens": raw["output_tokens"],
             "prompt_tokens_details": {"cached_tokens": raw["cached_input_tokens"],
                                       "cache_write_tokens": raw["cache_write_tokens"]}}})
+        cost = agent.usage_cost(usage)
         with session_scope() as db:
-            budget.record_usage(db, owner, reservation, reservation, spec.model, usage, agent.usage_cost(usage))
+            budget.record_usage(db, owner, reservation, reservation, spec.model, usage, cost)
         uncertain = False
+        traced.done(output=llm_trace.readable(answer["text"]) if answer["text"] else {"refusal": answer["refusal"]},
+                    usage=usage, cost=cost, metadata={"finish": answer["finish"]})
         message = {"role": "assistant", "content": answer["text"], "refusal": answer["refusal"]}
         return {"model": spec.model, "choices": [{"index": 0, "message": message, "finish_reason": answer["finish"]}],
                 "usage": usage}
+    except BaseException as error:
+        traced.failed(error)
+        raise
     finally:
+        traced.end()
         with session_scope() as db:
             budget.close(db, owner, reservation, uncertain=uncertain)
 
