@@ -159,3 +159,7 @@ This is a code-inspection finding, not a new scored eval result. Test both backe
 profiles and Live delegation against omissions, misrouting and unsupported success
 claims before claiming a quality or token-use improvement. Tool discovery or
 selective catalogs would be a separate design decision; neither is implemented.
+
+Update 2026-11-07: Live's conversation and delegation guidance is now separate. GPT-Live gets a
+short prompt built on OpenAI's live-prompting template, with the shared personality and none of the
+backend tool mechanics or site map (see docs/APP_FUNCTIONALITY.md section 33).

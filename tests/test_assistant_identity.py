@@ -22,7 +22,28 @@ def test_assistant_identity_is_separate_from_app_and_allows_both_pronunciations(
     assert "You are Dani" in SYSTEM_PROMPT
     assert "Eridani app" in SYSTEM_PROMPT
     assert "DAN-ee" in SYSTEM_PROMPT and "DAH-nee" in SYSTEM_PROMPT
-    assert "gender-neutral" in SYSTEM_PROMPT
+
+
+def test_pronouns_follow_the_chosen_voice():
+    from jarvis.agent_instructions import backend_instructions, live_instructions
+    from jarvis.voice_options import LIVE_VOICES, pronouns
+
+    assert pronouns("marin") == pronouns(None) == pronouns("Gleam") == "she/her"
+    assert pronouns("stone") == pronouns("meridian") == "he/him"
+    assert pronouns("custom-voice") == "they/them"
+    assert all(pronouns(v) != "they/them" for v in LIVE_VOICES)
+    prefs = {"timezone": "America/Chicago", "default_reminder_hour": 9}
+    assert live_instructions(prefs, "stone").startswith("You are Dani (he/him)")
+    assert live_instructions(prefs, "willow").startswith("You are Dani (she/her)")
+    typed = backend_instructions(prefs, ui_context={"device_preferences": {"voice": "cinder"}})
+    assert "Your pronouns: he/him" in typed and "Your pronouns: she/her" in backend_instructions(prefs)
+
+
+def test_personality_is_charming_with_restrained_wit():
+    from jarvis.personality import PERSONALITY
+    assert PERSONALITY in SYSTEM_PROMPT
+    assert "charming" in PERSONALITY and "Most replies have none" in PERSONALITY
+    assert "never stiff, formal" in PERSONALITY and "formal but" not in SYSTEM_PROMPT
 
 
 def test_name_collision_preserves_existing_people_and_agents():

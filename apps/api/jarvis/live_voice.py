@@ -17,7 +17,6 @@ from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
 from .memory_service import current_facts, prompt_context, semantic_search
 from .models import AgentWork, Conversation, Job, Source, VoiceInbox, now, uid
-from .ui_control import get_context
 from .voice import Controller, controllers
 from .latency import mark, span
 from .work_intake import append_voice, claim_voice, mark_asked, open_voice
@@ -132,9 +131,7 @@ class LiveController(Controller):
             "store": False,
             "audio": {"output": {"voice": self.voice}},
             "delegation": {"type": "client"},
-            "instructions": live_instructions(
-                self.preferences, self.focus, get_context(self.owner, self.device)
-            )
+            "instructions": live_instructions(self.preferences, self.voice)
             + "\n"
             + self.memory_context,
             "input": [
@@ -592,7 +589,7 @@ class LiveController(Controller):
         content = ("Verified background results: " + " ".join(notices)).encode()[:420].decode("utf-8", errors="ignore")
         # One spoken channel: a backend question is conveyed once, here, and owns the reply.
         suffix = (" The backend is waiting for the user's answer to this question. Ask it once, add no question of "
-            "your own, then delegate the reply." if asking else " Full details are in Activity.")
+            "your own, then send the reply with <|SpawnThinking|>." if asking else " Full details are in Activity.")
         await self.send({"type": "session.commentary.append", "event_id": uid(),
             "delegation_id": None, "content": content + suffix})
         for identity, *_ in stamps:
@@ -645,7 +642,7 @@ class LiveController(Controller):
         try:
             await self.send({"type":"session.commentary.append","event_id":self.review_event,"delegation_id":None,
                 "content":"Optional review invitation, not a task result: "+invitation["message"]+
-                " You may ask if the user wants to review it. If they agree, delegate a request to open the personal Questions review; the backend should load review tools and ask the full question before resolving anything. Do not treat unrelated speech as an answer."})
+                " You may ask if the user wants to review it. If they agree, generate <|SpawnThinking|> to open the personal Questions review; the backend should load review tools and ask the full question before resolving anything. Do not treat unrelated speech as an answer."})
             with session_scope() as db:
                 acknowledge(db,self.owner,self.device,invitation["id"],"forwarded")
         except Exception:

@@ -355,6 +355,20 @@ Back/Forward, persistent chat affordance, fold layouts, profile menu and prefere
 
 Live creation, captions, delegation, interruption, context updates and session recovery.
 
+Instructions. Live's prompt (`live_instructions` in
+[agent_instructions.py](../apps/api/jarvis/agent_instructions.py)) follows OpenAI's
+[GPT-Live prompting guide](https://developers.openai.com/api/docs/guides/live-prompting) and holds only
+what the voice model acts on: Dani's identity and shared personality
+([personality.py](../apps/api/jarvis/personality.py)), how Dani sounds, the Backchannel, Interruption
+and Delegation policies, and a small Profile DATA line (preferred name, timezone, current time). Dani's pronouns follow the chosen voice
+(she/her or he/him, from OpenAI's published presentation for each voice; Marin when none is chosen),
+in voice and in typed chat, which reads the device's voice from the screen context. The
+Delegation policy lists the backend's capabilities and says when to "Generate <|SpawnThinking|>" and
+when not to, the wording the guide gives for gpt-live-1. While work runs, Dani acknowledges briefly and
+gives a short update as each verified result arrives. The screen, focused record IDs, scheduling
+windows and the closing controller's timers stay with the backend, which receives them on every
+delegated request.
+
 Saved memory during a session. The session starts with up to six relevant saved facts in its
 instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,

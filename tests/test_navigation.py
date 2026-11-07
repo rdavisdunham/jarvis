@@ -167,7 +167,7 @@ def test_typed_and_live_instructions_treat_the_kind_as_a_hint():
     assert "is a hint, not a filter" in INSTRUCTION and "never authorizes an edit" in INSTRUCTION
     assert "hint, not a filter" in DESCRIPTIONS["ui_show"] and "was a hint" in DESCRIPTIONS["task_resolve"]
     live = live_instructions({"timezone": "America/Chicago", "default_reminder_hour": 9})
-    assert "Delegate show/open requests as said" in live and "a 'task' may be a calendar event" in live
+    assert "Pass show and open requests on as said" in live and 'a "task" may be a calendar event' in live
     assert "other_kinds" in DESCRIPTIONS["task_resolve"]
     assert "use navigation_find" in DESCRIPTIONS["ui_show"]
 

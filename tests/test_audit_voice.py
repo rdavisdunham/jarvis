@@ -263,7 +263,7 @@ def test_live_instructions_gather_detail_and_respect_backend_questions():
     from jarvis.agent_instructions import live_instructions
     with session_scope() as db:
         text = live_instructions(preferences(db, "davin"))
-    assert "gather the minimum missing detail yourself" in text
+    assert "first ask one short question for the missing piece" in text
     assert "never ask a competing or duplicate question" in text
 
 
