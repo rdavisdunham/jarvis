@@ -860,17 +860,21 @@ async def memories(user: User, q: str = ""):
         failed, retry_waiting = counts.get("failed", 0), counts.get("retrying", 0)
         pending, retrying = queued + active, failed + retry_waiting
         deferred = counts.get("deferred_budget", 0)
-        enabled = preferences(db, user.owner_id)["memory_learning"]
+        prefs = preferences(db, user.owner_id)
+        enabled = prefs["memory_learning"]
+        from .about_you import public as about_you
         from .memory_review import pending_reviews, review_data, status
         from .memory_service import with_sources
 
         items = with_sources(db, user.owner_id, items)
         reviews = [review_data(db, r) for r in pending_reviews(db, user.owner_id)]
         maintenance = status(db, user.owner_id)
+        about = about_you(db, user.owner_id, prefs)
     return {
         "items": items,
         "reviews": reviews,
         "maintenance": maintenance,
+        "about": about,
         "learning": {"enabled": enabled, "pending": pending, "retrying": retrying, "deferred": deferred,
                      "queued": queued, "active": active, "failed": failed, "retry_waiting": retry_waiting},
     }

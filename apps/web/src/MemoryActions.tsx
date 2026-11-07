@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { FileText, Pencil, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
-import type { Memory, MemoryMaintenance } from "./types";
+import type { AboutYou, Memory, MemoryMaintenance } from "./types";
 import "./notes.css";
 
 type LearningStatus = {enabled:boolean;pending:number;retrying:number;deferred:number;queued?:number;active?:number;failed?:number;retry_waiting?:number};
@@ -54,6 +54,25 @@ export function MemoryStatus({status, worker, reviews, maintenance, timezone, bu
 }
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"});
+
+/** What Dani is told about the owner at the start of each voice call, read-only. Written in the background. */
+export function AboutYouSummary({about}: {about: AboutYou}) {
+  const note = !about.enabled
+    ? "Off while automatic learning is off."
+    : !about.summary
+      ? "No summary yet. Dani writes one in the background from your saved memories, about once a day."
+      : !about.in_voice
+        ? "Not sent to voice while Memory during voice is off."
+        : "Dani is told this at the start of each voice call. It is rewritten in the background, about once a day, when your memories change.";
+  return <section className="panel memory-about" aria-labelledby="memory-about">
+    <div className="memory-section-head">
+      <h2 id="memory-about">About you</h2>
+      {about.updated_at && <span className="memory-section-sub tabular">Updated <time dateTime={about.updated_at}>{shortDate(about.updated_at)}</time></span>}
+    </div>
+    {about.summary && <p className="memory-about-text">{about.summary}</p>}
+    <p className="memory-status-help">{note}</p>
+  </section>;
+}
 
 /** Where a fact came from. A fact Dani learned on its own names the conversation it came from (a link that opens
  * it) so a wrong fact can be traced; facts you stated or asked Dani to save say so. */
