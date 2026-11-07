@@ -435,6 +435,10 @@
 .error-banner .icon-button {
   color: inherit;
 }
+.error-banner.outage-banner--restored {
+  background: var(--done-soft);
+  color: var(--done);
+}
 
 /* ---- Phone tab bar -------------------------------------------------------------------- */
 .tabbar,

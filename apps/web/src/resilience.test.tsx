@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError, isOutage, SESSION_EXPIRED } from "./api";
-import { backoff, connectivity, probeNow, reportUnreachable, resetConnectivity } from "./connectivity";
+import { backoff, connectivity, probeNow, reportReachable, reportUnreachable, resetConnectivity } from "./connectivity";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { OutageBanner } from "./Outage";
 import { captureError } from "./monitoring";
@@ -105,6 +105,34 @@ describe("connectivity backoff", () => {
     await act(async () => root.render(<OutageBanner/>));
     expect(host.textContent).toBe("");
     await act(async () => reportUnreachable());
+    expect(host.textContent).toContain("Can't reach Eridani");
+    expect(host.querySelector("button")?.textContent).toBe("Retry now");
+  });
+
+  it("keeps a restored connection readable for six seconds and allows dismissal", async () => {
+    vi.useFakeTimers();
+    await act(async () => root.render(<OutageBanner/>));
+    await act(async () => reportUnreachable());
+    await act(async () => reportReachable());
+    expect(host.textContent).toContain("Connection restored");
+    await act(async () => vi.advanceTimersByTimeAsync(5999));
+    expect(host.textContent).toContain("Connection restored");
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(host.textContent).toBe("");
+    await act(async () => reportUnreachable());
+    await act(async () => reportReachable());
+    await act(async () => host.querySelector("button")!.click());
+    expect(host.textContent).toBe("");
+  });
+
+  it("keeps the outage visible if the connection fails again during the recovery notice", async () => {
+    vi.useFakeTimers();
+    await act(async () => root.render(<OutageBanner/>));
+    await act(async () => reportUnreachable());
+    await act(async () => reportReachable());
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    await act(async () => reportUnreachable());
+    await act(async () => vi.advanceTimersByTimeAsync(7000));
     expect(host.textContent).toContain("Can't reach Eridani");
     expect(host.querySelector("button")?.textContent).toBe("Retry now");
   });
