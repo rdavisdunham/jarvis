@@ -63,11 +63,16 @@ async def lifespan(app):
 
     # Commands queued by the worker (or another web process) wake this process's sockets (pg NOTIFY).
     listener = asyncio.create_task(agent_link.listen())
+    from . import work_stream
+
+    # Dani's reply text as the worker streams it (work_stream.py), passed on by /api/v1/events.
+    previews = asyncio.create_task(work_stream.listen())
     try:
         async with mcp_app.router.lifespan_context(mcp_app):
             yield
     finally:
         listener.cancel()
+        previews.cancel()
         with suppress(asyncio.CancelledError):
             await listener
         await agent_link.shutdown()
@@ -889,9 +894,22 @@ async def events(request: Request, user: User, after: int = 0):
         pass
 
     async def stream():
+        from . import work_stream
+
         cursor = after
         ticks = 0
         yield "retry: 3000\n: connected\n\n"
+        previews = work_stream.subscribe(user.owner_id, user.device_id)
+        try:
+            async for chunk in poll(cursor, ticks, previews):
+                yield chunk
+        finally:
+            work_stream.unsubscribe(user.owner_id, user.device_id, previews)
+
+    async def poll(cursor, ticks, previews):
+        from . import work_stream
+
+        loop = asyncio.get_running_loop()
         while not await request.is_disconnected():
             with session_scope() as db:
                 session = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
@@ -922,7 +940,11 @@ async def events(request: Request, user: User, after: int = 0):
                 yield ": heartbeat\n\n"
             if ticks % 40 == 0:
                 yield "event: refresh\ndata: {}\n\n"
-            await asyncio.sleep(0.5)
+            # Until the next poll, pass on Dani's streamed reply text as it arrives (no id: never a cursor).
+            deadline = loop.time() + 0.5
+            while (left := deadline - loop.time()) > 0:
+                for delta in await work_stream.drain(previews, left):
+                    yield f"event: work_delta\ndata: {json.dumps(delta, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         stream(),

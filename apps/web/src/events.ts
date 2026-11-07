@@ -127,6 +127,15 @@ export function subscribeEvents(
         ...(typeof payload.entity_id === "string" ? { entity_id: payload.entity_id } : {}),
       });
     };
+    // Dani's reply text as it is written (work_stream.py); ReplyPreview shows it until the saved reply lands.
+    current.addEventListener("work_delta", (event) => {
+      if (!active()) return;
+      heard();
+      try {
+        const detail = JSON.parse((event as MessageEvent).data || "null");
+        if (detail) window.dispatchEvent(new CustomEvent("eri-work-delta", { detail }));
+      } catch { /* a malformed preview batch is skipped */ }
+    });
     current.addEventListener("refresh", () => {
       if (!active()) return;
       heard();

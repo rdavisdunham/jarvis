@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from contextlib import contextmanager
 from contextvars import ContextVar
 from uuid import uuid4
 
@@ -28,11 +29,28 @@ from .work_crypto import unseal
 
 logger = logging.getLogger("jarvis.work")
 provider_client = ContextVar("provider_client", default=None)
+# Set for a typed request: its reply text streams to the browser as it is written (work_stream.py).
+reply_stream = ContextVar("reply_stream", default=None)
 model_trace = ContextVar("model_trace", default=None)
 QUESTION_CHECK = (
     "Your reply asks the user a question. If you need the user's answer to finish this request, "
     "first call work_answer if this turn responds (even partially) to a pending question in RECENT WORK DATA, then call work_needs_input with the remaining question. For a new request, call work_needs_input directly. Otherwise give the final answer without asking a question."
 )
+
+
+@contextmanager
+def streaming(row):
+    """A typed request's reply streams to the asking device as it is written; voice speaks instead."""
+    if row.voice_session_id:
+        yield
+        return
+    from .work_stream import Deltas
+
+    token = reply_stream.set(Deltas(row.owner_id, row.device_id, row.id))
+    try:
+        yield
+    finally:
+        reply_stream.reset(token)
 
 
 async def request_model(agent, messages, definitions, *, limited=False):
@@ -64,26 +82,67 @@ async def request_model(agent, messages, definitions, *, limited=False):
 
 
 async def _request_rounds(client, agent, messages, tools, trace, limited):
+    deltas = reply_stream.get() if agent.api == "responses" else None
     for attempt in range(3):
         if trace:
             mark("model_attempt", trace["request_id"], revision=trace["revision"],
                  round=trace["round"], profile=agent.profile_id, model=agent.model,
                  reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, attempt=attempt + 1)
-        response = await client.post(
-            agent.endpoint,
-            headers={"Authorization": f"Bearer {agent.api_key}"},
-            json=agent.request(messages, tools, limited),
-        )
-        if response.status_code not in {429, 500, 502, 503, 504} or attempt == 2:
-            response.raise_for_status()
-            data = agent.normalize(response.json())
-            return data
+        if deltas is not None:
+            deltas.start_round((trace or {}).get("round", 0) * 10 + attempt)
+            streamed = await _streamed(client, agent, messages, tools, limited, deltas, last=attempt == 2)
+            if streamed is not None:
+                return streamed
+        else:
+            response = await client.post(
+                agent.endpoint,
+                headers={"Authorization": f"Bearer {agent.api_key}"},
+                json=agent.request(messages, tools, limited),
+            )
+            if response.status_code not in {429, 500, 502, 503, 504} or attempt == 2:
+                response.raise_for_status()
+                data = agent.normalize(response.json())
+                return data
         if trace:
             mark("model_retry", trace["request_id"], revision=trace["revision"],
                  round=trace["round"], profile=agent.profile_id, model=agent.model,
                  reasoning=agent.reasoning_effort, requested_service_tier=agent.service_tier, retry_count=attempt + 1)
         await asyncio.sleep(2**attempt)
     raise RuntimeError("Provider retry exhausted")
+
+
+async def _streamed(client, agent, messages, tools, limited, deltas, *, last):
+    """One Responses call with `stream: true`: text deltas go to the browser preview as they arrive, and the
+    final `response.completed` (or `.incomplete`) event carries the whole response, normalized exactly as a
+    non-streamed one. Returns None when the status asks for a retry and this is not the last attempt."""
+    async with client.stream("POST", agent.endpoint, headers={"Authorization": f"Bearer {agent.api_key}"},
+                             json={**agent.request(messages, tools, limited), "stream": True}) as response:
+        if response.status_code in {429, 500, 502, 503, 504} and not last:
+            await response.aread()
+            return None
+        if response.is_error:
+            await response.aread()
+            response.raise_for_status()
+        final = None
+        async for line in response.aiter_lines():
+            if not line.startswith("data:"):
+                continue
+            body = line[5:].strip()
+            if not body or body == "[DONE]":
+                continue
+            event = json.loads(body)
+            kind = event.get("type")
+            if kind == "response.output_text.delta":
+                deltas.add(event.get("delta") or "")
+            elif kind in ("response.completed", "response.incomplete"):
+                final = event.get("response")
+            elif kind in ("response.failed", "error"):
+                detail = (event.get("response") or {}).get("error") or event.get("error") or event
+                raise RuntimeError(f"Provider stream failed: {str(detail)[:300]}")
+    deltas.flush()
+    if not isinstance(final, dict):
+        raise RuntimeError("Provider stream ended without a response")
+    return agent.normalize(final)
 
 
 def committed(db, row):
@@ -430,7 +489,7 @@ async def perform(request_id):
     final_status, failure = "succeeded", None
     provider_pending, reservation = False, None
     # One Langfuse trace per assistant request; a voice request joins its voice session (llm_trace.py).
-    with principal_for(row), llm_trace.unit(
+    with principal_for(row), streaming(row), llm_trace.unit(
             "voice" if row.voice_session_id else "assistant", seed="work:" + request_id, surface="assistant",
             owner=row.owner_id, session=row.voice_session_id or row.conversation_id,
             metadata={"request_id": request_id, "profile": profile, "tool_policy": tool_policy}):

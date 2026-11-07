@@ -23,6 +23,7 @@ import { BrandMark, humanLabel, PlannerGuide, Popover, useBodyLock, useMaxWidth,
 import { PublicFooter } from "./PublicPages";
 import { chatTimeline, mergeWorkReplies } from "./chat-timeline";
 import { ActivityPanel, WorkCard, useWork, workActive, workAttention, type ActionChange, type WorkItem } from "./Activity";
+import { PendingReplies, useReplyStreams } from "./ReplyPreview";
 import { RunsPanel } from "./RunsPanel";
 import { RunPanel } from "./RunPanel";
 import { PendingControls } from "./PendingControls";
@@ -427,6 +428,10 @@ export default function App() {
   if (chatAnchors.current.conversation !== conversationRef.current) chatAnchors.current = {conversation: conversationRef.current, items: new Map()};
   const conversationWork = work.chatItems.filter(item => item.conversation_id === conversationRef.current);
   const chatEntries = chatTimeline(messages, conversationWork, chatAnchors.current.items);
+  // Typed requests Dani is still working on: a thinking bubble, then her reply streaming in (ReplyPreview).
+  const pendingReplies = conversationWork.filter(item => workActive(item) && !item.voice_session_id).map(item => item.id);
+  const replyStreams = useReplyStreams(pendingReplies);
+  const streamedLength = Object.values(replyStreams).reduce((total, text) => total + text.length, 0);
   useEffect(() => {
     setMessages(current => mergeWorkReplies(current, work.chatItems.filter(item => item.conversation_id === conversationRef.current)));
   }, [work.chatItems]);
@@ -878,7 +883,7 @@ export default function App() {
       block: "nearest",
       behavior: "smooth",
     });
-  }, [messages.length, lastMessage?.id, lastMessage?.content, thinking, chatEntries.length]);
+  }, [messages.length, lastMessage?.id, lastMessage?.content, thinking, chatEntries.length, pendingReplies.length, streamedLength]);
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (event.data?.type === "open-inbox") setView("notifications");
@@ -3205,12 +3210,7 @@ export default function App() {
                   )}
                 </div>
               );})}
-              {thinking && (
-                <div className="thinking">
-                  <span />
-                  Sending your request…
-                </div>
-              )}
+              <PendingReplies ids={pendingReplies} streams={replyStreams} sending={thinking} />
               {!boot.workspace?.id&&<ReviewInvitation enabled={companion&&!thinking&&!activeWork&&!work.items.some(i=>i.status==="needs_input")&&(!voiceState||voiceState.closed)&&messages.some(m=>m.role==="assistant")} conversation={activeConversation} onOpen={()=>{setView("questions");setCompanion(false);}}/>}
               <VoiceDrafts key={(boot.account_id ?? "") + ":" + (boot.workspace?.id ?? "personal")} />
               <div ref={messageEnd} />
