@@ -58,7 +58,7 @@ def mutate(db,owner,tool,args,command_id):
         if changes.get("status")=="completed":
             from .structure_models import StructureProposal
             proposal=db.get(StructureProposal,current.get("proposal_id")) if current.get("proposal_id") else None
-            if not proposal or proposal.owner_id!=owner or not proposal.applied_at:raise DomainError("PREVIEW_REQUIRED","Preview and confirm your organization before completing setup, or skip for now.",409)
+            if (not proposal or proposal.owner_id!=owner or not proposal.applied_at) and not applied_tree(db,owner):raise DomainError("PREVIEW_REQUIRED","Preview and confirm your organization before completing setup, or skip for now.",409)
         # A changed answer invalidates its preview, even if an older preview was applied.
         if any(k in changes and changes[k]!=current.get(k) for k in ("purpose","classification_name","description","examples","design_notes")):
             if changes.get("status")=="completed":raise DomainError("PREVIEW_REQUIRED","Preview the revised answers before completing setup.",409)
@@ -120,6 +120,14 @@ def preserve_definitions(before, proposed):
         raise DomainError("SETUP_PRESERVE_DEFINITIONS",
             "Keep existing types, fields and relationships in the setup proposal; archive those you no longer want.",
             data={"missing":sorted(missing)})
+
+
+def applied_tree(db, owner):
+    """Set up with Dani completes setup by applying a reviewed organization tree instead of a schema proposal."""
+    from .setup_models import OrganizationProposal, SetupSession
+    session = db.get(SetupSession, owner)
+    proposal = db.get(OrganizationProposal, session.tree_proposal_id) if session and session.tree_proposal_id else None
+    return bool(proposal and proposal.owner_id == owner and proposal.applied_at)
 
 
 def expire_proposal(db, owner, identity):

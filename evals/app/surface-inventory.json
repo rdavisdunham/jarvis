@@ -2414,6 +2414,34 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/setup",
+      "handler": "setup_state",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "onboarding"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/finish",
+      "handler": "setup_finish",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "onboarding"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/mode",
+      "handler": "setup_mode",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "onboarding"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/start",
+      "handler": "setup_start",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "onboarding"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/sources/{source_id}",
       "handler": "source",
       "source": "apps/api/jarvis/api.py",

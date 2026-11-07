@@ -52,9 +52,10 @@ def identity_context(prefs, voice=None):
     )
 
 
-def backend_instructions(prefs, focus=None, ui_context=None, *, tool_policy="baseline", parts=False):
+def backend_instructions(prefs, focus=None, ui_context=None, *, tool_policy="baseline", parts=False, setup=""):
     """With parts=True, return (static, dynamic): the static text is byte-identical across requests
-    of the same workspace kind and policy, so it can stay in the provider's prompt cache."""
+    of the same workspace kind and policy, so it can stay in the provider's prompt cache.
+    `setup` is the Set up with Dani interview block (setup.interview_block); it always goes in the dynamic half."""
     from .ui_control import context_prompt
     from .tool_policy import DISCOVERY, FRESH_READS, reads, validate
     validate(tool_policy)
@@ -82,6 +83,7 @@ def backend_instructions(prefs, focus=None, ui_context=None, *, tool_policy="bas
         identity_context(prefs, ((ui_context or {}).get("device_preferences") or {}).get("voice")),
         "Focused task ID DATA: " + json.dumps(focus or (ui_context or {}).get("selected_task_id")),
         context_prompt(ui_context),
+        *([setup] if setup else []),
     ]
     if parts:
         return "\n".join(static), "\n".join(dynamic)

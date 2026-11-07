@@ -530,7 +530,11 @@ def capture_source(db, owner, content, native_id, role="user", conversation=None
         and not explicit
         and (conversation.private or not preferences(db, owner)["history_enabled"])
     ):
-        return None
+        from .setup import retained
+        # The setup conversation is kept even with history off (docs/SETUP_WITH_DANI_PLAN.md, decision 7).
+        if conversation.private or not retained(db, owner, conversation.id):
+            return None
+    existing = db.scalar(select(Source).where(Source.owner_id == owner, Source.native_id == native_id))
     existing = db.scalar(select(Source).where(Source.owner_id == owner, Source.native_id == native_id))
     if existing:
         return existing
