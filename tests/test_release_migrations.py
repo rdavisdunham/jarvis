@@ -346,7 +346,7 @@ def test_in_review_migration_adds_status_to_work_types_and_downgrades(test_datab
         def migrate(*args):
             result = subprocess.run([sys.executable, '-m', 'alembic', *args], cwd=ROOT, env=env, capture_output=True, text=True)
             assert result.returncode == 0, result.stdout + result.stderr
-        migrate('upgrade', '0054_person_bucket_links')
+        migrate('upgrade', '0057_memory_core')
         trial = create_engine(target)
         old = copy.deepcopy(default_definition())
         for t in old['types']:
@@ -385,7 +385,7 @@ def test_in_review_migration_adds_status_to_work_types_and_downgrades(test_datab
                 if col.name in tasks.c and col.name not in values and col.default is not None:
                     values[col.name] = col.default.arg(None) if col.default.is_callable else col.default.arg
             c.execute(tasks.insert().values(**values))
-        migrate('downgrade', '0054_person_bucket_links')
+        migrate('downgrade', '0057_memory_core')
         restored = schemas()
         assert restored['old-owner'][0] == 5
         assert all(s['meaning'] != 'in_review' for t in restored['old-owner'][1]['types'] for s in t['statuses'])

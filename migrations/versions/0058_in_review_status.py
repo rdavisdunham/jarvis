@@ -8,8 +8,8 @@ import json
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0055_in_review_status"
-down_revision = "0054_person_bucket_links"
+revision = "0058_in_review_status"
+down_revision = "0057_memory_core"
 branch_labels = depends_on = None
 
 STATUS = {"id": "in_review", "name": "In review", "meaning": "in_review"}
