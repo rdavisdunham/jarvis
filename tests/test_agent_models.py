@@ -145,7 +145,14 @@ def test_missing_key_rejected_and_unavailable_selection_visible(keys, client, mo
     select_provider("gemini")
     monkeypatch.setattr(keys, "gemini_api_key", "")
     boot = client.get("/api/v1/bootstrap").json()
-    assert boot["agent_provider"] == "gemini" and not boot["capabilities"]["chat"]
+    # Typed chat runs on Terra, so only the background task agent is unavailable.
+    assert boot["agent_provider"] == "gemini" and boot["capabilities"]["chat"]
+    monkeypatch.setattr(keys, "gemini_api_key", "synthetic-gemini")
+    with session_scope() as db:
+        execute(db, "davin", str(uuid4()), "settings.update", {"chat_profile": "gemini"})
+    monkeypatch.setattr(keys, "gemini_api_key", "")
+    boot = client.get("/api/v1/bootstrap").json()
+    assert boot["chat_profile"] == "gemini" and not boot["capabilities"]["chat"]
     # Removing a credential does not silently send private context to a different provider.
     with pytest.raises(DomainError, match="GEMINI_API_KEY"):
         agent_models.selected(boot["preferences"], require_key=True)
