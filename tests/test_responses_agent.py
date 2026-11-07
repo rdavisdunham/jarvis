@@ -6,11 +6,13 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from jarvis import agent_models, conversation
+from cryptography.fernet import Fernet
+from jarvis import agent_models, work_intake, work_runner
 from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, execute, preferences
 from jarvis.models import BudgetReservation, Conversation, Job, OwnerSettings, Task, Usage
+from scripts.app_eval.work_turn import run_turn
 from sqlalchemy import select
 
 
@@ -60,7 +62,8 @@ def answer(text):
 
 def setup(monkeypatch, packets):
     monkeypatch.setattr(get_settings(), "openai_api_key", "synthetic-openai")
-    monkeypatch.setattr(conversation, "prompt_context", AsyncMock(return_value="Synthetic memory"))
+    monkeypatch.setattr(get_settings(), "integration_encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(work_runner, "prompt_context", AsyncMock(return_value="Synthetic memory"))
     choose("luna")
     sent = []
 
@@ -81,7 +84,7 @@ def setup(monkeypatch, packets):
                 raise data
             return httpx.Response(200, request=httpx.Request("POST", url), json=data)
 
-    monkeypatch.setattr(conversation.httpx, "AsyncClient", Client)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
     with session_scope() as db:
         conv = Conversation(owner_id="davin", device_id="test", private=True, learning=False)
         db.add(conv)
@@ -89,7 +92,7 @@ def setup(monkeypatch, packets):
         return conv.id, sent
 
 
-async def test_reasoning_parallel_calls_and_continuations_preserve_native_items(monkeypatch):
+async def test_reasoning_parallel_calls_and_continuations_preserve_native_items(client, monkeypatch):
     first = packet(
         thought("a"),
         function("task_create", {"title": "One"}, "a"),
@@ -98,7 +101,7 @@ async def test_reasoning_parallel_calls_and_continuations_preserve_native_items(
     second = packet(thought("b"), function("task_list", {}, "c"))
     cid, sent = setup(monkeypatch, [first, second, packet(thought("c"), answer("Saved both."))])
     turn = str(uuid4())
-    result = await conversation.chat("davin", "test", turn, cid, "Create two tasks and verify.")
+    result = await run_turn("davin", "test", turn, cid, "Create two tasks and verify.")
     assert result["status"] == "succeeded" and len(result["actions"]) == 2
     assert (
         result["model"] == "gpt-5.6-luna" and result["provider"] == "openai" and result["profile"] == "luna"
@@ -113,8 +116,9 @@ async def test_reasoning_parallel_calls_and_continuations_preserve_native_items(
     assert tool_schemas["task_get"]["strict"] is True
     assert tool_schemas["task_update"]["strict"] is False
     history = sent[-1]["body"]["input"]
-    assert history[2:5] == first["output"]
-    assert history[7:9] == second["output"]
+    start = next(i for i, item in enumerate(history) if item.get("role") == "user") + 1
+    assert history[start:start + 3] == first["output"]
+    assert history[start + 5:start + 7] == second["output"]
     assert [i["call_id"] for i in history if i.get("type") == "function_call_output"] == [
         "call_a",
         "call_b",
@@ -127,11 +131,11 @@ async def test_reasoning_parallel_calls_and_continuations_preserve_native_items(
         assert "opaque-" not in json.dumps(job.result) and "rs_" not in json.dumps(job.result)
         assert job.payload["profile"] == "luna"
         assert all(u.model == "gpt-5.6-luna" for u in db.scalars(select(Usage)))
-    repeated = await conversation.chat("davin", "test", turn, cid, "Create two tasks and verify.")
+    repeated = await run_turn("davin", "test", turn, cid, "Create two tasks and verify.")
     assert repeated["actions"] == result["actions"] and len(sent) == 3
 
 
-async def test_incomplete_response_does_not_execute_partial_calls(monkeypatch):
+async def test_incomplete_response_does_not_execute_partial_calls(client, monkeypatch):
     cid, sent = setup(
         monkeypatch,
         [
@@ -143,14 +147,14 @@ async def test_incomplete_response_does_not_execute_partial_calls(monkeypatch):
             )
         ],
     )
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Create a task")
-    assert result["status"] == "partial" and not result["actions"]
+    result = await run_turn("davin", "test", str(uuid4()), cid, "Create a task")
+    assert result["status"] == "failed" and not result["actions"]
     with session_scope() as db:
         assert list(db.scalars(select(Task))) == []
     assert len(sent) == 1
 
 
-async def test_reasoning_action_limit_and_disabled_costs(monkeypatch):
+async def test_reasoning_action_limit_and_disabled_costs(client, monkeypatch):
     cid, sent = setup(
         monkeypatch,
         [
@@ -164,7 +168,7 @@ async def test_reasoning_action_limit_and_disabled_costs(monkeypatch):
     )
     monkeypatch.setattr(get_settings(), "max_tool_calls_per_request", 1)
     monkeypatch.setattr(get_settings(), "cost_tracking_enabled", False)
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Save two")
+    result = await run_turn("davin", "test", str(uuid4()), cid, "Save two")
     assert result["status"] == "partial" and len(result["actions"]) == 1
     assert sent[-1]["body"]["tool_choice"] == "none"
     with session_scope() as db:
@@ -172,25 +176,30 @@ async def test_reasoning_action_limit_and_disabled_costs(monkeypatch):
 
 
 @pytest.mark.parametrize("failure", [httpx.ReadTimeout("synthetic"), asyncio.CancelledError()])
-async def test_failed_continuation_never_repeats_saved_actions(monkeypatch, failure):
+async def test_failed_continuation_never_repeats_saved_actions(client, monkeypatch, failure):
     cid, sent = setup(
         monkeypatch,
         [
             packet(thought("a"), function("task_create", {"title": "Saved once"}, "a")),
             failure,
+            packet(answer("Saved the task.")),
         ],
     )
     turn = str(uuid4())
     if isinstance(failure, asyncio.CancelledError):
+        # A killed process is not a request outcome: the next invocation resumes from the checkpoint.
         with pytest.raises(asyncio.CancelledError):
-            await conversation.chat("davin", "test", turn, cid, "Save task")
+            await run_turn("davin", "test", turn, cid, "Save task")
+        result = await run_turn("davin", "test", turn, cid, "Save task")
+        assert result["status"] == "succeeded" and len(sent) == 3
     else:
-        result = await conversation.chat("davin", "test", turn, cid, "Save task")
-        assert result["status"] == "failed"
+        result = await run_turn("davin", "test", turn, cid, "Save task")
+        assert result["status"] == "partial" and len(sent) == 2
+        with session_scope() as db:
+            assert db.get(BudgetReservation, turn).state == "uncertain"
+    assert len(result["actions"]) == 1
     with session_scope() as db:
         assert len(list(db.scalars(select(Task)))) == 1
-        assert db.get(BudgetReservation, turn).state == "uncertain"
-    assert len(sent) == 2
 
 
 def test_luna_model_profile_and_legacy_preferences(monkeypatch, client):
@@ -226,43 +235,55 @@ def test_luna_cache_and_reasoning_accounting():
     assert agent.reserve_cost(100) == pytest.approx((100 * 0.25 + 8192 * 1.2) / 1e6)
 
 
-async def test_voice_end_is_session_bound_and_stops_the_rest_of_the_tool_batch(monkeypatch):
-    from unittest.mock import Mock
+def voice_request(cid, text):
+    """Speech captured by a voice session and claimed as one request, as GPT-Live delegates it."""
+    with session_scope() as db:
+        inbox = work_intake.open_voice(db, str(uuid4()), "davin", "davin", "test", cid)
+        work_intake.append_voice(db, inbox.id, str(uuid4()), "user", text, 0, 1000)
+        return work_intake.claim_voice(db, inbox).id, inbox.id
+
+
+async def test_voice_end_is_session_bound_and_stops_the_rest_of_the_tool_batch(client, monkeypatch):
+    from jarvis.models import AgentWork, VoiceInbox
+    from jarvis.work_crypto import unseal
     cid, sent = setup(monkeypatch, [packet(
         function("task_create", {"title": "Requested final task"}, "save"),
         function("voice_end", {}, "end"),
         function("task_create", {"title": "Must not run after goodbye"}, "late"),
     )])
-    end = Mock(return_value={"status": "closing"})
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Save the task then end voice.", end_voice=end)
-    end.assert_called_once_with()
-    assert result["voice_ended"] and result["tool_calls"] == 2
-    assert len(result["actions"]) == 1 and len(sent) == 1
+    request, session = voice_request(cid, "Save the task then end voice.")
+    await work_runner.run(request)
     with session_scope() as db:
+        assert unseal(db.get(VoiceInbox, session).content_ciphertext)["end_intent"]["work_id"] == request
+        work = db.get(AgentWork, request)
+        assert work.result["tool_calls"] == 2 and len(work.result["actions"]) == 1
         assert list(db.scalars(select(Task.title))) == ["Requested final task"]
+    assert len(sent) == 1
     definition = next(t for t in sent[0]["body"]["tools"] if t["name"] == "voice_end")
     assert definition["parameters"]["properties"] == {}
     assert definition["parameters"]["additionalProperties"] is False
 
 
-async def test_text_chat_cannot_invent_voice_end_and_voice_tool_rejects_target_ids(monkeypatch):
-    from unittest.mock import Mock
+async def test_text_chat_cannot_invent_voice_end_and_voice_tool_rejects_target_ids(client, monkeypatch):
+    from jarvis.models import VoiceInbox
+    from jarvis.work_crypto import unseal
     cid, sent = setup(monkeypatch, [
         packet(function("voice_end", {}, "not-loaded")),
         packet(answer("No active voice session.")),
     ])
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "End voice")
-    assert not result["voice_ended"]
+    result = await run_turn("davin", "test", str(uuid4()), cid, "End voice")
     assert result["tool_errors"][0]["error"] == "TOOL_NOT_LOADED"
     assert "voice_end" not in [t["name"] for t in sent[0]["body"]["tools"]]
     cid, _ = setup(monkeypatch, [
         packet(function("voice_end", {"session_id": "another-session"}, "bad")),
         packet(answer("I could not apply that control.")),
     ])
-    end = Mock(return_value={"status": "closing"})
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "End voice", end_voice=end)
-    end.assert_not_called()
+    with session_scope() as db:
+        session = work_intake.open_voice(db, str(uuid4()), "davin", "davin", "test", cid).id
+    result = await run_turn("davin", "test", str(uuid4()), cid, "End voice", voice_session_id=session)
     assert result["tool_errors"][0]["error"] == "INVALID_ARGUMENT"
+    with session_scope() as db:
+        assert "end_intent" not in unseal(db.get(VoiceInbox, session).content_ciphertext)
 
 
 def test_interactive_fast_default_standard_override_and_maintenance_catalog(monkeypatch):
@@ -298,12 +319,12 @@ def test_fast_usage_prices_returned_tier_and_labels_missing_metadata(served, mul
     assert agent.reserve_cost(280000) == pytest.approx(agent_models.catalog()["luna"].reserve_cost(280000) * 2)
 
 
-async def test_inline_fast_downgrade_records_actual_standard_cost(monkeypatch):
+async def test_inline_fast_downgrade_records_actual_standard_cost(client, monkeypatch):
     reply = packet(answer("Hello."))
     reply["service_tier"] = "default"
     cid, sent = setup(monkeypatch, [reply])
     monkeypatch.setattr(get_settings(), "agent_service_tier", "fast")
-    await conversation.chat("davin", "test", str(uuid4()), cid, "Hello")
+    await run_turn("davin", "test", str(uuid4()), cid, "Hello")
     assert sent[0]["body"]["service_tier"] == "fast"
     with session_scope() as db:
         usage = db.scalar(select(Usage))

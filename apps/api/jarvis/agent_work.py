@@ -162,14 +162,13 @@ def eligible(db, job):
         return False
     # A resumed backend receives the actual predecessor outcome, including failures.
     # Waiting releases the worker slot; no model guesses whether a predecessor finished.
-    lane = "agent_action"
     busy = list(
         db.scalars(
             select(AgentWork)
             .join(Job)
             .where(
                 AgentWork.account_id == row.account_id,
-                Job.kind.in_({lane, "agent_intake"}),
+                Job.kind == "agent_action",
                 Job.id != row.id,
                 Job.status.in_({"running", "dispatched"}),
             )
@@ -204,8 +203,6 @@ def finish(db, row, status, message, **result):
             in {
                 "actions",
                 "tool_calls",
-                "child_ids",
-                "route_kinds",
                 "quiet",
                 "receipt_ids",
                 "related_request_id", "continuation_root", "continuation_ids", "continued_as",
@@ -262,9 +259,9 @@ def cancel(db, row):
     db.flush()
     db.refresh(row)
     job = db.get(Job, row.id)
-    children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == row.id)))
-    for child in children:
-        cancel(db, child)
+    # Clarification continuations point at their root (work_continuation.adopt) and stop with it.
+    for attempt in list(db.scalars(select(AgentWork).where(AgentWork.parent_id == row.id))):
+        cancel(db, attempt)
     if job.status in ACTIVE or job.status == "needs_input":
         row.cancel_requested = True
         row.updated_at = now()
@@ -289,11 +286,6 @@ def revise(db, row, message, *, continue_work=False):
     job = db.get(Job, row.id)
     if job.kind == "external_command":
         raise DomainError("INVALID_ARGUMENT", "Edit the saved record to change this direct command.")
-    if row.parent_id is None and row.result.get("child_ids") and job.status != "needs_input":
-        children = [db.get(AgentWork, identity) for identity in row.result["child_ids"]]
-        if len(children) != 1:
-            raise DomainError("AMBIGUOUS_REQUEST", "Choose the specific request to correct.", 409)
-        return revise(db, children[0], message, continue_work=continue_work)
     if row.input_ciphertext is None:
         raise DomainError(
             "REQUEST_EXPIRED", "Start a new request; this request's temporary input was removed.", 409
@@ -312,9 +304,6 @@ def revise(db, row, message, *, continue_work=False):
     data["corrections"] = corrections[-15:]
     row.input_ciphertext = seal(data)
     row.revision += 1
-    if job.kind == "agent_intake":
-        job.kind = "agent_action"
-        row.checkpoint_ciphertext = None
     saved_state = unseal(row.checkpoint_ciphertext)
     if saved_state:
         saved_state["reply"] = None
@@ -351,35 +340,13 @@ def reschedule(db, row):
         db.add(Outbox(job_id=row.id))
 
 
-def public(db, row, *, children=True):
+def public(db, row):
     from .action_history import changes_for_work
 
     job = db.get(Job, row.id)
     data = unseal(row.input_ciphertext)
     result = dict(row.result or {})
-    items = []
-    if children and not result.get("continuation_ids"):
-        items = [
-            public(db, child, children=False)
-            for child in db.scalars(
-                select(AgentWork).where(AgentWork.parent_id == row.id).order_by(AgentWork.updated_at)
-            )
-        ]
     status = "queued" if job.status == "dispatched" else job.status
-    if items and job.status != "needs_input":
-        statuses = {c["status"] for c in items}
-        status = next(
-            (
-                state
-                for state in ("running", "queued", "needs_input", "waiting_sync", "failed", "partial")
-                if state in statuses
-            ),
-            "cancelled"
-            if statuses == {"cancelled"}
-            else "partial"
-            if statuses & {"cancelled", "expired"}
-            else "succeeded",
-        )
     actions = changes_for_work(db, row)
     history = []
     from .work_continuation import question_for
@@ -389,11 +356,10 @@ def public(db, row, *, children=True):
         from .work_continuation import attempts
         chain = attempts(db, row)
         active = chain[-1]
-        current = public(db, active, children=False)
+        current = public(db, active)
         status = current["status"]
         result = {**result, "message": current["message"], "waiting_for": active.result.get("waiting_for", [])}
         clarification = current.get("clarification")
-        items = []  # Continuations share this card, unlike legacy independent child work.
         for attempt in chain[1:]:
             actions.extend(changes_for_work(db, attempt))
             answer = unseal(attempt.input_ciphertext).get("clarification_answer")
@@ -428,7 +394,6 @@ def public(db, row, *, children=True):
         "clarification": clarification,
         "clarification_history": history,
         "actions": actions,
-        "children": items,
         "cancel_requested": active.cancel_requested,
         "seen": bool(row.seen_at),
         "created_at": job.created_at.isoformat(),

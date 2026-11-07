@@ -632,7 +632,6 @@ async def test_natural_speech_runs_directly_without_an_intake_model(client, monk
     assert len(calls) == 2  # One tool plan and its confirmation; no routing round.
     result = client.get("/api/v1/work/" + work["id"]).json()
     assert result["status"] == "succeeded" and len(result["actions"]) == 2
-    assert not result["children"]
 
 
 @pytest.mark.asyncio
@@ -853,16 +852,6 @@ def test_followup_cannot_target_future_work_or_another_account(client):
     for target in (second["id"], other["id"]):
         with pytest.raises(DomainError):
             coordination.followup(row, {"request_id": target})
-
-
-@pytest.mark.asyncio
-async def test_legacy_intake_retry_executes_original_request_without_quote_validation(client, monkeypatch):
-    work, _ = accept(client, "Um, at 10 p.m., please add a visit.")
-    with session_scope() as db:
-        db.get(Job, work["id"]).kind = "agent_intake"
-    responder(monkeypatch, [response([("task_create", {"title": "Visit"})]), response(message="Added.")])
-    await work_intake.run(work["id"])
-    assert client.get("/api/v1/work/" + work["id"]).json()["status"] == "succeeded"
 
 
 @pytest.mark.asyncio

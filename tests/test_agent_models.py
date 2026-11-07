@@ -6,21 +6,24 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from jarvis import agent_models, conversation
+from cryptography.fernet import Fernet
+from jarvis import agent_models, work_runner
 from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, execute
 from jarvis.models import BudgetReservation, Conversation, Job, Task, Usage
+from scripts.app_eval.work_turn import run_turn
 from sqlalchemy import select
 
 
 @pytest.fixture
-def keys(monkeypatch):
+def keys(monkeypatch, client):  # client: signs the owner in, so backend work has an account
     settings = get_settings()
     monkeypatch.setattr(settings, "openai_api_key", "synthetic-openai-key")
     monkeypatch.setattr(settings, "groq_api_key", "")
     monkeypatch.setattr(settings, "gemini_api_key", "synthetic-gemini-key")
-    monkeypatch.setattr(conversation, "prompt_context", AsyncMock(return_value="Remembered context"))
+    monkeypatch.setattr(settings, "integration_encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(work_runner, "prompt_context", AsyncMock(return_value="Remembered context"))
     return settings
 
 
@@ -82,7 +85,7 @@ def fake_provider(monkeypatch, responses):
                 },
             )
 
-    monkeypatch.setattr(conversation.httpx, "AsyncClient", Client)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
     with session_scope() as db:
         conv = Conversation(owner_id="davin", device_id="test", private=True, learning=False)
         db.add(conv)
@@ -168,7 +171,7 @@ async def test_gemini_parallel_and_sequential_tools_keep_signatures_and_receipts
     second = response(tool("task_list", {}, "opaque-B"))
     cid, sent = fake_provider(monkeypatch, [first, second, response(content="Both tasks are saved.")])
     turn = str(uuid4())
-    result = await conversation.chat("davin", "test", turn, cid, "Create two tasks and check them.")
+    result = await run_turn("davin", "test", turn, cid, "Create two tasks and check them.")
     assert result["status"] == "succeeded" and len(result["actions"]) == 2
     assert result["provider"] == "gemini" and result["model"] == "gemini-3.8-flash"
     assert all(s["url"] == agent_models.catalog()["gemini"].endpoint for s in sent)
@@ -177,7 +180,7 @@ async def test_gemini_parallel_and_sequential_tools_keep_signatures_and_receipts
     assert sent[0]["body"]["max_tokens"] == 8192
     assert "max_completion_tokens" not in sent[0]["body"]
     assert "Remembered context" in sent[0]["body"]["messages"][0]["content"]
-    assert len(sent[0]["body"]["tools"]) < 20
+    assert len(sent[0]["body"]["tools"]) < 25  # A small first catalog, plus the runner's three work controls.
     assert {"note_search", "note_read", "ui_show"} <= {
         t["function"]["name"] for t in sent[0]["body"]["tools"]
     }
@@ -192,9 +195,9 @@ async def test_gemini_parallel_and_sequential_tools_keep_signatures_and_receipts
         # Reasoning tokens are included in completion_tokens, not counted twice.
         assert all(float(u.amount) == pytest.approx((100 * 0.75 + 40 * 3.75) / 1_000_000) for u in usage)
         job = db.get(Job, turn)
-        assert job.payload["model"] == "gemini-3.8-flash"
+        assert job.payload["profile"] == "gemini"
         assert "opaque-" not in json.dumps(job.result)
-    repeated = await conversation.chat("davin", "test", turn, cid, "Create two tasks and check them.")
+    repeated = await run_turn("davin", "test", turn, cid, "Create two tasks and check them.")
     assert repeated["actions"] == result["actions"] and len(sent) == 3
 
 
@@ -209,8 +212,8 @@ async def test_provider_stays_pinned_during_turn_and_changes_on_next_turn(keys, 
             response(content="OpenAI handles this request."),
         ],
     )
-    await conversation.chat("davin", "test", str(uuid4()), cid, "Switch to the OpenAI task agent.")
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Hello")
+    await run_turn("davin", "test", str(uuid4()), cid, "Switch to the OpenAI task agent.")
+    result = await run_turn("davin", "test", str(uuid4()), cid, "Hello")
     assert [s["body"]["model"] for s in sent] == ["gemini-3.8-flash"] * 3 + ["gpt-5.6-luna"]
     assert result["provider"] == "openai"
     assert "reasoning_effort" not in sent[-1]["body"]
@@ -219,21 +222,23 @@ async def test_provider_stays_pinned_during_turn_and_changes_on_next_turn(keys, 
     assert sent[-1]["body"]["reasoning"] == {"effort": "low"}
 
 
-@pytest.mark.parametrize("failure", [403, 429, httpx.ReadTimeout("synthetic timeout")])
-async def test_failure_after_saved_action_does_not_fallback_or_replay(keys, monkeypatch, failure):
+@pytest.mark.parametrize("failure,attempts", [(403, 1), (429, 3), (httpx.ReadTimeout("synthetic timeout"), 1)])
+async def test_failure_after_saved_action_does_not_fallback_or_replay(keys, monkeypatch, failure, attempts):
     select_provider("gemini")
+    monkeypatch.setattr(work_runner.asyncio, "sleep", AsyncMock())  # Rate-limit retries back off; skip the wait.
     cid, sent = fake_provider(
         monkeypatch,
         [
             response(tool("task_create", {"title": "Saved once"}, "opaque-A")),
-            failure,
+            *[failure] * attempts,
         ],
     )
     turn = str(uuid4())
-    result = await conversation.chat("davin", "test", turn, cid, "Save one task.")
-    assert result["status"] == "failed" and len(result["actions"]) == 1
-    assert "Gemini 3.8 Flash" in result["message"]
-    assert len(sent) == 2 and all("googleapis.com" in s["url"] for s in sent)
+    result = await run_turn("davin", "test", turn, cid, "Save one task.")
+    # The saved task makes a failed request partial; the reply says saved actions remain.
+    assert result["status"] == "partial" and len(result["actions"]) == 1
+    assert "Saved actions remain" in result["message"]
+    assert len(sent) == 1 + attempts and all("googleapis.com" in s["url"] for s in sent)
     with session_scope() as db:
         assert len(list(db.scalars(select(Task)))) == 1
         assert db.get(BudgetReservation, turn).state == (
@@ -254,7 +259,7 @@ async def test_gemini_obeys_action_limit_and_disabled_cost_tracking(keys, monkey
             response(content="One saved, one still unfinished."),
         ],
     )
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Create two tasks.")
+    result = await run_turn("davin", "test", str(uuid4()), cid, "Create two tasks.")
     assert result["status"] == "partial" and len(result["actions"]) == 1
     assert sent[-1]["body"]["tool_choice"] == "none"
     with session_scope() as db:
@@ -282,7 +287,7 @@ async def test_empty_or_malformed_provider_reply_finishes_job(keys, monkeypatch,
     select_provider("gemini")
     cid, _ = fake_provider(monkeypatch, [reply])
     turn = str(uuid4())
-    result = await conversation.chat("davin", "test", turn, cid, "Hello")
+    result = await run_turn("davin", "test", turn, cid, "Hello")
     assert result["status"] == "failed"
     with session_scope() as db:
         assert db.get(Job, turn).status == "failed"
@@ -294,9 +299,9 @@ async def test_truncated_call_is_not_executed(keys, monkeypatch):
     data=response(tool("task_create",{"title":"Never execute truncated output"}))
     data["finish_reason"]="length"
     cid,_=fake_provider(monkeypatch,[data])
-    result=await conversation.chat("davin","test",str(uuid4()),cid,"Create a task")
-    assert result["status"]=="partial"
-    assert "output space" in result["message"]
+    result=await run_turn("davin","test",str(uuid4()),cid,"Create a task")
+    assert result["status"]=="failed"
+    assert "incomplete" in result["message"]
     with session_scope() as db:
         assert list(db.scalars(select(Task)))==[]
 
@@ -307,27 +312,33 @@ async def test_malformed_tool_arguments_are_reported_without_execution(keys,monk
     call=tool("task_create",{})
     call["function"]["arguments"]=raw
     cid,_sent=fake_provider(monkeypatch,[response(call),response(content="That call could not be completed.")])
-    result=await conversation.chat("davin","test",str(uuid4()),cid,"Create a task")
+    result=await run_turn("davin","test",str(uuid4()),cid,"Create a task")
     assert result["status"]=="partial"
-    assert result["tool_errors"][0]["error"]=="MALFORMED_TOOL_ARGUMENTS"
+    assert result["tool_errors"][0]["error"]=="INVALID_ARGUMENT"
     with session_scope() as db:
         assert list(db.scalars(select(Task)))==[]
 
 
 async def test_gemini_can_end_voice_with_the_same_session_bound_tool(keys, monkeypatch):
-    from unittest.mock import Mock
+    from jarvis import work_intake
+    from jarvis.models import AgentWork, VoiceInbox
+    from jarvis.work_crypto import unseal
 
     select_provider("gemini")
     cid, sent = fake_provider(monkeypatch, [response(
         tool("voice_end", {}),
         tool("task_create", {"title": "Must not run after hangup"}),
     )])
-    end = Mock(return_value={"status": "closing"})
-    result = await conversation.chat(
-        "davin", "test", str(uuid4()), cid, "We're finished talking.", end_voice=end,
-    )
-    end.assert_called_once_with()
-    assert result["voice_ended"] and result["tool_calls"] == 1
-    assert len(sent) == 1 and not result["actions"]
+    with session_scope() as db:
+        inbox = work_intake.open_voice(db, str(uuid4()), "davin", "davin", "test", cid)
+        work_intake.append_voice(db, inbox.id, "end", "user", "We're finished talking.", 0, 1000)
+        request, sid = work_intake.claim_voice(db, inbox).id, inbox.id
+    await work_runner.run(request)
+    with session_scope() as db:
+        assert unseal(db.get(VoiceInbox, sid).content_ciphertext)["end_intent"]["work_id"] == request
+        work = db.get(AgentWork, request)
+        assert work.result["tool_calls"] == 1 and not work.result["actions"]
+        assert list(db.scalars(select(Task))) == []
+    assert len(sent) == 1
     definition = next(t["function"] for t in sent[0]["body"]["tools"] if t["function"]["name"] == "voice_end")
     assert definition["parameters"]["properties"] == {}

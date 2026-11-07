@@ -473,7 +473,7 @@
     "order": 30,
     "target_cases": 25,
     "source_files": [
-      "apps/api/jarvis/conversation.py",
+      "apps/api/jarvis/work_runner.py",
       "apps/api/jarvis/agent_models.py",
       "apps/api/jarvis/responses_adapter.py"
     ],

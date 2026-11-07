@@ -24,7 +24,9 @@ Related work forms a persistent logical thread through linked request IDs. It do
 not depend on keeping a particular process or model instance alive. In-flight tool
 arguments are not rewritten by a new spoken follow-up. Requests retain distinct
 inputs, checkpoints and receipts. Explicit Revise remains available for correcting
-or resuming an individual request, including legacy intake failures.
+or resuming an individual request. The intake lane, multi-part splitting and child
+requests are gone from the code (removed November 2026); a clarification
+continuation is the only request that points at a parent, and it shares its root's card.
 
 Before mutations, the scheduler atomically reserves record scopes in request order.
 Independent creations and known disjoint scopes can overlap. Unknown/bulk scopes

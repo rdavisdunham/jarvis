@@ -527,24 +527,18 @@ class LiveController(Controller):
                     from .work_continuation import latest
                     if latest(db, root).voice_session_id != self.id:
                         continue
-                children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == root.id)))
-                leaves = [root] if root.result.get("continuation_ids") else children or [root]
-                snapshots = [public(db, leaf) for leaf in leaves]
-                entries.append((root, children, leaves, snapshots))
+                # One card per root: public() folds clarification continuations into it.
+                entries.append((root, public(db, root)))
             busy_statuses = {*ACTIVE, "waiting_sync", "retrying"}
-            self.pending_work = any(
-                snapshot["status"] in busy_statuses
-                for _, _, _, snapshots in entries for snapshot in snapshots
-            )
+            self.pending_work = any(snapshot["status"] in busy_statuses for _, snapshot in entries)
             self.pending_question = any(
-                (snapshot.get("clarification") or {}).get("id") in self.asked
-                for _, _, _, snapshots in entries for snapshot in snapshots
+                (snapshot.get("clarification") or {}).get("id") in self.asked for _, snapshot in entries
             )
             if (now() - inbox.last_input_at).total_seconds() < 2.5:
                 return
             notices, stamps, asking, slow = [], [], None, None
-            for root, children, leaves, snapshots in entries:
-                if any(snapshot["status"] in busy_statuses for snapshot in snapshots):
+            for root, snapshot in entries:
+                if snapshot["status"] in busy_statuses:
                     # A request still running after SLOW_WORK_SECONDS gets one "still working" note.
                     started = self.busy_since.setdefault(root.id, time.monotonic())
                     if (slow is None and root.id not in self.slow_noted
@@ -552,44 +546,40 @@ class LiveController(Controller):
                         slow = (root.id, (unseal(root.input_ciphertext) or {}).get("message", "") if root.input_ciphertext else "")
                     continue
                 # Content, not root.revision: touch_root/continuation bumps must not re-announce.
-                stamp = (root.id, tuple((snapshot["id"], snapshot["status"], snapshot.get("message", ""),
+                stamp = (root.id, snapshot["status"], snapshot.get("message", ""),
                     (snapshot.get("clarification") or {}).get("id"),
-                    tuple((a.get("id"), a.get("remote_status")) for a in snapshot["actions"])) for snapshot in snapshots))
+                    tuple((a.get("id"), a.get("remote_status")) for a in snapshot["actions"]))
                 if stamp in self.announced_work:
                     continue
-                questions = [snapshot["clarification"] for snapshot in snapshots if snapshot.get("clarification")]
-                if questions and self.superseded(db, root, questions[0]):
+                question = snapshot.get("clarification")
+                if question and self.superseded(db, root, question):
                     # The conversation already moved on to later voice work; never ask a stale question.
                     self.announced_work.add(stamp)
                     continue
                 # A backend question is never a quiet result, however it was produced.
-                if not children and not questions and (root.result.get("route_kinds") == ["conversation"] or (
-                    root.result.get("quiet") and not root.result.get("tool_calls")
-                )):
+                if (not question and not root.result.get("continuation_ids")
+                        and root.result.get("quiet") and not root.result.get("tool_calls")):
                     self.announced_work.add(stamp)
                     continue
-                texts = []
-                for leaf, snapshot in zip(leaves, snapshots):
-                    remote = [action for action in snapshot["actions"] if action.get("remote_status")]
-                    if any(action["remote_status"] != "succeeded" for action in remote):
-                        text = "A connected-service change needs attention. Review Activity."
-                    elif remote:
-                        text = "Synchronization confirmed: " + ", ".join(action["title"] for action in remote)
-                    else:
-                        text = snapshot.get("message", "")
-                    if text and (leaf.result or {}).get("pending_confirmation"):
-                        # A proposed agent action (control_start / control_message): Live must ask for the owner's yes
-                        # and delegate it on its own as soon as it is spoken.
-                        text += " It is waiting for your yes."
-                    texts.append(text)
+                remote = [action for action in snapshot["actions"] if action.get("remote_status")]
+                if any(action["remote_status"] != "succeeded" for action in remote):
+                    text = "A connected-service change needs attention. Review Activity."
+                elif remote:
+                    text = "Synchronization confirmed: " + ", ".join(action["title"] for action in remote)
+                else:
+                    text = snapshot.get("message", "")
+                if text and root.result.get("pending_confirmation"):
+                    # A proposed agent action (control_start / control_message): Live must ask for the owner's yes
+                    # and delegate it on its own as soon as it is spoken.
+                    text += " It is waiting for your yes."
                 # One result per tick: never mark a question announced after truncating it out.
-                notices.extend(t for t in texts if t)
+                if text:
+                    notices.append(text)
                 stamps.append(stamp)
-                if questions:
-                    asking = questions[0]
-                for snapshot in snapshots:
-                    self.receipts.extend(a["command_id"] for a in snapshot["actions"]
-                        if a["command_id"] not in self.receipts)
+                if question:
+                    asking = question
+                self.receipts.extend(a["command_id"] for a in snapshot["actions"]
+                    if a["command_id"] not in self.receipts)
                 if notices:
                     break
             if not notices:

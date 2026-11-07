@@ -68,9 +68,9 @@ def _perform_job(job_id):
         from .context import pipeline
 
         return pipeline.perform(job_id)
-    if kind in {"agent_intake", "agent_action"}:
-        from . import work_intake, work_runner
-        asyncio.run((work_intake if kind == "agent_intake" else work_runner).run(job_id))
+    if kind == "agent_action":
+        from . import work_runner
+        asyncio.run(work_runner.run(job_id))
         return
     if kind in {"linear_write", "linear_sync"}:
         from .linear_sync import process_sync, process_write
@@ -162,7 +162,7 @@ def dispatch_outbox(client, after=None):
             cursor = (last.created_at, last.id)
         for row in rows:
             job = db.get(Job, row.job_id)
-            if job.kind in {"agent_intake", "agent_action"}:
+            if job.kind == "agent_action":
                 from .agent_work import eligible
                 if job.status == "running":
                     # The live invocation observes new revisions and reschedules itself if needed.
@@ -181,7 +181,6 @@ def dispatch_outbox(client, after=None):
                 {
                     "workflow_name": "jarvis_job_v1",
                     "queue_name": "jarvis-context" if job.kind.startswith("context_")
-                    else "jarvis-intake" if job.kind == "agent_intake"
                     else "jarvis-agent" if job.kind == "agent_action"
                     else "jarvis-linear"
                     if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write", "linear_comment"}
@@ -391,7 +390,7 @@ def reap_agent_work():
             for job, row in db.execute(
                 select(Job, AgentWork)
                 .join(AgentWork, AgentWork.id == Job.id)
-                .where(Job.kind.in_(["agent_action", "agent_intake"]), Job.status.in_(["running", "dispatched"]))
+                .where(Job.kind == "agent_action", Job.status.in_(["running", "dispatched"]))
             )
             if stale(job, row)
         ]
@@ -581,7 +580,6 @@ def run_supervisor(stop, lease):
     Queue("jarvis-memory", concurrency=2, worker_concurrency=2)
     Queue("jarvis-google", concurrency=1, worker_concurrency=1)
     Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
-    Queue("jarvis-intake", concurrency=4, worker_concurrency=4)
     Queue("jarvis-agent", concurrency=settings.agent_parallelism, worker_concurrency=settings.agent_parallelism)
     Queue("jarvis-context", concurrency=settings.context_queue_concurrency,
           worker_concurrency=settings.context_queue_concurrency)

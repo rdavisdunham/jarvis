@@ -3,7 +3,7 @@ import {chatTimeline, mergeWorkReplies, showChatCard} from "./chat-timeline";
 import type {WorkItem} from "./Activity";
 import type {ChatMessage} from "./types";
 const stamp=(minute:number)=>`2026-09-17T15:${String(minute).padStart(2,"0")}:00Z`;
-const work=(id:string, minute:number, changes=true):WorkItem=>({id,parent_id:null,conversation_id:"chat",request:`Add ${id}`,status:"succeeded",revision:1,message:"Done",actions:changes?[{id:"change-"+id,command_id:id+":0",kind:"task",entity_id:id,title:id,operation:"created",fields:{},can_revert:true,revert_reason:"",reverted:false}]:[],children:[],cancel_requested:false,seen:false,created_at:stamp(minute),updated_at:stamp(minute),can_continue:false});
+const work=(id:string, minute:number, changes=true):WorkItem=>({id,parent_id:null,conversation_id:"chat",request:`Add ${id}`,status:"succeeded",revision:1,message:"Done",actions:changes?[{id:"change-"+id,command_id:id+":0",kind:"task",entity_id:id,title:id,operation:"created",fields:{},can_revert:true,revert_reason:"",reverted:false}]:[],cancel_requested:false,seen:false,created_at:stamp(minute),updated_at:stamp(minute),can_continue:false});
 const msg=(id:string,minute:number,content="Add "+id):ChatMessage=>({id,role:"user",content,created_at:stamp(minute)});
 const ids=(entries:ReturnType<typeof chatTimeline>)=>entries.map(e=>e.kind==="message"?e.message.id:"card:"+e.work.id);
 describe("conversation action timeline",()=>{

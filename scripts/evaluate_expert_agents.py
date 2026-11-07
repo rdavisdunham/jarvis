@@ -26,7 +26,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
-from jarvis import agent_instructions, agent_models, conversation
+from jarvis import agent_instructions, agent_models, work_runner
 from jarvis import tools as jarvis_tools
 from jarvis.config import get_settings
 from jarvis.db import engine
@@ -34,6 +34,10 @@ from jarvis.models import Base
 from jarvis.personality import SYSTEM_PROMPT
 from jarvis.tool_catalog import ToolSession
 from sqlalchemy import create_engine
+try:  # Imported as `scripts.…` from tests and app_eval, or run directly from scripts/.
+    from scripts.app_eval.work_turn import run_turn
+except ModuleNotFoundError:
+    from app_eval.work_turn import run_turn
 from sqlalchemy.engine import make_url
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -212,7 +216,8 @@ def source_manifest(profiles, settings, cases, repeats, seed):
         "apps/web/src/workspace.ts",
         "apps/web/src/productivity.ts",
         "apps/web/src/copilot.tsx",
-        "apps/api/jarvis/conversation.py",
+        "apps/api/jarvis/work_runner.py",
+        "scripts/app_eval/work_turn.py",
         "apps/api/jarvis/tools.py",
         "apps/api/jarvis/tool_catalog.py",
         "apps/api/jarvis/agent_instructions.py",
@@ -300,7 +305,7 @@ def source_manifest(profiles, settings, cases, repeats, seed):
         },
         "timing": {
             "seconds": "harness elapsed including fixture seed, DNS setup, chat turns, and grading",
-            "task_seconds": "sum of conversation.chat elapsed time across the scenario turns",
+            "task_seconds": "sum of run_turn (backend request) elapsed time across the scenario turns",
             "provider_seconds": "sum of measured model HTTP request elapsed time",
         },
         "grading": {
@@ -549,7 +554,7 @@ async def evaluate_case(cases_module, profile, run_spec, database_url, on_progre
             json.dumps(fixture["prompts"], ensure_ascii=False).encode()
         ).hexdigest()
         current["injected_memory_sha256"] = hashlib.sha256(fixture["memory_context"].encode()).hexdigest()
-        real_tool = conversation.call_tool
+        real_tool = work_runner.call_tool
 
         class ObservedToolSession(ToolSession):
             def load(self, arguments):
@@ -606,13 +611,13 @@ async def evaluate_case(cases_module, profile, run_spec, database_url, on_progre
         with (
             outbound_guard(profile, database_url, provider_calls, blocked_calls),
             patch.object(agent_models, "selected", return_value=profile),
-            patch.object(conversation, "call_tool", invoke),
-            patch.object(conversation, "prompt_context", memory),
-            patch.object(conversation, "get_context", context),
+            patch.object(work_runner, "call_tool", invoke),
+            patch.object(work_runner, "prompt_context", memory),
+            patch.object(work_runner, "get_context", context),
             patch.object(jarvis_tools, "get_context", context),
             patch.object(jarvis_tools, "dispatch", displayed),
             patch.object(agent_instructions, "datetime", InstructionDateTime),
-            patch.object(conversation, "ToolSession", ObservedToolSession),
+            patch.object(work_runner, "ToolSession", ObservedToolSession),
         ):
             for turn_index, prompt in enumerate(fixture["prompts"]):
                 prepare = getattr(cases_module, "prepare_turn", None)
@@ -623,7 +628,7 @@ async def evaluate_case(cases_module, profile, run_spec, database_url, on_progre
                 first_discovery = len(discovery_calls)
                 active_turn.update(index=turn_index, id=str(uuid4()))
                 current["pending_user_message"] = prompt
-                result = await conversation.chat(
+                result = await run_turn(
                     cases_module.OWNER,
                     cases_module.DEVICE,
                     active_turn["id"],
