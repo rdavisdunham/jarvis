@@ -8,8 +8,10 @@ import "./details.css";
 
 /** Set up with Dani: review the proposed spaces, areas, goals and projects, then create them in one step.
  * Edits re-preview before applying, so the backend only ever applies a tree it validated. */
-export function SetupTreeReview({ proposal: initial, onClose, onKeepTalking, onByHand, onApplied }: {
+export function SetupTreeReview({ proposal: initial, rerun = false, onClose, onKeepTalking, onByHand, onApplied }: {
   proposal: OrganizationProposal; onClose: () => void; onKeepTalking: () => void; onByHand: () => void;
+  /** An "Update with Dani" run: the proposal changes the existing organization. */
+  rerun?: boolean;
   onApplied: (result: { created_count: number; changed_count: number }) => void;
 }) {
   const [proposal, setProposal] = useState(initial);
@@ -35,7 +37,8 @@ export function SetupTreeReview({ proposal: initial, onClose, onKeepTalking, onB
     node.action === "rename" ? "Rename" : node.action === "archive" ? null : "Already exists";
   return <Dialog className="schema-dialog setup-tree-dialog" aria-label="Proposed organization" onEscape={busy ? undefined : onClose}>
     <header className="schema-dialog-head"><div><h2>Proposed organization</h2>
-      <p>Here’s a first draft of your organization. Change anything, or tell Dani what’s off.</p></div>
+      <p>{rerun ? "Here’s what Dani would change. Rows you leave out stay as they are; archiving happens only where you tick it."
+        : "Here’s a first draft of your organization. Change anything, or tell Dani what’s off."}</p></div>
       <button className="btn-icon" aria-label="Close proposed organization" disabled={busy} onClick={onClose}><X size={20}/></button></header>
     {error && <p role="alert" className="detail-alert schema-alert">{error}</p>}
     <div className="schema-dialog-body single"><section className="setup-tree">

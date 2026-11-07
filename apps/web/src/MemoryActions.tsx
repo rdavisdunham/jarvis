@@ -56,7 +56,9 @@ export function MemoryStatus({status, worker, reviews, maintenance, timezone, bu
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"});
 
 /** What Dani is told about the owner at the start of each voice call, read-only. Written in the background. */
-export function AboutYouSummary({about, onUnpin}: {about: AboutYou; onUnpin?: (id: string) => Promise<unknown>}) {
+export function AboutYouSummary({about, onUnpin, onUpdate}: {about: AboutYou; onUnpin?: (id: string) => Promise<unknown>;
+  /** Re-run Set up with Dani focused on who you are. */
+  onUpdate?: () => void}) {
   const note = !about.enabled
     ? "Off while automatic learning is off."
     : !about.summary
@@ -81,6 +83,7 @@ export function AboutYouSummary({about, onUnpin}: {about: AboutYou; onUnpin?: (i
         </li>)}
       </ul>
     </>}
+    {onUpdate && <div className="memory-about-actions"><button type="button" className="btn btn-sm" onClick={onUpdate}>Update with Dani</button></div>}
   </section>;
 }
 

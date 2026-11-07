@@ -64,8 +64,14 @@ describe("retiring the setup banner", () => {
     await act(async () => { root.render(<Onboarding onChanged={() => {}} setup={session("interviewing")} onTalk={async mode => { modes.push(mode); }}/>); });
     await act(async () => { button("Resume with Dani")!.click(); });
     expect(modes).toEqual(["typed"]);
-    await act(async () => { root.render(<Onboarding onChanged={() => {}} setup={session("completed")} onTalk={async () => {}}/>); });
+    const focuses: (string | undefined)[] = [];
+    await act(async () => { root.render(<Onboarding onChanged={() => {}} setup={session("completed")} rerunFocus="organization"
+      onTalk={async (_mode, focus) => { focuses.push(focus); }}/>); });
     expect(button("Update with Dani")).toBeTruthy();
+    // Settings → Organization re-runs the interview focused on the organization.
+    await act(async () => { button("Update with Dani")!.click(); });
+    await act(async () => { button("Type instead")!.click(); });
+    expect(focuses).toEqual(["organization"]);
   });
 
   it("keeps a manual way to hide an in-progress setup", async () => {
