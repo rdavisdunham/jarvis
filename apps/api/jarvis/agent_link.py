@@ -93,7 +93,9 @@ COMMANDS: dict[str, str] = {"automation.hold": "input.direct", "run.cleanup": "r
                             # Rescan worktrees and the run's session and report both now (the judge's PR evidence).
                             "worktrees.scan": "worktrees.scan",
                             # Bring the run's terminal tab to the front in the host's desktop app(s).
-                            "terminal.focus": "terminal.focus"}
+                            "terminal.focus": "terminal.focus",
+                            # GitHub CI on the run's pull request (run_ci.py), and Merge / Update branch (run_merge.py).
+                            "ci.status": "ci.status", "pr.merge": "pr.merge", "pr.update_branch": "pr.update_branch"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
 # Refusals the host should resend later (ack retry:true); any other refusal is permanent.
 RETRYABLE = {"RATE_LIMITED", "UNKNOWN_SURFACE", "STALE_EPOCH"}

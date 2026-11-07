@@ -18,10 +18,10 @@ from datetime import datetime, timedelta
 from sqlalchemy import event, func, select, update
 from sqlalchemy.orm import object_session
 
+from . import agent_automation as automation
 from . import agent_sessions as sessions
 from . import run_summaries as summaries
 from .agent_actor import Actor, acting
-from . import agent_automation as automation
 from .config import get_settings
 from .domain import DomainError, advisory, emit
 from .models import Notification, Task, now
@@ -53,8 +53,9 @@ TRANSITIONS = {
     "plan_reviewing": {"planning", "needs_you", "stopping"},
     # Hyperplan: the planner is stopped and the worker is spawning; → executing when the worker attaches.
     "handing_off": {"executing", "needs_you", "stopping", "failed"},
+    # → awaiting_ci: CI stands in for a full local check after the turn (run_ci.verify_by_ci).
     "executing": {"verifying", "judging", "waiting_answer", "needs_you", "awaiting_approval", "awaiting_integration",
-                  "replanning", "stopping", "capped", "failed"},
+                  "awaiting_ci", "replanning", "stopping", "capped", "failed"},
     "waiting_answer": {"executing", "interviewing", "planning", "needs_you", "stopping"},
     "verifying": {"judging", "executing", "needs_you", "stopping", "failed"},
     # judging → completed exists for stage D's auto_complete; C never takes it.
@@ -71,7 +72,9 @@ TRANSITIONS = {
                   "replanning", "verifying", "judging", "plan_reviewing", "handing_off", "stopping", "failed"},
     # After integration the agent pulls the merged children and the loop verifies and judges again.
     "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
-    "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "verifying", "judging", "stopping"},
+    # → awaiting_ci: Update branch brought the base in (run_merge); CI runs again on the new head.
+    "awaiting_approval": {"completed", "executing", "needs_you", "replanning", "verifying", "judging", "awaiting_ci",
+                          "stopping"},
     "replanning": {"planning", "executing", "needs_you", "stopping"},
     # Only a confirmed termination (or an explicit lost-process reconciliation) settles a stop.
     "stopping": {"stopped", "completed", "failed"},
@@ -86,12 +89,16 @@ HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
        "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "automation.hold": timedelta(days=36500), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2), "ci.status": timedelta(minutes=2),
+       # A click on Merge or Update branch: a late one would surprise more than help (run_merge.py).
+       "pr.merge": timedelta(minutes=5), "pr.update_branch": timedelta(minutes=5),
        # Someone is waiting for the tab to come forward: a late one would surprise more than help.
        "terminal.focus": timedelta(seconds=30), "run.pause": timedelta(days=36500), "run.resume": timedelta(days=36500)}
 # Commands that leave no trace on the run's timeline or history (not work the run does).
 QUIET_COMMANDS = {"terminal.focus"}
 # Commands that only read from the host: sent whoever has control of the session (no ensure_eridani_control).
 READ_COMMANDS = {"worktrees.scan", "ci.status"}
+# Commands that act on GitHub, not on the agent's session: sent whoever has control of the session too (run_merge.py).
+GITHUB_COMMANDS = {"pr.merge", "pr.update_branch"}
 # A verification's deadline, then timed_out (a non-pass): the target's verify timeout as its host advertised it plus
 # VERIFY_GRACE, never less than VERIFY_DEADLINE (the host's old 10-minute default plus a minute), which is also the
 # deadline when the host did not say (verify_deadline). The hard ceiling is the entry's own `timeout` in eridani.json
@@ -180,6 +187,9 @@ REASONS = {
     "turn": "Checking the last turn against the success criteria.",
     "verify_late_result": "The host's verification result arrived after Eridani stopped waiting; judging it now.",
     "ci_pending": "The criteria are met on the quick check; waiting for GitHub CI on the pull request.",
+    "ci_verify": "The repository has CI, so it stands in for the full local check; waiting for GitHub CI on the pull request.",
+    "ci_update": "The branch was updated with its base; waiting for GitHub CI on the new head.",
+    "ci_absent_local": "The pull request has no CI after all; running the local check instead.",
     "ci_passed": "GitHub CI passed on the pull request head; checking the turn against the success criteria.",
     "ci_failed": "GitHub CI failed on the pull request; the agent is fixing it.",
     "ci_push": "GitHub CI has not run on this work; the agent is pushing it and opening the pull request.",
@@ -444,7 +454,8 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
                 raise DomainError("HANDOFF_UNCONFIRMED", "Only a confirmed separate worker can retire its planner.", 409)
         elif run is None or run.state not in TERMINAL:
             raise DomainError("RUN_ACTIVE", "Only an ended run can close its terminal sessions.", 409)
-    if run and kind not in QUIET_COMMANDS and kind not in READ_COMMANDS and kind != "run.cleanup":
+    if run and kind not in QUIET_COMMANDS and kind not in READ_COMMANDS and kind not in GITHUB_COMMANDS \
+            and kind != "run.cleanup":
         ensure_eridani_control(run)
     host = db.get(AgentHost, host_id or run.host_id) if host_id or run else None
     durable = bool(host and "commands.durable" in ((host.caps or {}).get("caps") or []))
@@ -574,6 +585,10 @@ def on_outcome(db, row, state, detail="", result=None):
         return
     if row.kind in ("worktrees.scan", "run.cleanup"):
         return  # Only a request for fresh evidence: the held judge's wait bounds it, whatever the host did.
+    if row.kind in GITHUB_COMMANDS:
+        from . import run_merge
+
+        return run_merge.on_outcome(db, run, row, state, detail, result or {})
     if state == "uncertain" and run.state not in TERMINAL and run.state != "stopping":
         transition(db, run, "needs_you", reason="delivery_uncertain", detail=detail)
         return
@@ -1653,6 +1668,10 @@ def after_turn(db, run):
             transition(db, run, "needs_you", reason="turn_cap")
         return
     if (plan.verify or {}).get("verify_id"):
+        from . import run_ci
+
+        if run_ci.stands_in(db, run, plan):
+            return run_ci.verify_by_ci(db, run, plan)  # The repository has CI: it stands in for the full local check.
         transition(db, run, "verifying", reason="turn")
         start_verify(db, run, plan)
         return
@@ -2660,6 +2679,8 @@ def stale(db, row, run):
     if (row.payload or {}).get("origin") == "automation" and row.kind in ("input", "spawn", "verify", "worktrees.scan"):
         if automation.held(run) or (row.payload or {}).get("automation_hold_revision", 0) != automation.state(run).get("revision", 0):
             return "automatic work was superseded by human control"
+    if row.kind == "ci.status" or row.kind in GITHUB_COMMANDS:
+        return None  # They read or act on GitHub, not the session: a settled run still merges (run_merge.py).
     if (run.sync_state or {}).get("controller") == "terminal" and row.kind not in QUIET_COMMANDS and row.kind != "worktrees.scan":
         return "the terminal owns this session"
     if run.state in TERMINAL:
