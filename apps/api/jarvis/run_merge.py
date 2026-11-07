@@ -78,12 +78,16 @@ def latest_facts(db, run):
     return (attempt.result or {}), attempt.updated_at
 
 
+def host_name(host):
+    return (host.name or host.machine or "The host") if host else "The host"
+
+
 def host_reason(db, run, kind=MERGE):
     """Why the host cannot take the command now, or ""."""
     host = db.get(AgentHost, run.host_id) if run.host_id else None
     if host is None:
         return "This run has no host."
-    name = host.name or host.machine or "The host"
+    name = host_name(host)
     if not agent_link.connected(host):
         return f"{name} is offline."
     if not coordinator.host_cap(db, run.host_id, kind):
@@ -126,6 +130,12 @@ def public(db, run):
         return out("merging" if op.get("kind") == MERGE else "updating",
                    "Merging…" if op.get("kind") == MERGE else "Updating the branch…")
     if facts is None:
+        # No answer yet. A host that answered with a failure says why, instead of "Checking…" forever.
+        error = run_ci.ci_state(run).get("error")
+        if error:
+            name = host_name(db.get(AgentHost, run.host_id) if run.host_id else None)
+            hint = " Update the GitHub CLI (gh) there." if "unknown flag" in error else ""
+            return out("host", f"{name} could not read the pull request: {error}.{hint}")
         return out("unknown", "Checking the pull request…")
     if pr is None:
         return out("no_pr", "No pull request yet.")

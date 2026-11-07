@@ -299,3 +299,17 @@ def test_auto_merge_needs_a_real_check(merge_host):
 def panel_auto(run_id):
     with session_scope() as db:
         return control.public_run(db, db.get(AgentRun, run_id))["auto_merge"]
+
+
+def test_a_host_that_cannot_read_the_pull_request_says_why(merge_host):
+    run_id = planned(merge_host)
+    assert met(merge_host, run_id) == ("awaiting_ci", "ci_pending")
+    assert panel(run_id)["status"] == "unknown"
+    outcome(run_id, "ci.status", "failed", detail="gh pr checks: unknown flag: --json")
+    view = panel(run_id)
+    assert view["status"] == "host" and not view["can_merge"]
+    assert "could not read the pull request: gh pr checks: unknown flag: --json." in view["detail"]
+    assert "Update the GitHub CLI (gh)" in view["detail"]
+    # A later good answer replaces the error.
+    answer(run_id)
+    assert panel(run_id)["status"] != "host"
