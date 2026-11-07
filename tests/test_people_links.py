@@ -117,3 +117,42 @@ async def test_dani_reads_what_eridani_knows_about_a_bucket(monkeypatch):
     assert data["tasks"]["open"] == 1 and data["tasks"]["recent_open"][0]["title"] == "Rubric co-design with trainers"
     parent = await _call_tool(OWNER, "turn", 1, "record_overview", {"record_id": client["id"]})
     assert parent["child_buckets"] == [{"record_id": project["id"], "type_id": "project", "title": "Transcript Intelligence"}]
+
+
+def test_naming_a_person_recalls_their_clients_and_projects(monkeypatch):
+    client, project, people = setup()
+    monkeypatch.setattr("jarvis.context.views.me", lambda db, owner: people["me"])
+    refresh(project["id"])
+    refresh(client["id"])
+    with session_scope() as db:
+        db.add(Actor(owner_id=OWNER, name="Priya Shah"))  # Shares the first name: "Priya" alone is not unique.
+        db.add(Actor(owner_id=OWNER, name="Jo"))  # Too short to match on its own.
+        db.get(Actor, people["marco"]).name = "Marco Diaz"
+    with session_scope() as db:
+        # A unique first name matches; the latest-named person comes first; possessives still match.
+        assert people_links.mentioned(db, OWNER, "Ask priya about it, then check Marco's numbers") == [
+            (people["marco"], "Marco Diaz works on or around: Transcript Intelligence (project).")]
+        assert [a for a, _ in people_links.mentioned(db, OWNER, "Priya and Marco Diaz")] == [people["marco"]]
+        assert people_links.mentioned(db, OWNER, "Priya") == []  # Two Priyas; neither is named in full.
+        assert people_links.mentioned(db, OWNER, "Jo said hi. Also the owner.") == []
+        assert people_links.mentioned(db, OWNER, "Remarcoing the plan") == []  # Whole words only.
+        # Confirmed links count; rejected links stay out.
+        people_links.decide(db, OWNER, people["marco"], client["id"], "confirmed")
+        people_links.decide(db, OWNER, people["marco"], project["id"], "rejected")
+        assert people_links.mentioned(db, OWNER, "Marco") == [
+            (people["marco"], "Marco Diaz works on or around: ABC (client).")]
+
+
+async def test_typed_chat_context_carries_named_people(monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from jarvis import memory_service
+
+    _, project, people = setup()
+    monkeypatch.setattr("jarvis.context.views.me", lambda db, owner: people["me"])
+    refresh(project["id"])
+    monkeypatch.setattr(memory_service, "semantic_search", AsyncMock(return_value=[]))
+    context = await memory_service.prompt_context(OWNER, "What is Marco working on?")
+    assert context.startswith("People named here and where they work (DATA): ")
+    assert "Marco works on or around: Transcript Intelligence (project)." in context
+    assert await memory_service.prompt_context(OWNER, "What is on my plate?") == ""

@@ -16,6 +16,7 @@ from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
 from .memory_service import current_facts, semantic_search
+from .people_links import mentioned
 from .models import AgentWork, Conversation, Job, Source, VoiceInbox, now, uid
 from .voice import Controller, controllers
 from .latency import mark, span
@@ -82,9 +83,11 @@ class LiveController(Controller):
         self.final_reason = None
         self.memory_task = None
         self.context_sent = set()  # (memory id, revision) already in this session's context.
+        self.people_sent = set()  # (actor id, line) already in this session's context.
         self.context_pending = {}  # client event id -> fact count, until the provider acknowledges it.
         self.context_retrieved_at = None
-        self.context_stats = {"retrievals": 0, "facts_sent": 0, "facts_acknowledged": 0, "facts_dropped": 0}
+        self.context_stats = {"retrievals": 0, "facts_sent": 0, "facts_acknowledged": 0, "facts_dropped": 0,
+                              "people_sent": 0}
         self.announced_work = set()
         self.busy_since, self.slow_noted = {}, set()  # Root request -> first seen running; "still working" sent.
         self.progress_heard = {}  # Root request -> {"seq", "said", "count", "at"} of the notes spoken for it.
@@ -434,13 +437,20 @@ class LiveController(Controller):
             if self.closed or self.closing or revision != self.input_revision:
                 return
             fresh = [f for f in facts if (f["id"], f["revision"]) not in self.context_sent]
-            if not fresh:
-                return
             # The search awaited a provider; recheck that each fact and its source still exist and are current.
+            # People the owner just named come along with the clients and projects they are linked to.
             with session_scope() as db:
-                current = current_facts(db, self.owner, fresh)
+                current = current_facts(db, self.owner, fresh) if fresh else []
+                people = [p for p in mentioned(db, self.owner, query) if p not in self.people_sent]
             self.context_stats["facts_dropped"] += len(fresh) - len(current)
-            payload, chosen = [], []
+            if not current and not people:
+                return
+            payload, chosen, named = [], [], []
+            for person in people:
+                proposed = CONTEXT_PREFIX + json.dumps([*payload, person[1][:300]], ensure_ascii=False)
+                if len(proposed) <= CONTEXT_MAX_CHARS and token_estimate(proposed) <= CONTEXT_MAX_TOKENS:
+                    payload.append(person[1][:300])
+                    named.append(person)
             for fact in current:
                 if len(payload) == CONTEXT_MAX_FACTS:
                     break
@@ -454,7 +464,9 @@ class LiveController(Controller):
             event_id = uid()
             self.context_pending[event_id] = len(payload)
             self.context_sent.update((f["id"], f["revision"]) for f in chosen)
-            self.context_stats["facts_sent"] += len(payload)
+            self.people_sent.update(named)
+            self.context_stats["facts_sent"] += len(chosen)
+            self.context_stats["people_sent"] += len(named)
             await self.send(
                 {
                     "type": "session.thinking.append",

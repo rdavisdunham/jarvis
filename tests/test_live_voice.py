@@ -754,3 +754,17 @@ async def test_still_working_waits_while_the_user_talks(controller):
     quiet_since_last_input(c)
     await c.report_work()
     assert len(spoken(c)) == 1
+
+
+async def test_naming_a_person_appends_their_links_once(controller, monkeypatch, quick_context):
+    c = controller
+    line = "Janiece works on or around: ABC Home & Commercial (client)."
+    monkeypatch.setattr(live_voice, "mentioned", lambda db, owner, text: [("janiece", line)] if "Janiece" in text else [])
+    search_returning(monkeypatch, [])
+    c.groups = [{"role": "user", "content": "Remind me what Janiece is doing.", "saved": True}]
+    await c.refresh_memory_context(c.input_revision)
+    assert appended(c) == [[line]] and c.context_stats["people_sent"] == 1
+    # Already sent this session: not repeated.
+    await c.refresh_memory_context(c.input_revision)
+    c.send.assert_awaited_once()
+    await c.close()

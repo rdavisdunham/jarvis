@@ -13,7 +13,8 @@ it for good. Either decision survives every later refresh. The owner's own actor
 everything.
 """
 
-from collections import defaultdict
+import re
+from collections import Counter, defaultdict
 
 from sqlalchemy import select
 
@@ -25,6 +26,8 @@ from .structure_models import PersonBucketLink, StructureRecord
 BUCKET_TYPES = ("client", "project")
 STATUSES = ("inferred", "confirmed", "rejected")
 SAMPLES = 5
+MENTION_PEOPLE = 3  # people recalled per look at the conversation
+MENTION_LINKS = 4  # clients and projects listed per person
 
 
 def _facts(db, owner, record):
@@ -168,3 +171,37 @@ def decide(db, owner, actor_id, record_id, status) -> dict:
                                                         PersonBucketLink.record_id == record_id))
     emit(db, owner, "record.people", record_id)
     return public(link, record=record) if link else {"actor_id": actor_id, "record_id": record_id, "status": None}
+
+
+def mentioned(db, owner, text, limit=MENTION_PEOPLE) -> list[tuple[str, str]]:
+    """People the text names who are linked to clients or projects, as (actor_id, line), the latest named first.
+
+    A full name of two or more words matches anywhere in the text. A first name, or a one-word name, matches only when
+    no other person's name starts with it. Keys under three letters never match. People with no links (the owner included) give nothing. Rejected links stay out.
+    """
+    said = (text or "").casefold()
+    if not said.strip():
+        return []
+    people = db.execute(select(Actor.id, Actor.name).where(
+        Actor.owner_id == owner, Actor.kind == "person", Actor.archived.is_(False))).all()
+    firsts = Counter(name.split()[0].casefold() for _, name in people if name.split())
+    hits = []
+    for actor_id, name in people:
+        full = " ".join(name.split()).casefold()
+        if not full:
+            continue
+        # A one-word key (a first name, or a name that is one word) must belong to nobody else.
+        keys = {key for key in {full, full.split()[0]} if " " in key or firsts[key] == 1}
+        last = max((m.start() for key in keys if len(key) >= 3
+                    for m in re.finditer(r"(?<!\w)" + re.escape(key) + r"(?!\w)", said)), default=-1)
+        if last >= 0:
+            hits.append((last, " ".join(name.split()), actor_id))
+    out = []
+    for _, name, actor_id in sorted(hits, reverse=True):
+        links = for_actor(db, owner, actor_id)[:MENTION_LINKS]
+        if links:
+            places = ", ".join(f"{link['title']} ({link['type_id']})" for link in links)
+            out.append((actor_id, f"{name} works on or around: {places}."))
+            if len(out) == limit:
+                break
+    return out
