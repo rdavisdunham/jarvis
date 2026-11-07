@@ -696,6 +696,9 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("setup.tree_"):
         from .setup_tree import mutate as tree_mutate
         return tree_mutate(db, owner, tool, args, command_id)
+    if tool == "setup.propose":
+        from .setup_synthesis import mutate as propose_mutate
+        return propose_mutate(db, owner, tool, args, command_id)
     if tool.startswith("routing."):
         from .routing import mutate as routing_mutate
         return routing_mutate(db,owner,tool,args,command_id)
@@ -1287,6 +1290,9 @@ COMMANDS.update(SETUP_COMMANDS)
 
 from .setup_tree import COMMANDS as SETUP_TREE_COMMANDS
 COMMANDS.update(SETUP_TREE_COMMANDS)
+
+from .setup_synthesis import COMMANDS as SETUP_PROPOSE_COMMANDS
+COMMANDS.update(SETUP_PROPOSE_COMMANDS)
 
 from .quick_sort_schema import COMMANDS as SORT_COMMANDS
 COMMANDS.update(SORT_COMMANDS)

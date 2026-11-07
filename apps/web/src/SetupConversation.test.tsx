@@ -35,4 +35,11 @@ describe("the setup conversation strip", () => {
       onSwitchToVoice={() => {}} onPropose={() => {}}/>));
     expect(names()).toEqual(["Propose my organization"]);
   });
+
+  it("says a proposal is being built and hides Propose meanwhile", () => {
+    act(() => root.render(<SetupConversation session={{ ...session, status: "proposing" }} voiceActive voiceAvailable
+      busy={false} onSwitchToVoice={() => {}} onPropose={() => {}}/>));
+    expect(names()).toEqual([]);
+    expect(host.querySelector("[role=status]")?.textContent).toContain("putting your proposal together");
+  });
 });

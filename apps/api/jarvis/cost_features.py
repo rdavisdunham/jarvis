@@ -12,6 +12,7 @@ LABELS = {
     "memory_retrieval": "Memory retrieval",
     "memory_review": "Memory dream sequence",
     "about_you": "About you summary",
+    "setup": "Set up with Dani",
     "organization_learning": "Organization dream sequence",
     "field_understanding": "Custom field clarification",
     "note_organization": "Note organization",

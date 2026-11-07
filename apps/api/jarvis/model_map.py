@@ -62,6 +62,9 @@ PROFILES = {
                 "OPENAI_API_KEY", "GPT-5.6 Terra · low reasoning", "low"),
         Profile("terra-high", "openai", "gpt-5.6-terra", "openai_responses", "https://api.openai.com/v1/responses",
                 "OPENAI_API_KEY", "GPT-5.6 Terra · high reasoning", "high"),
+        # Set up with Dani's synthesis (docs/SETUP_WITH_DANI_PLAN.md, decision 5): Terra runs everything in setup.
+        Profile("terra-6.1", "openai", "gpt-6.1-terra", "openai_responses", "https://api.openai.com/v1/responses",
+                "OPENAI_API_KEY", "GPT-6.1 Terra · medium reasoning", "medium"),
         Profile("haiku-5.5", "anthropic", "claude-haiku-5-5", "anthropic_messages",
                 "https://api.anthropic.com/v1/messages", "ANTHROPIC_API_KEY", "Claude Haiku 5.5 · low effort", "low"),
         Profile("sonnet-5.5", "anthropic", "claude-sonnet-5-5", "anthropic_messages",
@@ -125,12 +128,17 @@ JOBS = {
             "Meeting context contradiction checks"),
         Job("context_synthesis", "context_synthesis", "context.native.synthesize", "extraction",
             "Meeting briefs"),
+        Job("setup_synthesis", "setup", "setup_synthesis.ask", "extraction",
+            "Set up with Dani proposals (organization and core facts)"),
         Job("eri_chat", "assistant", "conversation", "agent", "Dani chat turns (tool selection)"),
     )
 }
 
-# Today's behaviour: every structured job on Luna (low reasoning), Dani chat on the Settings choice.
-DEFAULTS = {job: (SELECTED if spec.path == "agent" else "luna") for job, spec in JOBS.items()}
+# Today's behaviour: every structured job on Luna (low reasoning) except the pinned ones, Dani chat on the Settings
+# choice.
+# Jobs pinned to another model by an owner decision rather than today's default.
+PINNED = {"setup_synthesis": "terra-6.1"}
+DEFAULTS = {job: PINNED.get(job) or (SELECTED if spec.path == "agent" else "luna") for job, spec in JOBS.items()}
 MODEL_MAP = dict(DEFAULTS)
 
 

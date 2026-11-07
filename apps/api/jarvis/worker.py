@@ -130,6 +130,10 @@ def _perform_job(job_id):
         from .about_you import process
 
         return process(job_id)
+    if kind == "setup_synthesis":
+        from .setup_synthesis import process
+
+        return process(job_id)
     if kind in {"assess_field", "review_routing"}:
         from .routing import perform
         return perform(job_id,kind)

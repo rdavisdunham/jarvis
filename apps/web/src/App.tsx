@@ -432,6 +432,8 @@ export default function App() {
   const inSetup = setupActive(setupSession) && !!activeConversation && setupSession?.conversation_id === activeConversation;
   const setupVoice = useRef(false);
   const [treeReview, setTreeReview] = useState<OrganizationProposal | null>(null);
+  // Bumped by `setup.changed` events (and while a proposal is being built) to re-read the setup state.
+  const [setupSignal, setSetupSignal] = useState(0);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
   const chatAnchors = useRef({conversation: conversationRef.current, items: new Map<string, string | null>()});
   if (chatAnchors.current.conversation !== conversationRef.current) chatAnchors.current = {conversation: conversationRef.current, items: new Map()};
@@ -795,6 +797,7 @@ export default function App() {
       (signal) => {
         const scope = signalScope(signal);
         if (scope.memory) setMemoryRevision((v) => v + 1);
+        if (scope.setup) setSetupSignal((v) => v + 1);
         if (!scope.load && !scope.revision) return;
         void loads
           .request({
@@ -1843,6 +1846,10 @@ export default function App() {
   async function refreshSetup() {
     setSetupSession(await api<SetupSession>("/setup"));
   }
+  async function proposeSetup() {
+    try { setSetupSession(await post<SetupSession>("/setup/propose", {})); }
+    catch (e) { setError((e as Error).message); }
+  }
   async function openWorkRecord(action: ActionChange) {
     if (!action.entity_id) return;
     if(action.kind==="record"){setView("organize");setOrganizationEditor(null);setRecordControl({nonce:crypto.randomUUID(),record_id:action.entity_id});return;}
@@ -1957,7 +1964,28 @@ export default function App() {
     let live = true;
     void api<SetupSession>("/setup").then(session => { if (live) setSetupSession(session); }).catch(() => {});
     return () => { live = false; };
-  }, [setupScope]);
+  }, [setupScope, setupSignal]);
+  const setupProposing = setupSession?.status === "proposing";
+  useEffect(() => {
+    // Fallback while the change feed is down: the proposal takes a minute or so on Terra.
+    if (!setupProposing) return;
+    const timer = setInterval(() => setSetupSignal(v => v + 1), 5000);
+    return () => clearInterval(timer);
+  }, [setupProposing]);
+  const setupWasProposing = useRef(false);
+  useEffect(() => {
+    const finished = setupWasProposing.current && !setupProposing;
+    setupWasProposing.current = setupProposing;
+    if (!finished || !setupSession || !inSetup) return;
+    // Dani's message about the proposal is in the setup conversation; show it, then open the review.
+    const id = setupSession.conversation_id;
+    if (id && !thinking && !chatSubmitLock.current)
+      void api<{ id: string; messages: ChatMessage[] }>("/conversations/" + id).then(data => {
+        if (conversationRef.current === data.id) setMessages(data.messages);
+      }).catch(() => {});
+    if (setupSession.status === "reviewing" && setupSession.tree_proposal_id)
+      void openTreeReview(setupSession.tree_proposal_id);
+  }, [setupProposing, setupSession, inSetup, thinking]);
   const voiceLive = !!voiceState && !voiceState.closed;
   const voiceWasLive = useRef(false);
   useEffect(() => {
@@ -3249,6 +3277,7 @@ export default function App() {
             {inSetup && setupSession && <SetupConversation session={setupSession} voiceActive={voiceLive}
               voiceAvailable={!!boot.capabilities.voice} busy={thinking || voiceState?.state === "closing"}
               onSwitchToVoice={() => void switchSetupToVoice()}
+              onPropose={setupSession.can_propose ? () => void proposeSetup() : undefined}
               onReview={setupSession.status === "reviewing" && setupSession.tree_proposal_id
                 ? () => void openTreeReview(setupSession.tree_proposal_id!) : undefined}/>}
             <div

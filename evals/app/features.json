@@ -755,5 +755,26 @@
       "tests/context/test_context_owner.py"
     ],
     "status": "active"
+  },
+  {
+    "id": "setup_interview",
+    "title": "Set up with Dani",
+    "description": "A typed or voice interview that proposes spaces, areas, goals, projects and core facts, previewed and confirmed before anything is created, with group revert.",
+    "order": 46,
+    "target_cases": 25,
+    "source_files": [
+      "apps/api/jarvis/setup.py",
+      "apps/api/jarvis/setup_tree.py",
+      "apps/api/jarvis/setup_synthesis.py",
+      "apps/web/src/SetupConversation.tsx",
+      "apps/web/src/SetupTreeReview.tsx"
+    ],
+    "regression_files": [
+      "tests/test_setup_session.py",
+      "tests/test_setup_tree.py",
+      "tests/test_setup_voice.py",
+      "tests/test_setup_synthesis.py"
+    ],
+    "status": "active"
   }
 ]

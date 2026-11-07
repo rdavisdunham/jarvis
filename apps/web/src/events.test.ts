@@ -114,10 +114,11 @@ test("a silent half-open stream is replaced after the heartbeat window", async (
   stop();
 });
 test("signal scope only invalidates what an event concerns", () => {
-  expect(signalScope({ reason: "event", id: 1, kind: "memory.changed" })).toEqual({ load: false, revision: false, memory: true });
-  expect(signalScope({ reason: "event", id: 1, kind: "note.changed" })).toEqual({ load: false, revision: true, memory: false });
-  expect(signalScope({ reason: "event", id: 1, kind: "task.changed" })).toEqual({ load: true, revision: true, memory: false });
-  expect(signalScope({ reason: "open" })).toEqual({ load: true, revision: true, memory: true });
+  expect(signalScope({ reason: "event", id: 1, kind: "memory.changed" })).toEqual({ load: false, revision: false, memory: true, setup: false });
+  expect(signalScope({ reason: "event", id: 1, kind: "note.changed" })).toEqual({ load: false, revision: true, memory: false, setup: false });
+  expect(signalScope({ reason: "event", id: 1, kind: "task.changed" })).toEqual({ load: true, revision: true, memory: false, setup: false });
+  expect(signalScope({ reason: "event", id: 1, kind: "setup.changed" })).toEqual({ load: false, revision: false, memory: false, setup: true });
+  expect(signalScope({ reason: "open" })).toEqual({ load: true, revision: true, memory: true, setup: true });
 });
 function deferred() {
   let resolve!: (v: number) => void;

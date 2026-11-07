@@ -431,6 +431,14 @@ def setup_mode(body: SetupMode, user: User):
         return set_mode(db, user.owner_id, ModeChange(**body.model_dump()))
 
 
+@app.post("/api/v1/setup/propose")
+def setup_propose(user: User):
+    """The "Propose my organization" button: queue the synthesis; Dani posts the result in the setup conversation."""
+    from .setup_synthesis import propose
+    with session_scope() as db:
+        return propose(db, user.owner_id)
+
+
 @app.get("/api/v1/setup/proposals/{proposal_id}")
 def setup_proposal(proposal_id: str, user: User):
     from .setup_tree import read

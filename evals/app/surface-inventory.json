@@ -334,12 +334,16 @@
       "feature": "browser_settings"
     },
     {
+      "name": "setup.propose",
+      "feature": "setup_interview"
+    },
+    {
       "name": "setup.tree_apply",
-      "feature": "onboarding"
+      "feature": "setup_interview"
     },
     {
       "name": "setup.tree_preview",
-      "feature": "onboarding"
+      "feature": "setup_interview"
     },
     {
       "name": "space.create",
@@ -574,6 +578,10 @@
     {
       "name": "session_search",
       "feature": "external_agents"
+    },
+    {
+      "name": "setup_state",
+      "feature": "setup_interview"
     },
     {
       "name": "structure_schema",
@@ -2425,35 +2433,42 @@
       "path": "/api/v1/setup",
       "handler": "setup_state",
       "source": "apps/api/jarvis/api.py",
-      "feature": "onboarding"
+      "feature": "setup_interview"
     },
     {
       "method": "POST",
       "path": "/api/v1/setup/finish",
       "handler": "setup_finish",
       "source": "apps/api/jarvis/api.py",
-      "feature": "onboarding"
+      "feature": "setup_interview"
     },
     {
       "method": "POST",
       "path": "/api/v1/setup/mode",
       "handler": "setup_mode",
       "source": "apps/api/jarvis/api.py",
-      "feature": "onboarding"
+      "feature": "setup_interview"
     },
     {
       "method": "GET",
       "path": "/api/v1/setup/proposals/{proposal_id}",
       "handler": "setup_proposal",
       "source": "apps/api/jarvis/api.py",
-      "feature": "onboarding"
+      "feature": "setup_interview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/propose",
+      "handler": "setup_propose",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "setup_interview"
     },
     {
       "method": "POST",
       "path": "/api/v1/setup/start",
       "handler": "setup_start",
       "source": "apps/api/jarvis/api.py",
-      "feature": "onboarding"
+      "feature": "setup_interview"
     },
     {
       "method": "GET",
