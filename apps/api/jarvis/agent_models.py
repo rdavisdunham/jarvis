@@ -28,6 +28,10 @@ class Price:
 PRICES = {
     "gpt-5.6-luna": Price(0.20, 1.20, long_above=272_000, long_input=2, long_output=1.5, fast=2),
     "gpt-5.6-terra": Price(2.00, 12.00, long_above=272_000, long_input=2, long_output=1.5),
+    # OpenAI's pricing page, checked 2026-11-07: $1.00 input, $0.05 cached input (5% of input), $1.25 30-minute
+    # cache write (1.25x), $5.00 output per 1M tokens; above 272K input tokens $2.00 / $0.10 / $2.50 / $7.50
+    # (2x input, 1.5x output). The Fast tier is 2x ($2.00 / $10.00); typed chat requests Standard.
+    "gpt-6.1-terra": Price(1.00, 5.00, cached_input=0.05, long_above=272_000, long_input=2, long_output=1.5, fast=2),
     "claude-sonnet-5-5": Price(2.00, 10.00),
     "claude-haiku-5-5": Price(0.10, 0.50, long_above=100_000, long_input=5, long_output=5),
 }
@@ -168,6 +172,19 @@ def catalog():
             api="responses",
             reasoning_effort="none",
         ),
+        # Typed chat's default (TYPED_CHAT_DEFAULT): smarter and slower than Luna. Medium effort; reasoning
+        # tokens count toward max_output_tokens, so it gets twice Luna's room.
+        "terra-6.1": AgentModel(
+            "openai",
+            "gpt-6.1-terra",
+            "GPT-6.1 Terra · reasoning",
+            "https://api.openai.com/v1/responses",
+            settings.openai_api_key,
+            16384,
+            profile="terra-6.1",
+            api="responses",
+            reasoning_effort="medium",
+        ),
         "gemini": AgentModel(
             "gemini",
             "gemini-3.8-flash",
@@ -191,6 +208,18 @@ def default_provider():
     models = catalog()
     # Preserve the existing provider preference while retiring the old OpenAI model.
     return next((p for p in ("luna", "groq", "gemini") if models[p].available), "luna")
+
+
+TYPED_CHAT_DEFAULT = "terra-6.1"
+
+
+def typed_chat(prefs, *, require_key=False):
+    """The model for a request typed in the app (`chat_profile`). Voice, bots and other background work use
+    `selected` (the task agent). With no saved choice this is Terra, or the task agent without an OpenAI key."""
+    profile = prefs.get("chat_profile")
+    if not profile and not catalog()[TYPED_CHAT_DEFAULT].available:
+        return selected(prefs, require_key=require_key)
+    return selected({"agent_profile": profile or TYPED_CHAT_DEFAULT}, require_key=require_key)
 
 
 def selected(prefs, *, require_key=False, service_tier=None):

@@ -22,8 +22,13 @@ reserved calendar time. Assignee is responsibility; it neither grants access nor
 automatically launches an agent. Notes preserve authored content and can link records,
 produce explicit to-dos, and appear in saved filtered lists without being copied.
 
-GPT-Live is the active voice frontend. Durable backend work uses the selected task
-agent (Luna or Gemini; the code also retains a Groq profile). Accepted requests survive
+GPT-Live is the active voice frontend. Requests typed in the app's chat run on their own
+model, Settings → Task agent → Typed chat (GPT-6.1 Terra at medium reasoning by default:
+slower and smarter, at Standard processing). Voice-delegated, bot and other background work
+uses the selected task agent, Settings → Task agent → Background work (Luna by default, or
+Gemini; the code also retains a Groq profile). The model is fixed when a request is accepted:
+revisions and clarification answers continue on the model the request started with, so a
+typed answer to a question asked during voice stays on the task agent. Accepted requests survive
 voice interruption. Independent requests can proceed concurrently; references and
 clarification answers carry dependencies and lineage. Commands validate permissions,
 arguments and revisions before transactionally saving effects and action receipts.

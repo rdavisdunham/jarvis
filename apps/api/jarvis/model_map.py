@@ -3,7 +3,8 @@
 Every backend job that calls a text model has an entry in JOBS: the cost feature its usage is recorded under
 (cost_features.LABELS, the Settings → Model usage buckets), the production function that makes the call, and its
 default profile. The defaults are today's models: Luna with low reasoning through memory_learning.extraction_request
-for the structured jobs, and the task agent chosen in Settings (agent_models.selected) for Dani chat.
+for the structured jobs, and the task agent chosen in Settings (agent_models.selected) for Dani chat; a request
+typed in the app uses the Settings typed-chat choice instead (agent_models.typed_chat, GPT-6.1 Terra by default).
 memory_learning.profile_request serves any route whose profile has a price (`costing`): OpenAI Responses profiles
 (Luna, Terra) and Anthropic Messages profiles (Sonnet 5.5, Haiku 5.5); placeholder profiles stay refused.
 `MODEL_MAP[job] = "<profile id>"` overrides a job's route in-process (the meeting lab does this for
