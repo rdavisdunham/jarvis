@@ -73,8 +73,8 @@ def test_global_prompts_are_small_and_live_has_no_schema_mechanics():
     backend = backend_instructions(prefs)
     live = live_instructions(prefs)
     # +200 on 2026-10-29 for the agent-run capability sentence (remotea runs through Dani and Live).
-    # Live +100 on 2026-10-30: delegate show/open requests without judging the named kind (Live has no tool text).
-    assert len(backend.encode()) < 7700 and len(live.encode()) < 6800
+    # Live cut from ~6.7 kB to ~4.9 kB on 2026-11-07 (OpenAI's live-prompting template; backend-only rules dropped).
+    assert len(backend.encode()) < 7700 and len(live.encode()) < 5300
     assert "expected_revision" not in live and "tools_load" not in live
     assert "Delegation policy:" in live and "untrusted" in live
     assert "untrusted" in backend and "tools_load" in backend
@@ -364,3 +364,22 @@ def test_lean_loader_with_no_permitted_groups_does_not_advertise_other_capabilit
     assert description.endswith("Groups: ")
     assert "calendar_read:" not in description and "sessions:" not in description
     assert session.load({"groups": ["tasks"]})["tools"] == []
+
+
+def test_live_prompt_follows_the_gpt_live_template():
+    # https://developers.openai.com/api/docs/guides/live-prompting: three policy headings, and
+    # "Generate <|SpawnThinking|>" rather than "delegate" for gpt-live-1.
+    with session_scope() as db:
+        prefs = preferences(db, "davin")
+    live = live_instructions(prefs)
+    for heading in ("Backchannel policy:", "Interruption policy:", "Delegation policy:\nBackend tools:",
+                    "Generate <|SpawnThinking|> when:", "Do not generate <|SpawnThinking|> when:"):
+        assert heading in live
+    assert "Do not guess the result while waiting" in live
+    assert "delegate" not in live.lower().replace("delegation policy", "")
+    # Only what the voice model acts on: no screen, record IDs, scheduling windows or controller timers.
+    for backend_only in ("Current screen DATA", "Focused task ID", "scheduling_windows", "180 seconds", "120 seconds",
+                         "Retired", "transcripts:", "available tools"):
+        assert backend_only not in live
+    # Brief verified updates while work runs; the charming personality is shared with text.
+    assert "a short update whenever a verified result arrives" in live and "charming" in live

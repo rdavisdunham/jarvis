@@ -25,6 +25,13 @@ def test_assistant_identity_is_separate_from_app_and_allows_both_pronunciations(
     assert "gender-neutral" in SYSTEM_PROMPT
 
 
+def test_personality_is_charming_with_restrained_wit():
+    from jarvis.personality import PERSONALITY
+    assert PERSONALITY in SYSTEM_PROMPT
+    assert "charming" in PERSONALITY and "Most replies have none" in PERSONALITY
+    assert "never stiff, formal" in PERSONALITY and "formal but" not in SYSTEM_PROMPT
+
+
 def test_name_collision_preserves_existing_people_and_agents():
     assert available_assistant_name([]) == "Dani"
     assert available_assistant_name(["dani"]) == "Dani (assistant)"
