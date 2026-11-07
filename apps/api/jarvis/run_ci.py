@@ -206,16 +206,8 @@ def parse(result, stale_local=()):
         state = "no_pr"
     elif local and head and not local.startswith(head) and not head.startswith(local) and local not in stale_local:
         state = "unpushed"
-    elif not checks:
-        state = "absent"
-    elif "fail" in buckets:
-        state = "failed"
-    elif "pending" in buckets:
-        state = "pending"
-    elif "cancel" in buckets:
-        state = "cancelled"
     else:
-        state = "passed"
+        state = checks_state(checks)
     runs = [m.group(1) for c in checks if c["link"] and (m := _RUN_URL.match(c["link"]))]
     failing = [c for c in checks if c["bucket"] == "fail"]
     run_url = next((m.group(1) for c in failing if c["link"] and (m := _RUN_URL.match(c["link"]))), None) or \
@@ -227,6 +219,13 @@ def parse(result, stale_local=()):
             "failed": [{"name": c["name"], "link": c["link"]} for c in failing],
             "log": log_lines(result.get("failed_logs")) if failing else [], "worktree_head": local or None,
             **pr_facts(pr)}
+
+
+def checks_state(checks) -> str:
+    """The pull request's own checks, ignoring the worktree: absent, failed, pending, cancelled or passed."""
+    buckets = {c["bucket"] for c in checks}
+    return ("absent" if not checks else "failed" if "fail" in buckets else "pending" if "pending" in buckets
+            else "cancelled" if "cancel" in buckets else "passed")
 
 
 def word(value, limit=20):

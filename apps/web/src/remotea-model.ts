@@ -233,7 +233,7 @@ export type RunCi = {
 /** The merge panel's facts (run_merge.public): the server decides; the panel only shows it. */
 export type RunMerge = {
   status: "merged" | "closed" | "merging" | "updating" | "unknown" | "no_pr" | "working" | "host" | "waiting_ci"
-    | "ci_failed" | "draft" | "conflicts" | "behind" | "blocked" | "ready";
+    | "ci_failed" | "draft" | "conflicts" | "behind" | "unpushed" | "blocked" | "ready";
   detail: string; can_merge: boolean; can_update: boolean;
   pr: { number: number; url: string | null; base: string; head_sha: string; state: string } | null;
   ci: string | null; checked_at: string | null;
@@ -1762,7 +1762,8 @@ const MERGE_SEND_BACK: Partial<Record<RunMerge["status"], string>> = {
 export function mergePanel(merge: RunMerge | null | undefined) {
   if (!merge) return null;
   const base = merge.pr?.base || "main";
-  const action: "merge" | "update" | "none" = merge.status === "behind" ? "update"
+  // Update branch whenever it is the only move (behind, or behind with failing CI).
+  const action: "merge" | "update" | "none" = merge.status === "behind" || (merge.can_update && !merge.can_merge) ? "update"
     : ["merged", "closed"].includes(merge.status) ? "none" : "merge";
   const label = action === "update" ? "Update branch" : merge.status === "merging" ? "Merging…" : `Merge into ${base}`;
   const enabled = action === "update" ? merge.can_update : merge.can_merge;
