@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Onboarding } from "./Onboarding";
-import { setupEstablished } from "./setup-model";
+import { setupEstablished, type SetupSession } from "./setup-model";
 import type { Project } from "./types";
 import type { Space } from "./productivity";
 
@@ -35,6 +35,37 @@ describe("retiring the setup banner", () => {
     expect(host.textContent).toBe("");
     await act(async () => { root.render(banner(false)); });
     expect(host.textContent).toContain("Make Eridani yours");
+  });
+
+  const button = (name: string) => [...host.querySelectorAll("button")].find(b => b.textContent === name);
+
+  it("asks for voice or typing before the setup conversation starts", async () => {
+    const modes: string[] = [];
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(progress("in_progress"))));
+    vi.stubGlobal("requestAnimationFrame", (done: () => void) => { done(); return 0; });
+    await act(async () => { root.render(<Onboarding compact onChanged={() => {}} onTalk={async mode => { modes.push(mode); }}/>); });
+    expect(host.querySelector("section")?.getAttribute("aria-label")).toBe("Set up with Dani");
+    expect(button("Fill out the form")).toBeTruthy();
+    await act(async () => { button("Set up with Dani")!.click(); });
+    expect(host.textContent).toContain("Want to do this by voice?");
+    expect(button("Use voice mode")?.className).toContain("btn-primary");
+    await act(async () => { button("Type instead")!.click(); });
+    await act(async () => { button("Set up with Dani")!.click(); });
+    await act(async () => { button("Use voice mode")!.click(); });
+    expect(modes).toEqual(["typed", "voice"]);
+  });
+
+  it("resumes a typed setup without asking again, and offers an update after completion", async () => {
+    const modes: string[] = [];
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(progress("in_progress"))));
+    vi.stubGlobal("requestAnimationFrame", (done: () => void) => { done(); return 0; });
+    const session = (status: SetupSession["status"]): SetupSession => ({ status, revision: 1, conversation_id: "c1", mode: "typed",
+      focus: "both", notes: {}, tree_proposal_id: null, history_off: false });
+    await act(async () => { root.render(<Onboarding onChanged={() => {}} setup={session("interviewing")} onTalk={async mode => { modes.push(mode); }}/>); });
+    await act(async () => { button("Resume with Dani")!.click(); });
+    expect(modes).toEqual(["typed"]);
+    await act(async () => { root.render(<Onboarding onChanged={() => {}} setup={session("completed")} onTalk={async () => {}}/>); });
+    expect(button("Update with Dani")).toBeTruthy();
   });
 
   it("keeps a manual way to hide an in-progress setup", async () => {

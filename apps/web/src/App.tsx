@@ -14,7 +14,8 @@ import { StructureWorkspace } from "./Structure";
 import {QuickCapture} from "./QuickLists";
 import {Onboarding} from "./Onboarding";
 import { FooterStatus, NotificationBell } from "./app-chrome";
-import { SETUP_REQUEST, setupEstablished, typesFieldsRequest } from "./setup-model";
+import { setupActive, setupEstablished, typesFieldsRequest, type SetupMode, type SetupSession } from "./setup-model";
+import { SetupConversation } from "./SetupConversation";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
@@ -425,6 +426,10 @@ export default function App() {
   const conversationRef = useRef<string | null>(null);
   const conversationEpoch = useRef(0);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
+  // Set up with Dani: the owner's interview session (personal workspace only).
+  const [setupSession, setSetupSession] = useState<SetupSession | null>(null);
+  const inSetup = setupActive(setupSession) && !!activeConversation && setupSession?.conversation_id === activeConversation;
+  const setupVoice = useRef(false);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
   const chatAnchors = useRef({conversation: conversationRef.current, items: new Map<string, string | null>()});
   if (chatAnchors.current.conversation !== conversationRef.current) chatAnchors.current = {conversation: conversationRef.current, items: new Map()};
@@ -1738,6 +1743,8 @@ export default function App() {
     const content = (requestedMessage ?? chatText).trim();
     if (!content || thinking || chatSubmitLock.current || voice.current) return false;
     const turn_id = crypto.randomUUID(), epoch = conversationEpoch.current;
+    // A typed answer in the setup conversation is an interview turn (the backend checks the conversation).
+    const setupTurn = inSetup && requestedMessage === undefined;
     chatSendStarted(turn_id);
     // A setup launcher must not discard an unrelated message the owner was drafting.
     if (requestedMessage === undefined) setChatText("");
@@ -1755,6 +1762,7 @@ export default function App() {
         if (epoch !== conversationEpoch.current) return false;
         await post<WorkItem>("/work", {
           turn_id, conversation_id, message: content, focus: selected?.id ?? null,
+          ...(setupTurn ? { purpose: "setup" } : {}),
         });
         if (epoch !== conversationEpoch.current) return true;
         retryRef.current = null;
@@ -1799,6 +1807,32 @@ export default function App() {
     });
     if (!accepted)
       throw Error("Setup could not be confirmed. Your answers are saved; retry to check the same request.");
+  }
+  /** Set up with Dani: open (or resume) the setup conversation, then start the chosen mode. */
+  async function startSetup(mode: SetupMode) {
+    flushSync(() => setCompanion(true));
+    if (voice.current || (voiceState && !voiceState.closed))
+      throw Error("Voice is already active. End voice, then start setup with Dani.");
+    if (mode === "typed" && !boot?.capabilities.chat)
+      throw Error("Typing needs a configured task agent. Try voice mode, or fill out the form.");
+    if (thinking || chatSubmitLock.current)
+      throw Error("Your previous message is still being sent. Try setup again when it finishes.");
+    const session = await post<SetupSession>("/setup/start", { mode });
+    conversationEpoch.current += 1;
+    const data = await api<{ id: string; private: boolean; messages: ChatMessage[] }>("/conversations/" + session.conversation_id);
+    conversationRef.current = data.id; setActiveConversation(data.id);
+    sessionStorage.setItem("jarvis-conversation", data.id);
+    retryRef.current = null; guidedRetries.current.clear();
+    setMessages(data.messages); setConversationHistoryOff(data.private); setSetupSession(session);
+    if (mode === "voice") { setupVoice.current = true; await startVoice(); }
+    else focusChat();
+  }
+  async function switchSetupToVoice() {
+    try {
+      setSetupSession(await post<SetupSession>("/setup/mode", { mode: "voice" }));
+      setupVoice.current = true;
+      await startVoice();
+    } catch (e) { setError((e as Error).message); }
   }
   async function openWorkRecord(action: ActionChange) {
     if (!action.entity_id) return;
@@ -1908,6 +1942,24 @@ export default function App() {
     }
   }
   startVoiceRef.current=startVoice;
+  const setupScope = boot && !boot.workspace?.id ? boot.account_id : null;
+  useEffect(() => {
+    if (!setupScope) { setSetupSession(null); return; }
+    let live = true;
+    void api<SetupSession>("/setup").then(session => { if (live) setSetupSession(session); }).catch(() => {});
+    return () => { live = false; };
+  }, [setupScope]);
+  const voiceLive = !!voiceState && !voiceState.closed;
+  const voiceWasLive = useRef(false);
+  useEffect(() => {
+    const ended = voiceWasLive.current && !voiceLive;
+    voiceWasLive.current = voiceLive;
+    // Ending voice returns to the same setup conversation, typed.
+    if (!ended || !setupVoice.current) return;
+    setupVoice.current = false;
+    if (!inSetup) return;
+    void post<SetupSession>("/setup/mode", { mode: "typed" }).then(setSetupSession).catch(() => {});
+  }, [voiceLive, inSetup]);
   useEffect(()=> {
     if(!boot?.account_id)return;
     const controller=new VoiceCoordinator(boot.account_id,boot.device_id,{
@@ -2656,7 +2708,7 @@ export default function App() {
               </div>
             </div>}
             {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "remotea" && view !== "meetings" && view !== "person" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
-            {!boot.workspace?.id && dashboard && <Onboarding compact established={setupEstablished(organization)} onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
+            {!boot.workspace?.id && dashboard && <Onboarding compact established={setupEstablished(organization)} onChanged={()=>void load()} onTalk={startSetup} setup={setupSession} voiceAvailable={!!boot.capabilities.voice}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} finishedTasks={mergeFinishedTasks(dailyFinished, tasks)} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
               noteRevision={noteRevision} quick={quick} onQuick={setQuick} onAdd={add} onTask={openTaskCard} onToggle={task => void toggle(task)}
@@ -2978,7 +3030,7 @@ export default function App() {
                 <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
                 <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
-                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/><SchedulingPreferences/><RoutingReviewPanel/></>}
+                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={startSetup} setup={setupSession} voiceAvailable={!!boot.capabilities.voice}/><SchedulingPreferences/><RoutingReviewPanel/></>}
                 {settingsSection === "organization" && <TaskArchivePreferences enabled={boot.preferences.auto_archive_finished_tasks!==false} canEdit={!boot.workspace?.id||boot.workspace.role==="owner"} shared={!!boot.workspace?.id} onChanged={()=>void load()}/>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
@@ -3179,12 +3231,15 @@ export default function App() {
                 <X size={18} />
               </button>
             </div>
-            {historyOff && (
+            {historyOff && !inSetup && (
               <div className="history-note">
                 <Shield size={13} />
                 Conversation history is off. Tasks still save.
               </div>
             )}
+            {inSetup && setupSession && <SetupConversation session={setupSession} voiceActive={voiceLive}
+              voiceAvailable={!!boot.capabilities.voice} busy={thinking || voiceState?.state === "closing"}
+              onSwitchToVoice={() => void switchSetupToVoice()}/>}
             <div
               className="messages"
               onScroll={(event) => {
@@ -3268,9 +3323,9 @@ export default function App() {
                 value={chatText}
                 onChange={(e) => setChatText(e.target.value)}
                 placeholder={
-                  boot.capabilities.chat
-                    ? "Ask Dani anything…"
-                    : "Chat needs a configured API key"
+                  !boot.capabilities.chat
+                    ? "Chat needs a configured API key"
+                    : inSetup ? "Type your answer…" : "Ask Dani anything…"
                 }
                 aria-label="Message Dani"
                 rows={2}
@@ -3294,7 +3349,7 @@ export default function App() {
                     (thinking && !voice.current) ||
                     voiceState?.state === "closing"
                   }
-                  onClick={() => void startVoice()}
+                  onClick={() => void (inSetup && !voice.current ? switchSetupToVoice() : startVoice())}
                   title={
                     boot.capabilities.voice
                       ? "Start voice"
@@ -3327,7 +3382,7 @@ export default function App() {
             )}
             <p className="chat-footnote">
               {historyOff
-                ? "This conversation won’t be retained."
+                ? inSetup ? "This setup conversation is kept until you delete it." : "This conversation won’t be retained."
                 : "Conversation history is on."}{" "}
               Cloud models process what you send.
             </p>

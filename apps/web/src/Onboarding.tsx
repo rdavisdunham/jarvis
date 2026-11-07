@@ -3,7 +3,8 @@ import { z } from "zod";
 import { useEditor } from "./editor-control";
 import { api } from "./api";
 import { useStructureActions } from "./structure-actions";
-import { setupTypeRows, type SetupProgress } from "./setup-model";
+import { SETUP_MODE_QUESTION, setupActive, setupLaunchLabel, setupTypeRows,
+  type SetupMode, type SetupProgress, type SetupSession } from "./setup-model";
 import type { Proposal } from "./structure-types";
 import "./capture.css";
 
@@ -51,13 +52,18 @@ export function SetupProposalDetails({ proposal }: { proposal: Proposal }) {
   </div>;
 }
 
-export function Onboarding({ compact = false, established = false, onChanged, onTalk }: {
-  compact?: boolean; onChanged: () => void; onTalk: () => Promise<void>;
+export function Onboarding({ compact = false, established = false, onChanged, onTalk, setup = null, voiceAvailable = true }: {
+  compact?: boolean; onChanged: () => void;
+  /** Start or resume Set up with Dani in the chosen mode (voice and typing are either/or). */
+  onTalk: (mode: SetupMode) => Promise<void>;
   /** The account already has structure: the compact banner stays away (Settings still offers setup). */
   established?: boolean;
+  setup?: SetupSession | null;
+  voiceAvailable?: boolean;
 }) {
   const [progress, setProgress] = useState<SetupProgress | null>(null);
   const [draft, setDraft] = useState<SetupProgress | null>(null);
+  const [choosing, setChoosing] = useState(false);
   const [open, setOpen] = useState(false), [dirty, setDirty] = useState(false);
   const [starting, setStarting] = useState(false), [proposal, setProposal] = useState<Proposal | null>(null);
   const { run, busy, error, setError } = useStructureActions();
@@ -78,9 +84,10 @@ export function Onboarding({ compact = false, established = false, onChanged, on
     return () => clearInterval(timer);
   }, [open, dirty, busy, starting, load]);
 
-  if (compact && !open && established) return null;
+  const resumable = setupActive(setup);
+  if (compact && !open && established && !resumable) return null;
   if (!progress || !draft) return compact ? null : <p role="status">{error || "Loading setup…"}</p>;
-  if (compact && !open && ["completed", "skipped"].includes(progress.status)) return null;
+  if (compact && !open && ["completed", "skipped"].includes(progress.status) && !resumable) return null;
   const blocked = busy || starting;
   const field = (key: keyof SetupProgress, value: string) => {
     editVersion.current += 1; dirtyRef.current = true;
@@ -113,15 +120,16 @@ export function Onboarding({ compact = false, established = false, onChanged, on
     }
     await save("completed", "done"); setOpen(false); onChanged();
   };
-  const talk = async () => {
+  const talk = async (mode: SetupMode) => {
     if (startingRef.current || busy) return;
     startingRef.current = true; setStarting(true); setError("");
     try {
-      if (dirty || progress.status !== "in_progress")
+      // Save the form's answers first; a completed setup stays completed while Dani updates it.
+      if (dirty || ["not_started", "skipped"].includes(progress.status))
         await save("in_progress", progress.step === "done" ? "organization" : draft.step);
       // Publish the saved editor state before syncing screen context to the backend.
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-      await onTalk(); setOpen(false);
+      await onTalk(mode); setOpen(false); setChoosing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start setup. Your saved answers are kept; retry when connected.");
     } finally {
@@ -134,24 +142,32 @@ export function Onboarding({ compact = false, established = false, onChanged, on
   };
   return <section className="setup-panel" aria-label="Set up with Dani">
     <h2>{progress.status === "completed" ? "Your setup" : "Make Eridani yours"}</h2>
-    <p>Dani can help design your types, fields and homes, one question at a time. You review the structure before it changes.</p>
+    <p>Dani asks about your life and work, then proposes how to organize it and what to remember about you. You review everything before it changes.</p>
     {error && <div role="alert"><p>{error}</p>
       {open && <button className="btn" disabled={blocked} onClick={() => void reloadSaved().catch(e => setError(e.message))}>
         {dirty ? "Discard local changes and reload" : "Reload saved progress"}
       </button>}
     </div>}
-    {!open ? <div className="setup-actions">
-      <button className="btn btn-primary" disabled={blocked} onClick={() => void talk()}>
-        {starting ? "Starting setup…" : progress.status === "not_started" ? "Set up with Dani" :
-          progress.status === "completed" ? "Refine with Dani" : "Resume with Dani"}
+    {choosing ? <div className="setup-mode-choice">
+      <p>{SETUP_MODE_QUESTION}</p>
+      {!voiceAvailable && <p className="footnote">Voice is unavailable right now, so this will be typed.</p>}
+      <div className="setup-actions">
+        <button className="btn btn-primary" disabled={blocked || !voiceAvailable} onClick={() => void talk("voice")}>
+          {starting ? "Starting setup…" : "Use voice mode"}</button>
+        <button className="btn" disabled={blocked} onClick={() => void talk("typed")}>Type instead</button>
+        <button className="btn btn-ghost" disabled={blocked} onClick={() => setChoosing(false)}>Back</button>
+      </div>
+    </div> : !open ? <div className="setup-actions">
+      <button className="btn btn-primary" disabled={blocked} onClick={() => resumable && setup?.mode === "typed" ? void talk("typed") : setChoosing(true)}>
+        {starting ? "Starting setup…" : setupLaunchLabel(progress.status, setup)}
       </button>
-      <button className="btn" disabled={blocked} onClick={() => setOpen(true)}>Use setup form</button>
+      <button className="btn" disabled={blocked} onClick={() => setOpen(true)}>Fill out the form</button>
       {(progress.status === "not_started" || (compact && progress.status === "in_progress")) && <button className="btn" disabled={blocked}
         onClick={() => void save("skipped").catch(() => {})}>{progress.status === "not_started" ? "Skip for now" : "Hide for now"}</button>}
     </div> : <>
       <SetupGuard dirty={dirty} busy={blocked} save={() => save()} close={() => setOpen(false)}/>
       <p>Fill this in yourself, or save these answers and continue with Dani. Example names do not create real work.</p>
-      <button className="btn" disabled={blocked} onClick={() => void talk()}>{starting ? "Starting setup…" : "Talk to Dani"}</button>
+      <button className="btn" disabled={blocked} onClick={() => setChoosing(true)}>{starting ? "Starting setup…" : "Talk to Dani"}</button>
       <fieldset disabled={blocked}><legend>What should Dani know first?</legend>
         <label className="field">Preferred name<input aria-label="Setup name" value={draft.preferred_name} maxLength={100} onChange={e => field("preferred_name", e.target.value)}/></label>
         <label className="field">Time zone<input aria-label="Setup timezone" value={draft.timezone} onChange={e => field("timezone", e.target.value)}/></label>
