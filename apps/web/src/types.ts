@@ -187,9 +187,12 @@ export interface MemoryMaintenance {
   } | null;
 }
 export type AgentProvider = "openai" | "gemini" | "groq";
-export type AgentProfile = AgentProvider | "luna" | "luna-none";
+export type AgentProfile = AgentProvider | "luna" | "luna-none" | "terra-6.1";
 export interface Preferences {
+  /** Background work: voice-delegated tasks, bots and connected agents. */
   agent_profile: AgentProfile;
+  /** Requests typed in the app's chat; GPT-6.1 Terra unless changed. */
+  chat_profile?: AgentProfile;
   source_colors?: Record<string,string>;
   agent_provider: AgentProvider;
   preferred_name: string;
@@ -218,6 +221,10 @@ export interface Bootstrap {
   agent_reasoning: string | null;
   agent_service_tier?: "default" | "fast";
   agent_provider: AgentProvider;
+  /** Typed chat's own model; the agent_* fields describe background work. */
+  chat_profile?: AgentProfile;
+  chat_model?: string;
+  chat_reasoning?: string | null;
   agent_options: {
     id: AgentProfile;
     reasoning_effort: string | null;

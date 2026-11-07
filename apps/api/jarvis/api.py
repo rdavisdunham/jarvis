@@ -330,6 +330,7 @@ def bootstrap(user: User):
         worker_healthy = bool(health and now() - health.last_scan_at < timedelta(seconds=30))
         backup_health = db.get(WorkerHealth, "backup")
         agent = agent_models.selected(prefs)
+        chat = agent_models.typed_chat(prefs)
         return {
             "name": preferences(db,user.account_id or user.owner_id)["preferred_name"],
             "account_id":user.account_id or user.owner_id,
@@ -340,6 +341,10 @@ def bootstrap(user: User):
             "agent_reasoning": agent.reasoning_effort,
             "agent_service_tier": agent.service_tier,
             "agent_provider": agent.provider,
+            # Typed chat's own model (Settings → Typed chat); the agent_* fields are background work.
+            "chat_profile": chat.profile_id,
+            "chat_model": chat.model,
+            "chat_reasoning": chat.reasoning_effort,
             "agent_options": [m.public() for m in agent_models.catalog().values()],
             "csrf": user.csrf,
             "device_id": user.device_id,
@@ -349,7 +354,7 @@ def bootstrap(user: User):
             "budget": budget.summary(db, user.owner_id),
             "capabilities": {
                 "voice": bool(settings.openai_api_key),
-                "chat": agent.available,
+                "chat": chat.available,
                 "push": bool(settings.vapid_public_key) and not prefs.get("shared_workspace"),
                 "worker": worker_healthy,
             },
@@ -701,7 +706,7 @@ def work_create(body: ChatInput, user: User):
             if not setup_active(db, user.owner_id, str(body.conversation_id)):
                 raise DomainError("SETUP_NOT_ACTIVE", "This setup conversation has ended. Start setup with Dani again.", 409)
         row = enqueue(db, user.owner_id, account, user.device_id, str(body.conversation_id),
-            str(body.turn_id), body.message, focus=body.focus, purpose=body.purpose)
+            str(body.turn_id), body.message, focus=body.focus, typed=True, purpose=body.purpose)
         conv = db.get(Conversation, row.conversation_id)
         source = capture_source(db, user.owner_id, body.message, "work:"+row.id+":user", role="user", conversation=conv)
         if source:

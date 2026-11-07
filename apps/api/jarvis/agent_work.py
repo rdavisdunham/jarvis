@@ -56,6 +56,7 @@ def enqueue(
     resources=None,
     credential_id=None,
     voice_source=None,
+    typed=False,
     purpose=None,
 ):
     conv = owned(db, Conversation, conversation_id, owner)
@@ -79,7 +80,8 @@ def enqueue(
             "QUEUE_FULL", "Your work queue is full. Finish or cancel pending requests first.", 429
         )
     prefs = person_preferences(db, owner, device, preferences(db, owner))
-    agent = agent_models.selected(prefs, require_key=True)
+    # Typed chat has its own model; voice, bots and other background work use the task agent.
+    agent = (agent_models.typed_chat if typed else agent_models.selected)(prefs, require_key=True)
     profile = agent.profile_id
     transient = conv.private or not prefs["history_enabled"]
     if transient and not conv.private:

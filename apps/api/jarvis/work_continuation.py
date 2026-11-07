@@ -133,6 +133,11 @@ def adopt(db, current, target, question):
     old_job = db.get(Job, target.id)
     old_job.status, old_job.finished_at = "continued", now()
     old_job.result = {"work_id": target.id, "status": "continued"}
+    # The answer runs on the model the request started with: a typed reply to a voice-born question stays on
+    # the task agent, and a spoken answer to a typed request stays on the typed-chat model.
+    job = db.get(Job, current.id)
+    job.payload = {**job.payload, "profile": old_job.payload.get("profile"),
+                   "service_tier": old_job.payload.get("service_tier", "default")}
     target.checkpoint_ciphertext = None
     target.result = {**target.result, "continued_as": current.id}
     target.updated_at = now()
