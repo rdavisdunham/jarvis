@@ -78,3 +78,20 @@ it("explains a missing, off or voice-off summary", () => {
   act(() => root.render(<AboutYouSummary about={{enabled: true, in_voice: false, summary: "Davis likes tea.", updated_at: "2026-11-06T09:00:00Z"}}/>));
   expect(host.textContent).toContain("Not sent to voice while Memory during voice is off.");
 });
+
+it("refreshes About you on request and shows it is working", async () => {
+  const about = { enabled: true, in_voice: true, summary: "Davis builds Eridani.", updated_at: "2026-11-07T10:00:00Z" };
+  let finish = () => {};
+  const refresh = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  act(() => root.render(<AboutYouSummary about={about} onRefresh={refresh}/>));
+  act(() => button("Refresh now").click());
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(button("Refreshing").disabled).toBe(true);
+  await act(async () => finish());
+  act(() => root.render(<AboutYouSummary about={{...about, refreshing: true}} onRefresh={refresh}/>));
+  expect(button("Refreshing").disabled).toBe(true);
+  act(() => root.render(<AboutYouSummary about={{...about, refreshing: false, updated_at: "2026-11-07T11:00:00Z"}} onRefresh={refresh}/>));
+  expect(button("Refresh now").disabled).toBe(false);
+  act(() => root.render(<AboutYouSummary about={{...about, enabled: false}} onRefresh={refresh}/>));
+  expect(button("Refresh now")).toBeUndefined();
+});

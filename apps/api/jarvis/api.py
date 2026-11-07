@@ -911,6 +911,15 @@ def run_memory_review(user: User):
         return {"job_id": job.id, "status": job.status}
 
 
+@app.post("/api/v1/memory/about/refresh")
+def refresh_about_you(user: User):
+    """Rewrite the About you summary now, in the background."""
+    from .about_you import refresh
+
+    with session_scope() as db:
+        return refresh(db, user.owner_id, preferences(db, user.owner_id))
+
+
 @app.post("/api/v1/memory/retry")
 def retry_memory(user: User):
     from .domain import enqueue_job

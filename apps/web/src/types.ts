@@ -173,6 +173,8 @@ export interface AboutYou {
   in_voice: boolean;
   summary: string;
   updated_at: string | null;
+  /** A rewrite is queued or running. */
+  refreshing?: boolean;
   /** Pinned facts the summary always reflects. */
   core?: { id: string; content: string }[];
 }

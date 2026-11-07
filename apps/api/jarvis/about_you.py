@@ -244,6 +244,24 @@ def schedule(db, owner):
     return pending_job(db, owner) or enqueue_job(db, owner, KIND, {}).id
 
 
+def refresh(db, owner, prefs):
+    """The owner asked for a rewrite now (Memory page). Queues one forced job; never calls the model inline."""
+    from .record_overviews import _budget_allows
+
+    if not allowed(prefs):
+        raise DomainError("INVALID_ARGUMENT", "Turn on automatic learning to get an About you summary.")
+    if not enabled():
+        raise DomainError("INTEGRATION_UNAVAILABLE", "About you needs the OpenAI key and background services.", 503)
+    advisory(db, f"about-you:{owner}")
+    if not gather(db, owner, prefs)[1]:
+        raise DomainError("INVALID_ARGUMENT", "Dani has no saved memories to summarize yet.")
+    if pending := pending_job(db, owner):
+        return {"job_id": pending, "queued": False}
+    if not _budget_allows(db, owner):
+        raise DomainError("BUDGET_EXCEEDED", "The model budget is used up for now; About you will refresh later.", 402)
+    return {"job_id": enqueue_job(db, owner, KIND, {"force": True}).id, "queued": True}
+
+
 def check(db, owner, clock):
     """One owner's daily look: clear, leave alone, or queue a rebuild. Holds the owner's lock."""
     from .record_overviews import _budget_allows
@@ -304,7 +322,8 @@ def process(job_id, model=None):
         if reason is None and not ids:
             reason = "no_memories"
         value = digest(material)
-        if reason is None and fresh(db.get(AboutYou, owner), value, now()):
+        # A refresh the owner asked for rewrites even when nothing changed.
+        if reason is None and not (job.payload or {}).get("force") and fresh(db.get(AboutYou, owner), value, now()):
             reason = "no_change"
         if reason:
             if reason != "no_change":
@@ -388,6 +407,7 @@ def public(db, owner, prefs) -> dict:
         "in_voice": allowed(prefs) and bool(prefs.get("live_memory_updates", True)),
         "summary": row.summary if row else "",
         "updated_at": row.generated_at.isoformat() if row and row.generated_at else None,
+        "refreshing": bool(pending_job(db, owner)),
         # Facts the owner pinned (Set up with Dani or the Memory page); the summary always reflects them.
         "core": [{"id": m.id, "content": m.content} for m in db.scalars(
             live_memories(owner).where(Memory.core.is_(True)).order_by(Memory.created_at.desc(), Memory.id).limit(FACTS))],
