@@ -83,14 +83,14 @@ def responder(monkeypatch, responses):
 async def test_none_profile_is_explicit_and_frozen_for_accepted_work(client, monkeypatch, caplog):
     from jarvis import agent_models
     with session_scope() as db:
-        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna-none"})
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna-none", "chat_profile": "luna-none"})
     boot = client.get("/api/v1/bootstrap").json()
     assert boot["agent_profile"] == "luna-none" and boot["agent_reasoning"] == "none"
     assert next(m for m in boot["agent_options"] if m["id"] == "luna")["reasoning_effort"] == "low"
     work, _ = accept(client, "Add Alpha")
     with session_scope() as db:
         assert db.get(Job, work["id"]).payload["profile"] == "luna-none"
-        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna"})
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna", "chat_profile": "luna"})
     bodies = []
 
     streamed = []
@@ -1028,6 +1028,8 @@ async def test_queued_tier_is_pinned_and_downgrade_cost_is_recorded(
     from jarvis import agent_models
     from jarvis.models import Usage
     settings = get_settings()
+    with session_scope() as db:  # The Fast tier is Luna's; typed chat defaults to Terra.
+        execute(db, "davin", str(uuid4()), "settings.update", {"chat_profile": "luna"})
     monkeypatch.setattr(settings, "agent_service_tier", accepted_tier)
     monkeypatch.setattr(settings, "cost_tracking_enabled", True)
     work, _ = accept(client, "Hello")

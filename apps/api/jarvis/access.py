@@ -263,6 +263,7 @@ def person_preferences(db, owner, device, values):
         "shared_role":role(db,owner,account),
         **{
             key: personal[key]
-            for key in ("preferred_name", "agent_provider", "agent_profile", "timezone", "default_reminder_hour")
+            for key in ("preferred_name", "agent_provider", "agent_profile", "chat_profile", "timezone",
+                        "default_reminder_hour")
         },
     }

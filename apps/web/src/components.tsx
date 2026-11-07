@@ -21,7 +21,7 @@ import {
   X,
   Brain,
 } from "lucide-react";
-import type { Bootstrap, Task, Project, Schedule } from "./types";
+import type { AgentProfile, Bootstrap, Task, Project, Schedule } from "./types";
 // Kept here for existing importers; the implementation lives with the Dialog primitive.
 export { useDialogFocus };
 export function dayInZone(zone: string) {
@@ -709,6 +709,36 @@ export function MemoryCapture({
     </form>
   );
 }
+function ModelSelect({
+  label,
+  value,
+  options,
+  busy,
+  onChange,
+}: {
+  label: string;
+  value: AgentProfile;
+  options: Bootstrap["agent_options"];
+  busy: boolean;
+  onChange: (profile: AgentProfile) => void;
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      disabled={busy}
+      onChange={(e) => onChange(e.target.value as AgentProfile)}
+    >
+      {options.map((model) => (
+        <option key={model.id} value={model.id} disabled={!model.available}>
+          {model.label}
+          {model.available ? "" : " (API key needed)"}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function SettingsPanel({
   boot,
   busy,
@@ -868,30 +898,35 @@ export function SettingsPanel({
       )}
       {section === "system" && (
         <SettingsGroup title="Task agent">
-          <SettingRow as="label" label="Backend model" hint="Used for text chat and tasks delegated by GPT-Live.">
-            <select
-              aria-label="Backend model"
+          <SettingRow as="label" label="Typed chat" hint="Used for requests you type to Dani.">
+            <ModelSelect
+              label="Typed chat model"
+              value={boot.chat_profile ?? p.chat_profile ?? "terra-6.1"}
+              options={boot.agent_options}
+              busy={busy}
+              onChange={(chat_profile) => void onSave({ chat_profile })}
+            />
+          </SettingRow>
+          <SettingRow as="label" label="Background work" hint="Used for tasks delegated by GPT-Live, bots and connected agents.">
+            <ModelSelect
+              label="Background model"
               value={boot.agent_profile}
-              disabled={busy}
-              onChange={(e) => void onSave({ agent_profile: e.target.value })}
-            >
-              {boot.agent_options.map((model) => (
-                <option
-                  key={model.id}
-                  value={model.id}
-                  disabled={!model.available}
-                >
-                  {model.label}
-                  {model.available ? "" : " (API key needed)"}
-                </option>
-              ))}
-            </select>
+              options={boot.agent_options}
+              busy={busy}
+              onChange={(agent_profile) => void onSave({ agent_profile })}
+            />
           </SettingRow>
           <p className="footnote">
-            Changes apply to the next request on all your devices. Voice selection
-            is separate. Automatic memory learning and note extraction still use
-            OpenAI.
+            Changes apply to the next request on all your devices; a request and its
+            follow-up answers stay on the model it started with. Voice selection is
+            separate. Automatic memory learning and note extraction still use OpenAI.
           </p>
+          {boot.chat_profile === "terra-6.1" && (
+            <p className="footnote">
+              Terra uses {boot.chat_reasoning ?? "medium"} reasoning effort: typed replies
+              are slower and smarter than Luna's, at about five times the price per token.
+            </p>
+          )}
           {(boot.agent_profile === "luna" || boot.agent_profile === "luna-none") && (
             <p className="footnote">
               Luna uses {boot.agent_profile === "luna" ? "low" : "no"} reasoning
