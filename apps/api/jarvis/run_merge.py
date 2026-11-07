@@ -15,6 +15,13 @@ Rules (Davis, 2026-11-07):
   base in, CI runs again on the new head, and a run waiting for approval waits for that CI first (awaiting_ci).
 - Conflicts are the agent's to fix: the drawer offers Send back.
 
+Auto-merge (phase 1b): a per-run toggle (`sync_state.auto_merge`; new runs follow the owner's `remotea_auto_merge`
+setting). It is offered only with a real check: a local verify entry on the plan, or CI on the repository. Without
+either there is only the manual button (Davis: that nudges every repository toward a verify entry). When the run
+would wait for approval (judge met, integration done, CI green), it merges by itself instead: behind its base it
+updates the branch and waits for CI again, at most AUTO_TRIES times per run; anything else GitHub refuses stops the run
+in needs_you(merge_blocked). A merged run completes like auto_complete (the judge completes the task).
+
 The run's `sync_state.merge` keeps the last click: {kind, op_id, state (sent, merged, refused, failed, uncertain,
 updated), head_sha, reason, message, at, actor, …}. A merge whose answer was lost is reconciled by the next CI answer
 that shows the pull request MERGED (on_ci).
@@ -51,6 +58,8 @@ REFUSALS = {
     "permission": "The host's GitHub login cannot merge in this repository.",
 }
 REFRESH_EVERY = timedelta(seconds=30)
+AUTO_TRIES = 3  # Update branch, wait for CI, merge: this many times per run, then Davis decides.
+AUTO_WAIT = ("unknown", "waiting_ci", "merging", "updating", "working")
 
 
 def state(run):
@@ -211,7 +220,8 @@ def refresh(db, owner, run_id):
 
 def actor_of(op):
     record = op.get("actor") or {}
-    return Actor(record.get("kind") or "human", credential_id=record.get("credential_id"))
+    return Actor(record.get("kind") or "human", credential_id=record.get("credential_id"),
+                 run_id=record.get("run_id"), generation=record.get("generation"))
 
 
 def on_outcome(db, run, row, outcome, detail, result):
@@ -223,7 +233,8 @@ def on_outcome(db, run, row, outcome, detail, result):
     if row.kind == MERGE and outcome == "executed" and result.get("merged"):
         return merged(db, run, result.get("pr") or {}, result.get("merge_commit"), already=bool(result.get("already")))
     if outcome == "executed" and row.kind == UPDATE:
-        save(run, state="updated", updated_from=op.get("head_sha"), new_head_sha=result.get("new_head_sha"),
+        stale = [*(op.get("stale_heads") or []), op.get("head_sha")] if not result.get("worktree_synced") else []
+        save(run, state="updated", stale_heads=[h for h in stale if h][-5:], new_head_sha=result.get("new_head_sha"),
              worktree_synced=bool(result.get("worktree_synced")), answered_at=clock)
         coordinator.note(run, "branch_updated", head_sha=op.get("head_sha"), new_head_sha=result.get("new_head_sha"))
         if run.state == "awaiting_approval":
@@ -234,6 +245,10 @@ def on_outcome(db, run, row, outcome, detail, result):
         reason = str(result.get("reason") or detail or "blocked")[:40]
         save(run, state="refused", reason=reason, message=str(result.get("message") or "")[:300], answered_at=clock)
         coordinator.note(run, "merge_refused" if row.kind == MERGE else "update_refused", reason=reason)
+        if auto_running(run) and reason not in ("behind", "head_moved"):
+            # Behind or moved: the CI answer requested below shows it, and auto_step updates or waits.
+            block(db, run, f"GitHub refused the {'merge' if row.kind == MERGE else 'update'}: "
+                           f"{result.get('message') or REFUSALS.get(reason, reason)}")
     else:
         save(run, state="uncertain" if outcome == "uncertain" else "failed", message=(detail or outcome)[:300],
              answered_at=clock)
@@ -256,8 +271,12 @@ def merged(db, run, pr, merge_commit=None, *, already=False):
     emit(db, run.owner_id, "agent.changed", run.id)
     if run.state in SETTLED or run.state == "stopping":
         return run
+    actor = actor_of(op)
+    if actor.kind != "human":
+        save(run, auto_active=False)
+        return coordinator.complete_by_judge(db, run, coordinator.judge_actor(run))  # Auto-merge: like auto_complete.
     try:
-        complete_approved(db, run, text, actor_of(op), f"run-merge:{run.id}")
+        complete_approved(db, run, text, actor, f"run-merge:{run.id}")
     except DomainError as error:
         # The task could not be completed (already done elsewhere, a conflict): the merge stands, Davis approves.
         coordinator.note(run, "merge_complete_failed", detail=error.message[:300])
@@ -265,12 +284,116 @@ def merged(db, run, pr, merge_commit=None, *, already=False):
 
 
 def on_ci(db, run, facts):
-    """A CI answer shows the pull request MERGED while Eridani's own merge was unanswered (lost, uncertain, the
-    command expired): that merge happened. True when it completed the run here."""
+    """Every CI answer (run_ci.on_outcome). The pull request MERGED while Eridani's own merge was unanswered (lost,
+    uncertain, the command expired): that merge happened, and the run completes here (True). Otherwise, a run
+    auto-merging takes its next step on the fresh facts."""
     op = state(run)
-    if facts.get("pr_state") != "MERGED" or op.get("kind") != MERGE or op.get("state") not in ("sent", "uncertain",
-                                                                                                 "failed"):
-        return False
-    merged(db, run, {"number": facts.get("pr_number"), "base": facts.get("base")})
-    return True
+    if facts.get("pr_state") == "MERGED" and op.get("kind") == MERGE and op.get("state") in ("sent", "uncertain", "failed"):
+        merged(db, run, {"number": facts.get("pr_number"), "base": facts.get("base")})
+        return True
+    if auto_running(run) and run.state == "awaiting_approval":
+        auto_step(db, run)
+    return False
+
+
+# ---------------------------------------------------------------- auto-merge (phase 1b)
+
+
+def auto_default(db, owner):
+    from .models import OwnerSettings
+
+    row = db.get(OwnerSettings, owner)
+    return bool((row.values if row else {}).get("remotea_auto_merge", False))
+
+
+def auto_enabled(db, run):
+    """The run's toggle; a run nobody toggled follows the owner's setting."""
+    value = (run.sync_state or {}).get("auto_merge")
+    return auto_default(db, run.owner_id) if value is None else bool(value)
+
+
+def auto_available(db, run, plan=None):
+    """Why auto-merge cannot be offered, or "": it needs a real check, a local verify entry or CI."""
+    plan = plan if plan is not None else coordinator.frozen(db, run)
+    if run_ci.local_pass(plan) or run_ci.target_ci(db, run) is True:
+        return ""
+    facts, _ = latest_facts(db, run)
+    if facts and facts.get("checks"):
+        return ""
+    return "Needs a verify entry or CI."
+
+
+def auto_running(run):
+    return bool(state(run).get("auto_active"))
+
+
+def public_auto(db, run):
+    why = auto_available(db, run)
+    return {"enabled": auto_enabled(db, run) and not why, "available": not why, "why": why or None,
+            "tries": state(run).get("auto_tries") or 0, "active": auto_running(run)}
+
+
+def auto_on(db, run, plan):
+    """judged_met asks: should this run merge by itself instead of waiting for approval?"""
+    return bool(plan is not None and plan.criteria and auto_enabled(db, run) and not auto_available(db, run, plan))
+
+
+def auto_start(db, run, actor):
+    """The run would wait for approval: it waits there while it merges by itself (a fresh CI answer drives it)."""
+    if run.state != "awaiting_approval":
+        coordinator.transition(db, run, "awaiting_approval", actor=actor, reason="auto_merge")
+    save(run, auto_active=True)
+    if run.branch and coordinator.host_cap(db, run.host_id, run_ci.COMMAND) and not run_ci.in_flight(db, run, now()):
+        run_ci.request(db, run)
+    else:
+        auto_step(db, run)
+    return run
+
+
+def auto_step(db, run):
+    """One step on the newest facts: merge when it can, update when behind (at most AUTO_TRIES), wait while CI runs or
+    a command is with the host, and otherwise stop for Davis (needs_you(merge_blocked))."""
+    view = public(db, run)
+    status = view["status"]
+    actor = coordinator.judge_actor(run)
+    if status == "merged":
+        return merged(db, run, view["pr"] or {})
+    if status in AUTO_WAIT:
+        return run
+    if view["can_merge"]:
+        return send(db, run, MERGE, view["pr"]["head_sha"], actor)
+    if status == "behind" and view["can_update"]:
+        tries = state(run).get("auto_tries") or 0
+        if tries >= AUTO_TRIES:
+            return block(db, run, f"The branch fell behind {view['pr']['base'] or 'main'} {tries} times while "
+                                  "auto-merging; update and merge it yourself.")
+        save(run, auto_tries=tries + 1)
+        return send(db, run, UPDATE, view["pr"]["head_sha"], actor)
+    return block(db, run, view["detail"])
+
+
+def block(db, run, why):
+    save(run, auto_active=False)
+    if run.state in SETTLED or run.state == "stopping":
+        return run
+    return coordinator.transition(db, run, "needs_you", actor=coordinator.judge_actor(run), reason="merge_blocked",
+                                  detail=why[:300])
+
+
+def set_auto(db, owner, run_id, body, *, actor):
+    """The drawer's Auto-merge toggle. Turned on while the run waits for approval, it starts merging now."""
+    from .agent_control import public_run
+
+    run = coordinator.load(db, owner, run_id)
+    why = auto_available(db, run)
+    if body.enabled and why:
+        raise DomainError("AUTO_MERGE_UNAVAILABLE", why, 409)
+    run.sync_state = {**(run.sync_state or {}), "auto_merge": bool(body.enabled)}
+    coordinator.note(run, "auto_merge", enabled=bool(body.enabled), actor=actor.record())
+    if body.enabled and run.state == "awaiting_approval" and not auto_running(run):
+        auto_start(db, run, coordinator.judge_actor(run))
+    elif not body.enabled and auto_running(run):
+        save(run, auto_active=False)
+    emit(db, run.owner_id, "agent.changed", run.id)
+    return public_run(db, run)
 

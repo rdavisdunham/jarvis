@@ -67,6 +67,9 @@ ATTENTION = {
                    "Check the pull request's checks, then approve, or send the agent back with a note."),
     "ci_failed_again": ("GitHub CI failed again on the same commit; the agent did not push a fix.",
                         "Read the failing log, then send the agent back with a note, or approve."),
+    # Auto-merge (run_merge.py): GitHub refused, the branch kept falling behind, or the pull request needs the agent.
+    "merge_blocked": ("Auto-merge stopped: GitHub would not merge the pull request.",
+                      "Read why below, then merge or update it yourself, or send the agent back."),
 }
 CI_REASONS = ("ci_timeout", "ci_failed_again", "ci_unavailable", "verify_manual")
 

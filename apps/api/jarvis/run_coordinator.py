@@ -177,6 +177,7 @@ REASONS = {
     "ci_unavailable": "The criteria are met on the quick check, but the host cannot report GitHub CI, the final verification: update remotea, or approve.",
     "ci_timeout": "The criteria are met on the quick check, but GitHub CI did not finish on the pull request in time: check it, then approve or message the agent.",
     "ci_failed_again": "GitHub CI failed again on the same commit; the agent did not push a fix.",
+    "merge_blocked": "Auto-merge stopped: GitHub would not merge the pull request.",
     # Working states: what just happened, so the page never shows a raw reason token.
     "start": "Starting the agent.",
     "started": "The agent is up; planning.",
@@ -189,6 +190,7 @@ REASONS = {
     "ci_pending": "The criteria are met on the quick check; waiting for GitHub CI on the pull request.",
     "ci_verify": "The repository has CI, so it stands in for the full local check; waiting for GitHub CI on the pull request.",
     "ci_update": "The branch was updated with its base; waiting for GitHub CI on the new head.",
+    "auto_merge": "The criteria are met; merging the pull request automatically.",
     "ci_absent_local": "The pull request has no CI after all; running the local check instead.",
     "ci_passed": "GitHub CI passed on the pull request head; checking the turn against the success criteria.",
     "ci_failed": "GitHub CI failed on the pull request; the agent is fixing it.",
@@ -2112,6 +2114,14 @@ def judged_met(db, run, plan, actor):
 
     if run_ci.gate(db, run, plan, actor) is not None:
         return run  # A quick check passed: GitHub CI on the PR head is the final verification (awaiting_ci).
+    from . import run_merge
+
+    if run_merge.auto_on(db, run, plan):
+        missing = incomplete_workspace(current_verify(db, run)) if (plan.verify or {}).get("verify_id") else ""
+        if missing:
+            return transition(db, run, "needs_you", actor=actor, reason="verify_incomplete",
+                              detail=f"Verification evidence was incomplete: {missing}"[:300])
+        return run_merge.auto_start(db, run, actor)  # Auto-merge: merging completes the task (run_merge.py).
     if auto_complete(db, run.owner_id) and plan and plan.criteria and human_gate(plan):
         # A fingerprint that did not cover the whole workspace cannot prove the tree it tested is the one the turn
         # left (remotea `workspace_complete: false`): not fresh enough to close the task without a human.

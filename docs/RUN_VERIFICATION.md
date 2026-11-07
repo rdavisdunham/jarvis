@@ -81,6 +81,10 @@ The Verify section has a merge panel beside the CI card, inside Final acceptance
 - **Send back** appears for merge conflicts or failing CI.
 - The host does the merge with its own `gh` (`pr.merge`, `pr.update_branch`; remotea #59), only on the head CI passed
   on. Eridani holds no GitHub credential.
+- **Auto-merge** is a toggle in the drawer header (the default for new runs is in Settings, off). It is offered only
+  when the run has a real check: a verify entry or CI. When the run would wait for approval, it merges by itself;
+  behind main it updates the branch and waits for CI again, at most 3 times; anything else GitHub refuses stops the
+  run in `needs_you(merge_blocked)`. A merged run completes like automatic completion.
 
 ## Where it shows
 

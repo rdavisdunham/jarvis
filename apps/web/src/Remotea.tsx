@@ -205,6 +205,11 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
           onChange={e => void change("/remotea/auto-complete", { enabled: e.target.checked })}/>
       </SettingRow>
       {status.auto_complete && <p className="remotea-warning" role="note">Automatic completion is on: agents' tasks close without asking you.</p>}
+      <SettingRow as="label" label="Auto-merge new runs"
+        hint="A run with a verify entry or CI merges its pull request by itself once the checks pass, updating the branch if main moved on; merging completes the task. Runs with neither keep a manual Merge button. Each run can turn it off.">
+        <input type="checkbox" checked={!!status.auto_merge} disabled={busy || readOnly}
+          onChange={e => void change("/remotea/auto-merge", { enabled: e.target.checked })}/>
+      </SettingRow>
       <SettingRow as="label" label="Agent questions break quiet hours"
         hint="Off by default: an agent's question waits for your quiet hours to end like any other notification. On makes it urgent.">
         <input type="checkbox" checked={!!status.quiet_bypass} disabled={busy || readOnly}
@@ -860,6 +865,13 @@ export function RunDrawer({ id, onClose, preloaded }: {
     catch (e) { setError(message(e)); }
     finally { setBusy(""); refresh(); }
   };
+  const autoMerge = async (enabled: boolean) => {
+    if (!run || !bound) return;
+    setBusy("auto-merge"); setError("");
+    try { await post(`/remotea/runs/${run.id}/auto-merge`, { enabled }); }
+    catch (e) { setError(message(e)); }
+    finally { setBusy(""); refresh(); }
+  };
   const mergeEl = run && bound ? <RunMergePanel run={run} disabled={!!busy} onMerge={head => void mergeAction("merge", head)}
     onUpdate={head => void mergeAction("update-branch", head)} onSendBack={note => void act("message", { text: note, mode: "queue" })}/> : null;
   const canMerge = !!run?.merge?.pr && !["merged", "closed"].includes(run.merge.status);
@@ -885,6 +897,9 @@ export function RunDrawer({ id, onClose, preloaded }: {
         <button type="button" className="btn-icon run-drawer-close" aria-label="Close run" title="Close run" onClick={onClose}><X size={20} aria-hidden="true"/></button>
       </div>
       {run && <StageHeader run={run} status={<p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}/>}
+      {run && bound && run.auto_merge && !isSettled(run) && <label className="run-auto-merge" title={run.auto_merge.why ?? "Merge the pull request by itself once the checks pass."}>
+        <input type="checkbox" checked={run.auto_merge.enabled} disabled={!!busy || !run.auto_merge.available}
+          onChange={e => void autoMerge(e.target.checked)}/>Auto-merge{run.auto_merge.why ? <small> · {run.auto_merge.why}</small> : null}</label>}
       {run && !bound && <p role="status" className="footnote">Loading the selected run…</p>}
     </header>
     <div className="remotea-chat-log run-drawer-middle" ref={log} onScroll={onScroll}>

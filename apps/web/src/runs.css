@@ -258,3 +258,5 @@ a.run-ci-chip:hover { text-decoration: underline; }
 .run-merge-line { margin: 0; color: var(--ink-2); font-size: 0.85rem; }
 .run-merge-line a { display: inline-flex; align-items: center; gap: 3px; }
 .run-merge-refused { margin: 0; }
+.run-auto-merge { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 0.85rem; color: var(--ink-2); }
+.run-auto-merge small { color: var(--ink-3); }

@@ -30,7 +30,7 @@ export type RemoteaSession = {
 };
 export type RemoteaStatus = {
   enabled: boolean; key: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
-  hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean; quiet_bypass?: boolean;
+  hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean; auto_merge?: boolean; quiet_bypass?: boolean;
   /** The MCP key the last setup code carried (prefix and expiry only); `setup_code` is in a minting response only. */
   mcp_key?: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
   setup_command?: string; setup_code?: string | null;
@@ -169,6 +169,8 @@ export type Run = {
   ci?: RunCi | null;
   /** Merge from Eridani (run_merge.py; older Eridani: absent): whether the pull request can be merged or updated now. */
   merge?: RunMerge | null;
+  /** Auto-merge (run_merge.py, phase 1b): the run's toggle; offered only with a verify entry or CI. */
+  auto_merge?: { enabled: boolean; available: boolean; why: string | null; tries: number; active: boolean } | null;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
   freestyle?: boolean;

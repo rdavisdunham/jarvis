@@ -221,3 +221,81 @@ def test_refresh_asks_the_host_at_most_every_30_seconds(merge_host):
 def commands(run_id):
     with session_scope() as db:
         return list(db.scalars(select(AgentCommand).where(AgentCommand.run_id == run_id)))
+
+
+# ---------------------------------------------------------------- auto-merge (phase 1b)
+
+
+def auto(run_id, enabled=True):
+    with session_scope() as db:
+        return run_merge.set_auto(db, OWNER, run_id, control.AutoMergeInput(enabled=enabled), actor=HUMAN)
+
+
+def test_auto_merge_merges_on_green_ci_and_completes_like_auto_complete(merge_host):
+    from jarvis.remotea_routes import set_enabled
+
+    with session_scope() as db:
+        set_enabled(db, OWNER, True, "remotea_auto_merge")  # New runs follow the setting.
+    run_id = planned(merge_host)
+    assert panel_auto(run_id) == {"enabled": True, "available": True, "why": None, "tries": 0, "active": False}
+    met(merge_host, run_id)
+    assert answer(run_id) == ("awaiting_approval", "auto_merge")  # Green: it waits there while it merges.
+    answer(run_id)  # The fresh answer auto_start asked for: merge.
+    sent = command(run_id, "pr.merge")
+    assert sent is not None and sent.payload["head_sha"] == HEAD and sent.payload.get("origin") in (None, "automation")
+    outcome(run_id, "pr.merge", "executed", {"merged": True, "already": False, "pr": pr(state="MERGED")})
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        assert run.state in ("stopping", "completed") and db.get(Task, run.task_id).status == "completed"
+        assert not any(h.get("event") == "approve_override" for h in run.history)  # The judge completed it.
+
+
+def test_auto_merge_updates_a_branch_behind_its_base_then_stops_after_three_tries(merge_host):
+    run_id = planned(merge_host)
+    auto(run_id)
+    met(merge_host, run_id)
+    answer(run_id)
+    head = HEAD
+    for n in range(3):
+        assert answer(run_id, pr(head_sha=head, merge_state="BEHIND")) == ("awaiting_approval", "auto_merge")
+        assert command(run_id, "pr.update_branch").payload["head_sha"] == head
+        new = str(n + 1) * 40
+        assert outcome(run_id, "pr.update_branch", "executed", {"updated": True, "new_head_sha": new}) == ("awaiting_ci", "ci_update")
+        assert answer(run_id, pr(head_sha=new)) == ("awaiting_approval", "auto_merge")  # Green on the new head.
+        head = new
+    assert answer(run_id, pr(head_sha=head, merge_state="BEHIND")) == ("needs_you", "merge_blocked")
+    assert panel_auto(run_id)["tries"] == 3
+
+
+def test_auto_merge_stops_for_conflicts_and_refusals(merge_host):
+    run_id = planned(merge_host)
+    auto(run_id)
+    met(merge_host, run_id)
+    answer(run_id)
+    assert answer(run_id, pr(mergeable="CONFLICTING", merge_state="DIRTY")) == ("needs_you", "merge_blocked")
+    with session_scope() as db:
+        assert "conflicts" in control.public_run(db, db.get(AgentRun, run_id))["reason_detail"]
+
+    other = green_awaiting_approval(merge_host)
+    auto(other)  # Turned on while the run already waits for approval: it starts now.
+    answer(other)
+    outcome(other, "pr.merge", "rejected", {"reason": "permission", "message": "must have write access"}, "permission")
+    assert state(other) == ("needs_you", "merge_blocked")
+
+
+def test_auto_merge_needs_a_real_check(merge_host):
+    run_id = planned(merge_host, verify=False)
+    with session_scope() as db:
+        assert run_merge.auto_available(db, db.get(AgentRun, run_id)) == "Needs a verify entry or CI."
+    with pytest.raises(DomainError) as refused:
+        auto(run_id)
+    assert refused.value.code == "AUTO_MERGE_UNAVAILABLE"
+    met_without_verify(run_id)
+    answer(run_id, checks=[])
+    assert answer(run_id, checks=[]) == ("needs_you", "verify_manual")  # Manual merge only.
+    assert panel(run_id)["can_merge"]
+
+
+def panel_auto(run_id):
+    with session_scope() as db:
+        return control.public_run(db, db.get(AgentRun, run_id))["auto_merge"]
