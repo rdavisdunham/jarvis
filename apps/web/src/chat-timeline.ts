@@ -2,7 +2,7 @@ import type { ChatMessage } from "./types";
 import { workActive, workAttention, type WorkItem } from "./Activity";
 
 export type ChatEntry = {kind: "message"; message: ChatMessage} | {kind: "work"; work: WorkItem};
-export const hasSavedChanges = (item: WorkItem): boolean => !!item.actions.length || item.children.some(hasSavedChanges);
+export const hasSavedChanges = (item: WorkItem): boolean => !!item.actions.length;
 export const showChatCard = (item: WorkItem) => hasSavedChanges(item) || (!item.navigation_only && workAttention(item));
 const normalized = (text: string) => text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const time = (value?: string | null) => value ? Date.parse(value) || 0 : 0;

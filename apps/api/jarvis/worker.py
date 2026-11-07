@@ -68,9 +68,9 @@ def _perform_job(job_id):
         from .context import pipeline
 
         return pipeline.perform(job_id)
-    if kind in {"agent_intake", "agent_action"}:
-        from . import work_intake, work_runner
-        asyncio.run((work_intake if kind == "agent_intake" else work_runner).run(job_id))
+    if kind == "agent_action":
+        from . import work_runner
+        asyncio.run(work_runner.run(job_id))
         return
     if kind in {"linear_write", "linear_sync"}:
         from .linear_sync import process_sync, process_write
@@ -126,6 +126,14 @@ def _perform_job(job_id):
         from .memory_review import process
 
         return process(job_id)
+    if kind == "about_you":
+        from .about_you import process
+
+        return process(job_id)
+    if kind == "setup_synthesis":
+        from .setup_synthesis import process
+
+        return process(job_id)
     if kind in {"assess_field", "review_routing"}:
         from .routing import perform
         return perform(job_id,kind)
@@ -162,7 +170,7 @@ def dispatch_outbox(client, after=None):
             cursor = (last.created_at, last.id)
         for row in rows:
             job = db.get(Job, row.job_id)
-            if job.kind in {"agent_intake", "agent_action"}:
+            if job.kind == "agent_action":
                 from .agent_work import eligible
                 if job.status == "running":
                     # The live invocation observes new revisions and reschedules itself if needed.
@@ -181,7 +189,6 @@ def dispatch_outbox(client, after=None):
                 {
                     "workflow_name": "jarvis_job_v1",
                     "queue_name": "jarvis-context" if job.kind.startswith("context_")
-                    else "jarvis-intake" if job.kind == "agent_intake"
                     else "jarvis-agent" if job.kind == "agent_action"
                     else "jarvis-linear"
                     if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write", "linear_comment"}
@@ -189,7 +196,7 @@ def dispatch_outbox(client, after=None):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview", "place_by_meaning"}
+                    in {"extract_memory", "embed_memory", "review_memory", "about_you", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview", "place_by_meaning"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -391,7 +398,7 @@ def reap_agent_work():
             for job, row in db.execute(
                 select(Job, AgentWork)
                 .join(AgentWork, AgentWork.id == Job.id)
-                .where(Job.kind.in_(["agent_action", "agent_intake"]), Job.status.in_(["running", "dispatched"]))
+                .where(Job.kind == "agent_action", Job.status.in_(["running", "dispatched"]))
             )
             if stale(job, row)
         ]
@@ -460,6 +467,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     from .linear_sync import queue_sync as linear_queue_sync
     from .memory_learning import queue_backfill
     from .memory_review import queue_due_reviews
+    from .about_you import queue_due as queue_due_about_you
     from .models import GoogleIdentity, LinearConnection
     from .notices import scan
     from .record_reviews import queue_due_record_reviews
@@ -478,7 +486,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     for name, scan_fn in (
         ("flush_voice", flush_voice), ("device_cleanup", cleanup), ("schedules", scan_schedules),
         ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
-        ("memory_reviews", queue_due_reviews), ("routing", queue_due),
+        ("memory_reviews", queue_due_reviews), ("about_you", queue_due_about_you), ("routing", queue_due),
         ("record_reviews", queue_due_record_reviews), ("agent_runs", sweep_runs), ("agent_swarms", sweep_swarms),
         ("task_archive", sweep_task_archive),
         ("agent_autolink", queue_autolink), ("agent_summaries", queue_due_summaries),
@@ -581,7 +589,6 @@ def run_supervisor(stop, lease):
     Queue("jarvis-memory", concurrency=2, worker_concurrency=2)
     Queue("jarvis-google", concurrency=1, worker_concurrency=1)
     Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
-    Queue("jarvis-intake", concurrency=4, worker_concurrency=4)
     Queue("jarvis-agent", concurrency=settings.agent_parallelism, worker_concurrency=settings.agent_parallelism)
     Queue("jarvis-context", concurrency=settings.context_queue_concurrency,
           worker_concurrency=settings.context_queue_concurrency)

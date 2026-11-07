@@ -512,6 +512,12 @@ READ_TOOLS.update({
     "onboarding_state":{"description":"Read saved setup/interview progress and known answers. Read structure_schema too before designing organization. Ask one useful missing question at a time about name, timezone, work/life roles, record types, reusable fields, behaviors, homes and extra links. Save actual answers with onboarding_save; use the full-definition onboarding_preview when designing a custom structure. Resume existing progress; examples are not tasks. The reviewed linked proposal must be applied after explicit later confirmation before marking setup complete.","parameters":{"type":"object","properties":{},"additionalProperties":False}},
 })
 VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith(("review.","quicklist.","onboarding.","quicksort.")))
+# Set up with Dani (docs/SETUP_WITH_DANI_PLAN.md): read the run, build the proposal, create it after a clear yes.
+READ_TOOLS["setup_state"] = {
+    "description": "Read the Set up with Dani run: status, topics covered, and the open proposal's ID, preview hash and impact.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+VOICE_MUTATIONS.update({"setup.propose", "setup.tree_apply", "setup.memories_save", "memory.pin", "memory.unpin"})
 # Agent-run control; tool_policy.remotea_tools drops these (and control_status) while remotea is off.
 VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith("control."))
 
@@ -570,13 +576,13 @@ def non_nullable(schema, fields):
                 prop.update(options[0]) if len(options) == 1 else prop.update(anyOf=options)
 
 
-def instructions(owner_prefs, focus=None, ui_context=None, *, tool_policy="baseline", parts=False):
+def instructions(owner_prefs, focus=None, ui_context=None, *, tool_policy="baseline", parts=False, setup=""):
     from .agent_instructions import backend_instructions
 
     if parts:
-        static, dynamic = backend_instructions(owner_prefs, focus, ui_context, tool_policy=tool_policy, parts=True)
+        static, dynamic = backend_instructions(owner_prefs, focus, ui_context, tool_policy=tool_policy, parts=True, setup=setup)
         return static + ORGANIZATION_RULES, dynamic
-    return backend_instructions(owner_prefs, focus, ui_context, tool_policy=tool_policy) + ORGANIZATION_RULES
+    return backend_instructions(owner_prefs, focus, ui_context, tool_policy=tool_policy, setup=setup) + ORGANIZATION_RULES
 
 
 ORGANIZATION_RULES = ("\nOrganization is user-defined. Discover structure_schema (structure tool group) before organizing work. Use record tools for custom types, fields and statuses; use core task IDs only for scheduling/integrations. Never assume fixed Project/Client labels. Structural edits ALWAYS require structure_preview and explicit later confirmation, including changes proposed during a rule interview. Ordinary record changes need no review. Organization learning is separate from personal memories: use routing tools for explicit rules and field clarifications. Do not store inferred routing associations in personal memory. Operational fields never inherit from classification. Work hours are weak context only, never a reason to assign a home on their own.")
@@ -712,6 +718,12 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
     if name == "routing_state":
         from .routing import state
         with session_scope() as db:return state(db,owner)
+    if name == "setup_state":
+        from .setup import personal
+        from .setup_synthesis import snapshot
+        with session_scope() as db:
+            personal(db, owner)
+            return snapshot(db, owner)
     if name == "record_overview":
         from .record_overviews import knowledge
         with session_scope() as db:return knowledge(db,owner,arguments["record_id"])
@@ -1093,6 +1105,10 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
                 conversation_id,
                 [t["id"] for t in data["tasks"]] if "tasks" in data else [data["id"]],
             )
+    if name == "setup.propose":
+        # The proposal is a worker job; wait briefly so Dani can describe it (or say it is still coming).
+        from .setup_synthesis import wait
+        return {**result, "data": await wait(owner, result["data"]["job_id"])}
     if name in {"calendar.create", "calendar.update", "calendar.delete", "calendar.respond", "calendar.response_revert"}:
         import asyncio
 

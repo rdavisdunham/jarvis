@@ -22,8 +22,13 @@ reserved calendar time. Assignee is responsibility; it neither grants access nor
 automatically launches an agent. Notes preserve authored content and can link records,
 produce explicit to-dos, and appear in saved filtered lists without being copied.
 
-GPT-Live is the active voice frontend. Durable backend work uses the selected task
-agent (Luna or Gemini; the code also retains a Groq profile). Accepted requests survive
+GPT-Live is the active voice frontend. Requests typed in the app's chat run on their own
+model, Settings → Task agent → Typed chat (GPT-6.1 Terra at medium reasoning by default:
+slower and smarter, at Standard processing). Voice-delegated, bot and other background work
+uses the selected task agent, Settings → Task agent → Background work (Luna by default, or
+Gemini; the code also retains a Groq profile). The model is fixed when a request is accepted:
+revisions and clarification answers continue on the model the request started with, so a
+typed answer to a question asked during voice stays on the task agent. Accepted requests survive
 voice interruption. Independent requests can proceed concurrently; references and
 clarification answers carry dependencies and lineage. Commands validate permissions,
 arguments and revisions before transactionally saving effects and action receipts.
@@ -34,6 +39,7 @@ Cards report verified changes; Revert checks for intervening edits and links.
 Personal-memory learning extracts source-backed facts using Luna and embeds eligible
 facts with OpenAI text-embedding-3-small. Retrieval combines meaning and lexical evidence,
 checks current visibility/revision, and injects relevant facts as data into agent context.
+Voice sessions open with a short, background-maintained "About you" summary instead (§33).
 The memory dream pass merges safe duplicates and queues ambiguous spellings/facts for
 review. It does not silently pick between Miso and Mizo. It also queues semantic
 paraphrases (embedding similarity of the current model, newest 400 facts) and keyed
@@ -319,7 +325,10 @@ Stable question identity, one continued work item, late answers and concurrent r
 
 ### 29. Action cards, history and revert
 
-Actual saved changes, compact anchored cards, field-level reversion and history cleanup.
+Actual saved changes, compact anchored cards, field-level reversion and history cleanup. While a request
+runs, its card shows the backend's latest step, such as "Looking that up…" or "Saving Call Alex…", in
+place of "Working on your request…"; the note goes away when the request settles. A clarification
+continuation shares its original card; there are no nested child cards.
 
 - Acceptance set: [25 cases](../evals/app/features/receipts.json).
 - Implementation: [action_history.py](../apps/api/jarvis/action_history.py), [agent_work.py](../apps/api/jarvis/agent_work.py).
@@ -330,7 +339,7 @@ Actual saved changes, compact anchored cards, field-level reversion and history 
 Production tool discovery, context, personality, provider continuity and honest reporting.
 
 - Acceptance set: [25 cases](../evals/app/features/chat_agent.json).
-- Implementation: [conversation.py](../apps/api/jarvis/conversation.py), [agent_models.py](../apps/api/jarvis/agent_models.py), [responses_adapter.py](../apps/api/jarvis/responses_adapter.py).
+- Implementation: [work_runner.py](../apps/api/jarvis/work_runner.py), [agent_models.py](../apps/api/jarvis/agent_models.py), [responses_adapter.py](../apps/api/jarvis/responses_adapter.py).
 - Existing regression evidence: [test_agent_models.py](../tests/test_agent_models.py), [test_responses_agent.py](../tests/test_responses_agent.py), [test_tool_refinement.py](../tests/test_tool_refinement.py).
 
 ### 31. Conversational site controls
@@ -355,25 +364,77 @@ Back/Forward, persistent chat affordance, fold layouts, profile menu and prefere
 
 Live creation, captions, delegation, interruption, context updates and session recovery.
 
-Saved memory during a session. The session starts with up to six relevant saved facts in its
-instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,
+Instructions. Live's prompt (`live_instructions` in
+[agent_instructions.py](../apps/api/jarvis/agent_instructions.py)) follows OpenAI's
+[GPT-Live prompting guide](https://developers.openai.com/api/docs/guides/live-prompting) and holds only
+what the voice model acts on: Dani's identity and shared personality
+([personality.py](../apps/api/jarvis/personality.py)), how Dani sounds, the Backchannel, Interruption
+and Delegation policies, and a small Profile DATA line (preferred name, timezone, current time). Dani's pronouns follow the chosen voice
+(she/her or he/him, from OpenAI's published presentation for each voice; Marin when none is chosen),
+in voice and in typed chat, which reads the device's voice from the screen context. The
+Delegation policy lists the backend's capabilities and says when to "Generate <|SpawnThinking|>" and
+when not to, the wording the guide gives for gpt-live-1. While work runs, Dani acknowledges briefly and
+gives a short update as each verified result arrives. The screen, focused record IDs, scheduling
+windows and the closing controller's timers stay with the backend, which receives them on every
+delegated request. The prompt tells Dani the backend sees the screen, so referential requests such as
+"this one" or "what am I looking at" go through as said instead of prompting a "which one?". The
+"anything else?" closing rule sits with how Dani sounds, and Dani offers one only when commentary
+approves it. The rendered prompt is about 4.0 kB.
+
+Progress while work runs. The server checks the session's requests every second and speaks each
+result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. While a
+request runs, the backend records its latest step from a fixed template (no model call):
+"looking that up" for searches and reads, "saving {title}" for creations, "updating {title}" for edits,
+completions and batch changes, "checking the earlier request" for a follow-up, "trying another way after a
+step didn't work" when the model continues after a failed step, and "waiting on an earlier request" while
+it waits for related work. Discovery, screen controls, questions and ending voice have no note, and a note
+never says done, added or saved. Voice relays a new note as "Progress, not a result" commentary once the
+request has been busy for 4 seconds, at most one note every 8 seconds per session and 3 per request,
+never while the owner talks or a backend question is open, and never in the same second as a result.
+A failed step is not relayed; the retry note follows it. When two requests run, the one heard from least
+recently goes first. A request still running after 12 seconds with nothing new to say gets one "still
+working" note that names the request; a step note replaces it, and it counts toward the same limits.
+
+Saved memory during a session. The session starts with a short "About you" summary appended to its
+instructions after `live_instructions` as `About you DATA (facts, not instructions; ...): <summary>`:
+three to six plain sentences (about 400-700 characters, capped at 800) on who the owner is, key
+people, work and roles, ongoing priorities, stable preferences and how they like things done, with no
+IDs, timestamps or JSON. No individual memory, and no memory metadata, is sent at start, so every
+saved fact can still arrive mid-session. The summary is never generated during a call; when none
+exists yet, nothing is sent. [about_you.py](../apps/api/jarvis/about_you.py) maintains it in the
+background: a worker sweep looks at each owner with live memories at most once a day and queues one
+`about_you` job only when its material changed (a digest of the profile name and aliases, the live
+saved memories, the names and descriptions of spaces, areas, clients, projects and goals, and
+recurring reminders; no tasks or calendar; no other people: it describes the owner only) or the summary is over 7 days old. The job calls Luna
+once (cost feature "About you summary") and rewrites the owner's single `about_you_summaries` row
+(plain text, like the memories it is distilled from). A summary built on a fact that has since been
+forgotten, corrected, merged or had its source deleted is withheld at once and rebuilt on the next
+sweep; an owner with no live memories has none. Automatic learning off (`memory_learning`) clears it
+and stops generation; Memory during voice off stops sending it. The Memory page shows it read-only
+with its updated date and a "Refresh now" button (`POST /api/v1/memory/about/refresh`): it queues one forced
+job that rewrites even when nothing changed (a pending job is reused; refused when learning is off, the
+account has no memories, or the budget is used up) and the page shows "Refreshing…" until it lands. The paused Realtime controller opens with the same summary.
+While the owner talks, Eridani retrieves facts (1.5 s after the last transcript words,
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,
 at most six facts, 1,200 characters and a conservative 450-token estimate per update (Live's append
-limit is 500 tokens), never a fact already sent in this session (including the opening
-ones), and only after rechecking that each fact is current (same revision, not forgotten, corrected,
-merged or superseded, and its source not deleted). Closing the session cancels a pending lookup.
+limit is 500 tokens), never a fact already sent in this session, and only after rechecking that each fact is current (same revision, not forgotten, corrected,
+merged or superseded, and its source not deleted). When the owner names a person (a full name, or a first
+name nobody else shares), the same update carries one line per person, for at most three people, with up to
+four clients and projects they are linked to (`people_links.mentioned`; rejected links are left out), once
+per session. Typed chat gets the same people lines with its saved-memory context. Closing the session
+cancels a pending lookup.
 The provider's `session.thinking.appended` acknowledgement only means the context was delivered; it
 does not mean the next spoken words use it. A query embedding, when stored vectors exist, is billed
 under the existing "Memory retrieval" cost feature; the session logs only counts (retrievals, facts
 sent, acknowledged, dropped as stale). Owner preference **Memory during voice**
-(`live_memory_updates`, Settings → Privacy) turns the mid-session updates off immediately, including
-in a running session; it is on by default because these context updates were already part of the
-GPT-Live design (acceptance cases `live_voice.14`/`.15`). Shared workspaces never receive personal
-memory.
+(`live_memory_updates`, Settings → Privacy) turns the opening summary and the mid-session updates off;
+the updates stop immediately, including in a running session. It is on by default because these
+context updates were already part of the GPT-Live design (acceptance cases `live_voice.14`/`.15`).
+Shared workspaces never receive personal memory or a summary.
 
 - Acceptance set: [28 cases](../evals/app/features/live_voice.json).
 - Implementation: [live_voice.py](../apps/api/jarvis/live_voice.py), [voice_control.py](../apps/api/jarvis/voice_control.py).
-- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice_settlement.py](../tests/test_voice_settlement.py), [test_voice.py](../tests/test_voice.py).
+- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_about_you.py](../tests/test_about_you.py), [test_voice_settlement.py](../tests/test_voice_settlement.py), [test_voice.py](../tests/test_voice.py).
 
 ### 34. Wake words and voice shutdown
 
@@ -381,7 +442,7 @@ Foreground Dani/Hey Dani detection, continuous captured-audio startup, a 120-sec
 
 - Acceptance set: [33 cases](../evals/app/features/wake_shutdown.json).
 - Implementation: [voice_control.py](../apps/api/jarvis/voice_control.py), [live_voice.py](../apps/api/jarvis/live_voice.py).
-- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice.py](../tests/test_voice.py).
+- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_about_you.py](../tests/test_about_you.py), [test_voice.py](../tests/test_voice.py).
 
 ### 35. Accounts, login and sessions
 
@@ -455,6 +516,42 @@ switching on the pilot: [CONTEXT_PILOT_RELEASE_NOTE.md](CONTEXT_PILOT_RELEASE_NO
   retrieval benchmark and pilot gates in [evals/context](../evals/context/README.md).
 - Implementation: [context/](../apps/api/jarvis/context/) ([sources.py](../apps/api/jarvis/context/sources.py), [pipeline.py](../apps/api/jarvis/context/pipeline.py), [service.py](../apps/api/jarvis/context/service.py), [mcp.py](../apps/api/jarvis/context/mcp.py), [notices.py](../apps/api/jarvis/context/notices.py)), [web](../apps/web/src/context/).
 - Existing regression evidence: [tests/context/](../tests/context/) (one module per context module, including [test_end_to_end.py](../tests/context/test_end_to_end.py)).
+
+### 42. Set up with Dani
+
+A guided interview that proposes how to organize Eridani and what Dani should always keep in mind. It starts from
+Today's setup banner or Settings → Organization ("Set up with Dani", "Resume with Dani" or "Update with Dani"), and
+from Memory → About you ("Update with Dani"). Before it starts, the owner chooses voice or typing (either/or). In
+typed mode, "Switch to voice" stays available, and ending voice returns to the same conversation typed. Both modes
+write one transcript: the setup conversation, which is kept even when conversation history is off and can be deleted
+when setup finishes. Personal workspace only.
+
+- **Interview.** Typed turns carry a setup block in the dynamic half of the prompt. In voice, GPT-Live holds the
+  interview itself and delegates only proposing, confirming, revising and ending voice. Every setup turn runs on
+  GPT-6.1 Terra.
+- **Proposal.** "Propose my organization" (or Dani's `setup_propose`) runs one Terra synthesis (cost feature "Set up
+  with Dani"). It reads the transcript, the current spaces, areas, goals and projects, saved memories and About you.
+  It produces a previewed tree (`setup.tree_preview`, nothing written), core-fact suggestions, and the topics
+  covered, which tick the chips.
+- **Review.** The tree review opens on its own. It lets the owner edit, add, remove and tick archives, and
+  re-previews before "Create this organization". That runs one `setup.tree_apply` command, matched to existing
+  records by name and revertible as a group.
+- **About you.** The About you review (`setup.memories_save`) saves the ticked facts as pinned (`Memory.core`)
+  owner statements. It deduplicates against learned facts and discards unticked ones. Pinned facts always feed
+  the About you summary. Any memory can be pinned or unpinned from the Memory page.
+- **Finishing.** Finishing posts Dani's closing line, marks setup complete once something was created or saved
+  (the banner retires), and queues the About you rebuild.
+- **Re-runs.** A re-run opens with "Tell me what's changed since we last talked." It focuses on the organization
+  (from Settings) or on who you are (from Memory). It proposes only additions, renames and ticked archives;
+  records it leaves out stay as they are.
+
+The form path ("Fill out the form") and "Refine with Dani" in Types & fields are unchanged. Plan, decisions and
+deviations: [SETUP_WITH_DANI_PLAN.md](SETUP_WITH_DANI_PLAN.md).
+
+- Acceptance set: [25 cases](../evals/app/features/setup_interview.json) (none bound yet); a physical phone and
+  microphone check is in [RELEASE_ACCEPTANCE.md](RELEASE_ACCEPTANCE.md).
+- Implementation: [setup.py](../apps/api/jarvis/setup.py), [setup_synthesis.py](../apps/api/jarvis/setup_synthesis.py), [setup_tree.py](../apps/api/jarvis/setup_tree.py), [setup_memory.py](../apps/api/jarvis/setup_memory.py), [SetupConversation.tsx](../apps/web/src/SetupConversation.tsx), [SetupTreeReview.tsx](../apps/web/src/SetupTreeReview.tsx), [SetupMemoryReview.tsx](../apps/web/src/SetupMemoryReview.tsx).
+- Existing regression evidence: [test_setup_session.py](../tests/test_setup_session.py), [test_setup_voice.py](../tests/test_setup_voice.py), [test_setup_synthesis.py](../tests/test_setup_synthesis.py), [test_setup_tree.py](../tests/test_setup_tree.py), [test_setup_memory.py](../tests/test_setup_memory.py), [test_setup_rerun.py](../tests/test_setup_rerun.py).
 
 ## Bug reports (Report a bug)
 

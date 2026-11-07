@@ -20,7 +20,7 @@ describe("connected agents", () => {
   });
   it("attributes saved actions to the initiating agent", () => {
     const item: WorkItem = { id:"w",parent_id:null,conversation_id:"c",request:"task.create",status:"succeeded",
-      revision:1,message:"Saved.",actions:[],children:[],cancel_requested:false,seen:false,
+      revision:1,message:"Saved.",actions:[],cancel_requested:false,seen:false,
       created_at:"2026-09-16T15:00:00Z",updated_at:"2026-09-16T15:00:00Z",can_continue:false,
       actor:{type:"bot",id:"b",name:"Codex"} };
     const html = renderToStaticMarkup(<WorkCard item={item} onRefresh={async()=>{}} onOpen={async()=>{}}/>);

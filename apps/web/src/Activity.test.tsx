@@ -4,7 +4,7 @@ import { ActivityPanel, attentionFirst, WorkCard, type WorkItem } from "./Activi
 import { FooterStatus, NotificationBell } from "./app-chrome";
 
 const base: WorkItem = { id:"work-1",parent_id:null,conversation_id:"chat-1",request:"Um, actually, make that call tomorrow please.",
-  status:"succeeded",revision:1,message:"Updated.",actions:[],children:[],cancel_requested:false,seen:false,
+  status:"succeeded",revision:1,message:"Updated.",actions:[],cancel_requested:false,seen:false,
   created_at:"2026-09-16T15:00:00Z",updated_at:"2026-09-16T15:00:00Z",can_continue:false };
 const render = (item: WorkItem) => renderToStaticMarkup(<WorkCard item={item} onRefresh={async()=>{}} onOpen={async()=>{}}/>);
 describe("confirmed action cards",()=>{
@@ -38,6 +38,14 @@ describe("confirmed action cards",()=>{
     const html=render({...base,status:"queued",waiting:true,related_request_id:"earlier",message:"Waiting for earlier related work."});
     expect(html).toContain("Waiting for related work"); expect(html).toContain("Follow-up to earlier work");
     expect(html).not.toContain("Waiting for you");
+  });
+  it("shows the backend's current step while work runs, and drops it once the request settles",()=>{
+    const progress={seq:2,stage:"saving",note:"saving Call Alex",ok:true};
+    const running=render({...base,status:"running",message:"",progress});
+    expect(running).toContain("Saving Call Alex…"); expect(running).not.toContain("Working on your request");
+    expect(render({...base,status:"running",message:""})).toContain("Working on your request…");
+    const settled=render({...base,status:"succeeded",message:"Added Call Alex.",progress});
+    expect(settled).toContain("Added Call Alex."); expect(settled).not.toContain("Saving Call Alex");
   });
 });
 

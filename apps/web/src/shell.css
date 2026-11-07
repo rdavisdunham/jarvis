@@ -691,6 +691,138 @@ body:has(.modal-backdrop) .bug-report-launcher {
   white-space: nowrap;
   padding: 0 6px;
 }
+/* Set up with Dani: topic chips and actions above the setup conversation. */
+.setup-conversation {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.setup-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-topics .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.setup-conversation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.setup-conversation-actions .btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.setup-conversation .footnote,
+.setup-status {
+  margin: 0;
+}
+.setup-status {
+  color: var(--ink-2);
+}
+/* Set up with Dani: the proposed organization review. */
+.setup-tree-rows {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.setup-tree-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0 8px 12px;
+  border-inline-start: 2px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.setup-tree-row.flagged {
+  border-inline-start-color: var(--danger);
+}
+.setup-tree-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.setup-tree-title {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-weight: 600;
+}
+.setup-tree-description {
+  width: 100%;
+  min-width: 0;
+  color: var(--ink-2);
+}
+.setup-tree-kind {
+  width: auto;
+}
+.setup-tree-archive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.setup-tree-archive input {
+  width: auto;
+}
+.setup-tree-row > .btn {
+  justify-self: start;
+}
+.setup-tree-impact {
+  margin: 12px 0 0;
+  color: var(--ink-2);
+}
+/* Set up with Dani: what Dani keeps in mind (About you). */
+.setup-memory-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.setup-memory-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.setup-memory-row.skipped .setup-memory-text {
+  color: var(--ink-3);
+}
+.setup-memory-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+.setup-memory-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--violet);
+}
+.setup-memory-main {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+.setup-memory-main .chip {
+  justify-self: start;
+}
+.setup-memory-text {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
 .history-note {
   display: flex;
   align-items: center;

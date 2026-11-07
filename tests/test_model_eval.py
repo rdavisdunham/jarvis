@@ -215,7 +215,12 @@ def test_model_map_defaults_keep_todays_model_for_every_job():
         chosen = model_map.route(job, 10**6)
         assert chosen.reason == "map" and chosen.profile == model_map.MODEL_MAP[job] == model_map.DEFAULTS[job]
         assert chosen.cost_feature == spec.cost_feature
-        if spec.path == "extraction":
+        if job in model_map.PINNED:
+            # An owner decision, not today's default: Set up with Dani runs on GPT-6.1 Terra (medium reasoning).
+            p = model_map.PROFILES[chosen.profile]
+            assert (chosen.profile, p.api, p.service_tier) == (model_map.PINNED[job], "openai_responses", "default")
+            assert model_map.costing(chosen.profile) is not None
+        elif spec.path == "extraction":
             p = model_map.PROFILES[chosen.profile]
             # extraction_request: Luna, Responses API, low reasoning, Standard tier.
             assert (p.model, p.api, p.reasoning_effort, p.service_tier) == \
@@ -251,7 +256,9 @@ def test_profile_request_is_extraction_request_by_default(monkeypatch):
                 memory_learning.profile_request("owner", job, payload, 0.02)
             continue
         assert memory_learning.profile_request("owner", job, payload, 0.02) == {"ok": True}
-    assert all(a[1:4] == ("chat/completions", payload, memory_learning.EXTRACTION_MODEL) for a in calls)
+        model = model_map.PROFILES[model_map.route(job).profile].model
+        assert calls[-1][1:4] == ("chat/completions", payload, model)
+        assert model == memory_learning.EXTRACTION_MODEL or job in model_map.PINNED
     # A route to an unpriced (placeholder) profile, or to the interactive Fast tier, is refused in production.
     for refused in ("deepseek", "luna-fast"):
         monkeypatch.setattr(model_map, "RULES", (model_map.Rule(refused, jobs=("session_summary",)),))

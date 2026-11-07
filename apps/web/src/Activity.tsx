@@ -17,7 +17,9 @@ export type WorkItem = {
   clarification_history?: { question: string; answer: string }[];
   actor?: { type: "bot"; id: string; name: string } | null;
   id: string; parent_id: string | null; conversation_id: string; request: string;
-  status: string; revision: number; message: string; actions: ActionChange[]; children: WorkItem[];
+  status: string; revision: number; message: string; actions: ActionChange[];
+  /** The backend's latest step while the request runs, e.g. "looking that up"; null once it settles. */
+  progress?: { seq: number; stage: string; note: string; ok?: boolean } | null;
   cancel_requested: boolean; seen: boolean; waiting?: boolean; related_request_id?: string | null; created_at: string; updated_at: string; can_continue: boolean; can_revise?: boolean;
 };
 export const workActive = (item: WorkItem) => ["queued", "dispatched", "running", "waiting_sync"].includes(item.status);
@@ -86,7 +88,7 @@ export function useWork(enabled: boolean, scope?: string, conversation?: string 
   }, [enabled, scope, conversation]);
   return { items, chatItems, error, refresh };
 }
-type Props = { item: WorkItem; onRefresh: () => Promise<void>; onOpen: (action: ActionChange) => Promise<void>; nested?: boolean; compact?: boolean };
+type Props = { item: WorkItem; onRefresh: () => Promise<void>; onOpen: (action: ActionChange) => Promise<void>; compact?: boolean };
 function text(value: unknown): string {
   if (value === null || value === undefined || value === "") return "None";
   if (Array.isArray(value)) return value.join(", ") || "None";
@@ -99,7 +101,7 @@ function changePreview(action: ActionChange, compact = false) {
   return important.filter(key => key in action.fields).slice(0, 3).map(key =>
     `${key.replaceAll("_", " ")}: ${text(action.fields[key].after)}`);
 }
-export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: Props) {
+export function WorkCard({ item, onRefresh, onOpen, compact = false }: Props) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(""),
     [editing, setEditing] = useState(false), [correction, setCorrection] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -119,19 +121,19 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
   }
   const disclosure = compact ? <button type="button" className="text-button work-expand" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Less" : "Details"}<ChevronDown size={12}/></button> : null;
   const editable = new Set(["record", "task", "note", "project", "goal", "space", "area", "actor", "schedule", "planning", "google_event"]);
-  return <article ref={card} data-work-id={item.id} className={"work-card " + (nested ? "nested " : "") + (compact ? "chat-work-card " : "") + (workAttention(item) ? "attention" : "")}>
+  return <article ref={card} data-work-id={item.id} className={"work-card " + (compact ? "chat-work-card " : "") + (workAttention(item) ? "attention" : "")}>
     <header><span className={"work-status " + item.status}>
       {workActive(item) ? <Clock3 size={13}/> : item.status === "succeeded" ? <Check size={13}/> : null}
       {item.cancel_requested && workActive(item) ? "Stopping unfinished work" : item.waiting ? "Waiting for related work" : labels[item.status] ?? item.status}
     </span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</time></header>
     {details && item.actor && <p className="work-actor">{item.actor.name} <span className="chip">connected agent</span></p>}
     {details && item.related_request_id && <p className="work-related">Follow-up to earlier work</p>}
-    {!item.actions.length && !item.children.length && <p className="work-result">{
-      item.message || (workActive(item) ? "Working on your request…" : "No changes were saved.")
-    }</p>}
+    {workActive(item) && item.progress?.note
+      ? <p className="work-result work-progress">{sentenceCase(item.progress.note)}…</p>
+      : !item.actions.length && <p className="work-result">{
+        item.message || (workActive(item) ? "Working on your request…" : "No changes were saved.")
+      }</p>}
     {!!item.actions.length && workAttention(item) && !!item.message && <p className="work-result">{item.message}</p>}
-    {item.status === "needs_input" && !!item.children.length && <p className="work-result">{item.message}</p>}
-    {item.children.map(child => <WorkCard key={child.id} item={child} onRefresh={onRefresh} onOpen={onOpen} nested compact={compact}/>)}
     {item.actions.map(action => <div className="work-change" key={action.id}>
       <div><strong>{action.summary ?? `${action.operation.charAt(0).toUpperCase() + action.operation.slice(1)}: ${action.title}`}</strong>
         {action.remote_status && <span>{labels[action.remote_status] ?? action.remote_status}</span>}</div>
@@ -158,11 +160,11 @@ export function WorkCard({ item, onRefresh, onOpen, nested, compact = false }: P
       {(workActive(item) || item.status === "needs_input") && <button className="text-button" disabled={busy || item.cancel_requested}
         title="Stop unfinished work. Saved changes stay in place."
         onClick={() => void act(() => post("/work/"+item.id+"/cancel", {}))}>Cancel work</button>}
-      {item.can_revise !== false && (!item.children.length || item.status === "needs_input") && (item.can_continue || workActive(item)) && <button className="text-button" disabled={busy}
+      {item.can_revise !== false && (item.can_continue || workActive(item)) && <button className="text-button" disabled={busy}
         onClick={() => setEditing(!editing)}>Revise</button>}
       {item.can_continue && <button className="text-button" disabled={busy} onClick={() => void act(() =>
         post("/work/"+item.id+"/revise", {message:"", expected_revision:item.revision, continue_work:true}))}>{item.status === "failed" ? "Retry" : "Continue"}</button>}
-      {!nested && workAttention(item) && item.status !== "needs_input" && !item.seen && <button className="text-button" disabled={busy}
+      {workAttention(item) && item.status !== "needs_input" && !item.seen && <button className="text-button" disabled={busy}
         onClick={() => void act(() => post("/work/"+item.id+"/seen", {}))}>Dismiss notification</button>}
       {!item.actions.length && disclosure}
     </div>

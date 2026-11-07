@@ -922,6 +922,48 @@ button.note-chip-link:disabled {
   margin-left: auto;
 }
 
+/* About you: what Dani is told at the start of a voice call */
+.memory-page .memory-about {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+}
+.memory-about-text {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+.memory-about-core-head {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.memory-about-core {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.memory-about-core li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.memory-about-actions {
+  margin-top: 12px;
+}
+.memory-about-actions .btn,
+.memory-about-core .btn {
+  min-height: 44px;
+  flex: none;
+}
+
 /* Review question */
 .memory-page .memory-review {
   margin: 0 0 16px;

@@ -16,7 +16,11 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import httpx
-from jarvis import agent_models, conversation
+from jarvis import agent_models, work_runner
+try:  # Imported as `scripts.…` from tests and app_eval, or run directly from scripts/.
+    from scripts.app_eval.work_turn import run_turn
+except ModuleNotFoundError:
+    from app_eval.work_turn import run_turn
 from jarvis.config import get_settings
 from jarvis.db import engine, session_scope
 from jarvis.domain import DomainError, execute, parse_when
@@ -216,7 +220,7 @@ async def run(repeats, output, models, luna_api="responses", cases=None):
     results = []
     blocked_models = set()
     real_client = httpx.AsyncClient
-    real_tool = conversation.call_tool
+    real_tool = work_runner.call_tool
     real_request = agent_models.AgentModel.request
     try:
         os.environ["JARVIS_DATABASE_URL"] = (
@@ -306,12 +310,12 @@ async def run(repeats, output, models, luna_api="responses", cases=None):
                     with (
                         patch.object(agent_models, "selected", return_value=profile),
                         patch.object(agent_models.AgentModel, "request", request),
-                        patch.object(conversation.httpx, "AsyncClient", MeteredClient),
-                        patch.object(conversation, "call_tool", guarded_tool),
-                        patch.object(conversation, "prompt_context", memory_context),
+                        patch.object(httpx, "AsyncClient", MeteredClient),
+                        patch.object(work_runner, "call_tool", guarded_tool),
+                        patch.object(work_runner, "prompt_context", memory_context),
                         patch("jarvis.tools.dispatch", displayed),
                     ):
-                        result = await conversation.chat(
+                        result = await run_turn(
                             OWNER, DEVICE, str(uuid4()), fixture["conversation"], prompt
                         )
                     current.update(

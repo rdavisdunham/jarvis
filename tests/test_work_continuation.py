@@ -75,7 +75,7 @@ async def test_spoken_answer_completes_original_card_without_repeating_saved_act
     assert len(cards) == 1
     card = cards[0]
     assert card["id"] == original["id"] and card["status"] == "succeeded"
-    assert not card["children"] and not card["clarification"]
+    assert not card["clarification"]
     assert card["finished_at"] and card["voice_session_id"] is None
     assert len(card["actions"]) == 2
     assert card["clarification_history"] == [{"question": "What time should its deadline be?", "answer": "9 a.m., just a deadline"}]

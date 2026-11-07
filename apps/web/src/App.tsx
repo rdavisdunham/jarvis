@@ -14,11 +14,15 @@ import { StructureWorkspace } from "./Structure";
 import {QuickCapture} from "./QuickLists";
 import {Onboarding} from "./Onboarding";
 import { FooterStatus, NotificationBell } from "./app-chrome";
-import { SETUP_REQUEST, setupEstablished, typesFieldsRequest } from "./setup-model";
+import { setupActive, setupEstablished, typesFieldsRequest, type OrganizationProposal, type SetupFocus, type SetupMode, type SetupSession } from "./setup-model";
+import { SetupConversation } from "./SetupConversation";
+import { SetupTreeReview } from "./SetupTreeReview";
+import { SetupMemoryReview } from "./SetupMemoryReview";
+import { SetupFinishDialog, SetupModeDialog } from "./SetupDialogs";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
-import { MemoryRow, MemoryStatus } from "./MemoryActions";
+import { AboutYouSummary, MemoryRow, MemoryStatus } from "./MemoryActions";
 import { BrandMark, humanLabel, PlannerGuide, Popover, useBodyLock, useMaxWidth, matchesMaxWidth, COMPACT_MAX_WIDTH, PHONE_MAX_WIDTH, NARROW_MAX_WIDTH } from "./ux";
 import { PublicFooter } from "./PublicPages";
 import { chatTimeline, mergeWorkReplies } from "./chat-timeline";
@@ -138,6 +142,7 @@ import type {
   Memory,
   MemoryReview,
   MemoryMaintenance,
+  AboutYou,
   Notice,
   Schedule,
   Task,
@@ -377,6 +382,7 @@ export default function App() {
   const [maintenance, setMaintenance] = useState<MemoryMaintenance | null>(
     null,
   );
+  const [aboutYou, setAboutYou] = useState<AboutYou | null>(null);
   const [query, setQuery] = useState(initialSavedView?.query ?? ""),
     [quick, setQuick] = useState(""),
     [pair, setPair] = useState("");
@@ -423,6 +429,17 @@ export default function App() {
   const conversationRef = useRef<string | null>(null);
   const conversationEpoch = useRef(0);
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
+  // Set up with Dani: the owner's interview session (personal workspace only).
+  const [setupSession, setSetupSession] = useState<SetupSession | null>(null);
+  const inSetup = setupActive(setupSession) && !!activeConversation && setupSession?.conversation_id === activeConversation;
+  const setupVoice = useRef(false);
+  const [treeReview, setTreeReview] = useState<OrganizationProposal | null>(null);
+  const [memoryReview, setMemoryReview] = useState(false);
+  const [finishingSetup, setFinishingSetup] = useState(false);
+  // "Update with Dani" from Memory → About you asks voice or typing first.
+  const [setupModeFor, setSetupModeFor] = useState<SetupFocus | null>(null);
+  // Bumped by `setup.changed` events (and while a proposal is being built) to re-read the setup state.
+  const [setupSignal, setSetupSignal] = useState(0);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
   const chatAnchors = useRef({conversation: conversationRef.current, items: new Map<string, string | null>()});
   if (chatAnchors.current.conversation !== conversationRef.current) chatAnchors.current = {conversation: conversationRef.current, items: new Map()};
@@ -787,6 +804,7 @@ export default function App() {
       (signal) => {
         const scope = signalScope(signal);
         if (scope.memory) setMemoryRevision((v) => v + 1);
+        if (scope.setup) setSetupSignal((v) => v + 1);
         if (!scope.load && !scope.revision) return;
         void loads
           .request({
@@ -825,6 +843,7 @@ export default function App() {
         items: Memory[];
         reviews: MemoryReview[];
         maintenance: MemoryMaintenance;
+        about?: AboutYou;
         learning: typeof memoryStatus;
       }>("/memory?q=" + encodeURIComponent(query))
         .then((data) => {
@@ -832,6 +851,7 @@ export default function App() {
             setMemories(data.items);
             setMemoryReviews(data.reviews ?? []);
             setMaintenance(data.maintenance);
+            setAboutYou(data.about ?? null);
             if (data.learning) setMemoryStatus(data.learning);
           }
         })
@@ -842,6 +862,12 @@ export default function App() {
       clearTimeout(timer);
     };
   }, [view, query, !!boot, memoryRevision]);
+  // While About you is being rewritten, check back until the new summary lands.
+  useEffect(() => {
+    if (view !== "memory" || !aboutYou?.refreshing) return;
+    const timer = setTimeout(() => setMemoryRevision((v) => v + 1), 5000);
+    return () => clearTimeout(timer);
+  }, [view, aboutYou?.refreshing, memoryRevision]);
   useEffect(() => {
     const listen = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -1735,6 +1761,8 @@ export default function App() {
     const content = (requestedMessage ?? chatText).trim();
     if (!content || thinking || chatSubmitLock.current || voice.current) return false;
     const turn_id = crypto.randomUUID(), epoch = conversationEpoch.current;
+    // A typed answer in the setup conversation is an interview turn (the backend checks the conversation).
+    const setupTurn = inSetup && requestedMessage === undefined;
     chatSendStarted(turn_id);
     // A setup launcher must not discard an unrelated message the owner was drafting.
     if (requestedMessage === undefined) setChatText("");
@@ -1752,6 +1780,7 @@ export default function App() {
         if (epoch !== conversationEpoch.current) return false;
         await post<WorkItem>("/work", {
           turn_id, conversation_id, message: content, focus: selected?.id ?? null,
+          ...(setupTurn ? { purpose: "setup" } : {}),
         });
         if (epoch !== conversationEpoch.current) return true;
         retryRef.current = null;
@@ -1796,6 +1825,62 @@ export default function App() {
     });
     if (!accepted)
       throw Error("Setup could not be confirmed. Your answers are saved; retry to check the same request.");
+  }
+  /** Set up with Dani: open (or resume) the setup conversation, then start the chosen mode. */
+  async function startSetup(mode: SetupMode, focus: SetupFocus = "both") {
+    flushSync(() => setCompanion(true));
+    if (voice.current || (voiceState && !voiceState.closed))
+      throw Error("Voice is already active. End voice, then start setup with Dani.");
+    if (mode === "typed" && !boot?.capabilities.chat)
+      throw Error("Typing needs a configured task agent. Try voice mode, or fill out the form.");
+    if (thinking || chatSubmitLock.current)
+      throw Error("Your previous message is still being sent. Try setup again when it finishes.");
+    const session = await post<SetupSession>("/setup/start", { mode, focus });
+    conversationEpoch.current += 1;
+    const data = await api<{ id: string; private: boolean; messages: ChatMessage[] }>("/conversations/" + session.conversation_id);
+    conversationRef.current = data.id; setActiveConversation(data.id);
+    sessionStorage.setItem("jarvis-conversation", data.id);
+    retryRef.current = null; guidedRetries.current.clear();
+    setMessages(data.messages); setConversationHistoryOff(data.private); setSetupSession(session);
+    if (mode === "voice") { setupVoice.current = true; await startVoice(); }
+    else focusChat();
+  }
+  async function switchSetupToVoice() {
+    try {
+      setSetupSession(await post<SetupSession>("/setup/mode", { mode: "voice" }));
+      setupVoice.current = true;
+      await startVoice();
+    } catch (e) { setError((e as Error).message); }
+  }
+  async function openTreeReview(proposalId: string) {
+    try { setTreeReview(await api<OrganizationProposal>("/setup/proposals/" + encodeURIComponent(proposalId))); }
+    catch (e) { setError((e as Error).message); }
+  }
+  async function refreshSetup() {
+    setSetupSession(await api<SetupSession>("/setup"));
+  }
+  async function finishSetup(deleteConversation = false) {
+    const session = await post<SetupSession>("/setup/finish", { status: "completed", delete_conversation: deleteConversation });
+    setFinishingSetup(false); setSetupSession(session);
+    const id = session.conversation_id;
+    if (id && conversationRef.current === id) {
+      if (deleteConversation) { conversationRef.current = null; setActiveConversation(null); setMessages([]);
+        sessionStorage.removeItem("jarvis-conversation"); }
+      else void api<{ id: string; messages: ChatMessage[] }>("/conversations/" + id).then(data => {
+        if (conversationRef.current === data.id) setMessages(data.messages);
+      }).catch(() => {});
+    }
+    void load().catch(() => {});
+    setToast("Setup finished. Update it any time from Settings or Memory.");
+  }
+  /** Finishing with history off first offers to delete the kept setup transcript (decision 7). */
+  function requestFinishSetup() {
+    if (setupSession?.history_off) setFinishingSetup(true);
+    else void finishSetup().catch(e => setError((e as Error).message));
+  }
+  async function proposeSetup() {
+    try { setSetupSession(await post<SetupSession>("/setup/propose", {})); }
+    catch (e) { setError((e as Error).message); }
   }
   async function openWorkRecord(action: ActionChange) {
     if (!action.entity_id) return;
@@ -1905,6 +1990,46 @@ export default function App() {
     }
   }
   startVoiceRef.current=startVoice;
+  const setupScope = boot && !boot.workspace?.id ? boot.account_id : null;
+  useEffect(() => {
+    if (!setupScope) { setSetupSession(null); return; }
+    let live = true;
+    void api<SetupSession>("/setup").then(session => { if (live) setSetupSession(session); }).catch(() => {});
+    return () => { live = false; };
+  }, [setupScope, setupSignal]);
+  const setupProposing = setupSession?.status === "proposing";
+  useEffect(() => {
+    // Fallback while the change feed is down: the proposal takes a minute or so on Terra.
+    if (!setupProposing) return;
+    const timer = setInterval(() => setSetupSignal(v => v + 1), 5000);
+    return () => clearInterval(timer);
+  }, [setupProposing]);
+  const setupWasProposing = useRef(false);
+  useEffect(() => {
+    const finished = setupWasProposing.current && !setupProposing;
+    setupWasProposing.current = setupProposing;
+    if (!finished || !setupSession || !inSetup) return;
+    // Dani's message about the proposal is in the setup conversation; show it, then open the review.
+    const id = setupSession.conversation_id;
+    if (id && !thinking && !chatSubmitLock.current)
+      void api<{ id: string; messages: ChatMessage[] }>("/conversations/" + id).then(data => {
+        if (conversationRef.current === data.id) setMessages(data.messages);
+      }).catch(() => {});
+    if (setupSession.status === "reviewing" && setupSession.tree_proposal_id)
+      void openTreeReview(setupSession.tree_proposal_id);
+    else if (setupSession.status === "reviewing" && setupSession.memory_candidates?.length) setMemoryReview(true);
+  }, [setupProposing, setupSession, inSetup, thinking]);
+  const voiceLive = !!voiceState && !voiceState.closed;
+  const voiceWasLive = useRef(false);
+  useEffect(() => {
+    const ended = voiceWasLive.current && !voiceLive;
+    voiceWasLive.current = voiceLive;
+    // Ending voice returns to the same setup conversation, typed.
+    if (!ended || !setupVoice.current) return;
+    setupVoice.current = false;
+    if (!inSetup) return;
+    void post<SetupSession>("/setup/mode", { mode: "typed" }).then(setSetupSession).catch(() => {});
+  }, [voiceLive, inSetup]);
   useEffect(()=> {
     if(!boot?.account_id)return;
     const controller=new VoiceCoordinator(boot.account_id,boot.device_id,{
@@ -2654,7 +2779,7 @@ export default function App() {
               </div>
             </div>}
             {!isTaskTab(view) && view !== "settings" && view !== "questions" && view !== "remotea" && view !== "meetings" && view !== "person" && view !== "notes" && view !== "organize" && view !== "calendar" && <label className="page-search"><Search size={16}/><input aria-label={searchLabel} placeholder={searchLabel + "…"} value={query} onChange={e => setQuery(e.target.value)}/></label>}
-            {!boot.workspace?.id && dashboard && <Onboarding compact established={setupEstablished(organization)} onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/>}
+            {!boot.workspace?.id && dashboard && <Onboarding compact established={setupEstablished(organization)} onChanged={()=>void load()} onTalk={startSetup} setup={setupSession} voiceAvailable={!!boot.capabilities.voice}/>}
             {(dashboard||isTaskTab(view))&&boot.workspace?.role!=="viewer"&&<div className="quick-capture-launch"><QuickCapture today={today} onCreated={task=>{void load();openTaskCard(task);}}/></div>}
             {dashboard && boot && <Today tasks={tasks} finishedTasks={mergeFinishedTasks(dailyFinished, tasks)} schedules={schedules} today={today} zone={boot.preferences.timezone} busy={busy} canEdit={boot.workspace?.role!=="viewer"}
               noteRevision={noteRevision} quick={quick} onQuick={setQuick} onAdd={add} onTask={openTaskCard} onToggle={task => void toggle(task)}
@@ -2912,6 +3037,19 @@ export default function App() {
                     }
                   }}
                 />
+                {aboutYou && !query && <AboutYouSummary about={aboutYou}
+                  onUpdate={!boot.workspace?.id && aboutYou.enabled ? () => setSetupModeFor("about_you") : undefined}
+                  onUnpin={id => mutate("memory.unpin", {memory_id: id}, "Unpinned from About you")}
+                  onRefresh={async () => {
+                    try {
+                      await post("/memory/about/refresh");
+                      setToast("About you is being rewritten");
+                      setMemoryRevision((v) => v + 1);
+                    } catch (e) {
+                      setError((e as Error).message);
+                      throw e;
+                    }
+                  }}/>}
                 {memoryReviews.map((review) => (
                   <MemoryReviewCard
                     key={review.id}
@@ -2954,7 +3092,7 @@ export default function App() {
                   {memories.length > 0 && (
                     <div className="row-list memory-list">
                       {memories.map((m) => (
-                        <MemoryRow key={m.id} memory={m} onCorrect={() => setEditingMemory(m)} onForget={delete_source => mutate("memory.forget", {memory_id:m.id, delete_source}, delete_source ? "Memory and its stored source deleted" : "Memory forgotten")} onWrong={() => mutate("memory.forget", {memory_id:m.id, wrong:true}, "Removed. Dani won't learn this again")} onOpenConversation={id => void openNoteConversation(id)}/>
+                        <MemoryRow key={m.id} memory={m} onCorrect={() => setEditingMemory(m)} onForget={delete_source => mutate("memory.forget", {memory_id:m.id, delete_source}, delete_source ? "Memory and its stored source deleted" : "Memory forgotten")} onWrong={() => mutate("memory.forget", {memory_id:m.id, wrong:true}, "Removed. Dani won't learn this again")} onOpenConversation={id => void openNoteConversation(id)} onPin={core => mutate(core ? "memory.pin" : "memory.unpin", {memory_id:m.id}, core ? "Pinned to About you" : "Unpinned from About you")}/>
                       ))}
                     </div>
                   )}
@@ -2975,7 +3113,7 @@ export default function App() {
                 <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
                 <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
-                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={()=>startGuidedConversation(SETUP_REQUEST)}/><SchedulingPreferences/><RoutingReviewPanel/></>}
+                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding rerunFocus="organization" onChanged={()=>void load()} onTalk={startSetup} setup={setupSession} voiceAvailable={!!boot.capabilities.voice}/><SchedulingPreferences/><RoutingReviewPanel/></>}
                 {settingsSection === "organization" && <TaskArchivePreferences enabled={boot.preferences.auto_archive_finished_tasks!==false} canEdit={!boot.workspace?.id||boot.workspace.role==="owner"} shared={!!boot.workspace?.id} onChanged={()=>void load()}/>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
@@ -3176,12 +3314,21 @@ export default function App() {
                 <X size={18} />
               </button>
             </div>
-            {historyOff && (
+            {historyOff && !inSetup && (
               <div className="history-note">
                 <Shield size={13} />
                 Conversation history is off. Tasks still save.
               </div>
             )}
+            {inSetup && setupSession && <SetupConversation session={setupSession} voiceActive={voiceLive}
+              voiceAvailable={!!boot.capabilities.voice} busy={thinking || voiceState?.state === "closing"}
+              onSwitchToVoice={() => void switchSetupToVoice()}
+              onPropose={setupSession.can_propose ? () => void proposeSetup() : undefined}
+              onReview={setupSession.status === "reviewing" && setupSession.tree_proposal_id
+                ? () => void openTreeReview(setupSession.tree_proposal_id!) : undefined}
+              onReviewMemories={setupSession.status === "reviewing" && setupSession.memory_candidates?.length
+                ? () => setMemoryReview(true) : undefined}
+              onFinish={setupSession.status === "reviewing" ? requestFinishSetup : undefined}/>}
             <div
               className="messages"
               onScroll={(event) => {
@@ -3265,9 +3412,9 @@ export default function App() {
                 value={chatText}
                 onChange={(e) => setChatText(e.target.value)}
                 placeholder={
-                  boot.capabilities.chat
-                    ? "Ask Dani anything…"
-                    : "Chat needs a configured API key"
+                  !boot.capabilities.chat
+                    ? "Chat needs a configured API key"
+                    : inSetup ? "Type your answer…" : "Ask Dani anything…"
                 }
                 aria-label="Message Dani"
                 rows={2}
@@ -3291,7 +3438,7 @@ export default function App() {
                     (thinking && !voice.current) ||
                     voiceState?.state === "closing"
                   }
-                  onClick={() => void startVoice()}
+                  onClick={() => void (inSetup && !voice.current ? switchSetupToVoice() : startVoice())}
                   title={
                     boot.capabilities.voice
                       ? "Start voice"
@@ -3324,7 +3471,7 @@ export default function App() {
             )}
             <p className="chat-footnote">
               {historyOff
-                ? "This conversation won’t be retained."
+                ? inSetup ? "This setup conversation is kept until you delete it." : "This conversation won’t be retained."
                 : "Conversation history is on."}{" "}
               Cloud models process what you send.
             </p>
@@ -3333,7 +3480,30 @@ export default function App() {
         </div>
       </div>
       {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
-      {remotea.start && <Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
+      {treeReview && <SetupTreeReview key={treeReview.id} proposal={treeReview} rerun={!!setupSession?.notes?.rerun} onClose={() => setTreeReview(null)}
+        onKeepTalking={() => { setTreeReview(null); setCompanion(true); focusChat(); }}
+        onByHand={() => { setTreeReview(null); setCompanion(false); setView("organize"); }}
+        onApplied={result => {
+          setTreeReview(null); void load().catch(() => {}); void refreshSetup().catch(() => {});
+          // Step 3: what Dani keeps in mind, when the proposal suggested any; otherwise setup is done.
+          if (setupSession?.memory_candidates?.length) setMemoryReview(true);
+          else requestFinishSetup();
+          setToast(result.created_count === 1 ? "Created 1 record." : "Created " + result.created_count + " records.");
+        }}/>}
+      {memoryReview && setupSession?.memory_candidates?.length ? <SetupMemoryReview candidates={setupSession.memory_candidates}
+        knownCount={setupSession.known_memory_count ?? 0} onClose={() => setMemoryReview(false)}
+        onKeepTalking={() => { setMemoryReview(false); setCompanion(true); focusChat(); }}
+        onSaved={result => {
+          setMemoryReview(false); setSetupSession(result); setMemoryRevision(v => v + 1);
+          const count = result.saved_ids.length;
+          setToast(count === 1 ? "Dani will keep 1 thing in mind." : "Dani will keep " + count + " things in mind.");
+          requestFinishSetup();
+        }}/> : null}
+      {finishingSetup && <SetupFinishDialog onClose={() => setFinishingSetup(false)} onFinish={finishSetup}/>}
+      {setupModeFor && boot && <SetupModeDialog title={setupModeFor === "about_you" ? "Update About you with Dani" : "Update with Dani"}
+        voiceAvailable={!!boot.capabilities.voice} onClose={() => setSetupModeFor(null)}
+        onStart={async mode => { await startSetup(mode, setupModeFor); setSetupModeFor(null); }}/>}
+      {remotea.start &&<Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
         onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}
         onSetup={() => { remoteaActions.closeStart(); setView("settings"); setSettingsSection("integrations"); setConnectionTab("remotea"); revealSetup(); }}/></Suspense>}
       {remotea.swarm && <Suspense fallback={null}><SwarmDialog taskId={remotea.swarm} onClose={remoteaActions.closeSwarm}

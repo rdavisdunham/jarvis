@@ -1,10 +1,12 @@
 # Reasoning-enabled Luna
 
-Select **Settings → Task agent → Backend model → GPT-5.6 Luna · reasoning**.
+Select **Settings → Task agent → Background work → GPT-5.6 Luna · reasoning**.
 
 Luna uses the existing server-side OpenAI API key. No new credential is needed.
-The selection applies to text chat and the task work GPT-Live delegates, starting
-with the next request. GPT-5.4 mini is retired; its saved OpenAI selection now
+The selection applies to the task work GPT-Live delegates, bots and connected agents,
+starting with the next request. Typed chat has its own choice, **Settings → Task agent →
+Typed chat**, which defaults to GPT-6.1 Terra (`terra-6.1`: `gpt-6.1-terra`, medium
+reasoning, a 16,384-token allowance, Standard processing); pick Luna there to type on Luna. GPT-5.4 mini is retired; its saved OpenAI selection now
 resolves to Luna. Gemini remains available as the other tested backend.
 
 The Luna profile uses `gpt-5.6-luna` through `/v1/responses`, with low reasoning
@@ -29,7 +31,8 @@ Server validation remains authoritative. Dani's authorization, revision checks,
 action receipts, action limits and no-replay recovery still run in the same loop.
 An incomplete model response cannot launch partially generated tool calls.
 
-The model choice is now a stable `agent_profile` separate from `agent_provider`.
+The model choice is now a stable `agent_profile` separate from `agent_provider`; typed
+chat's choice is `chat_profile` (unset means Terra, or the task agent when no OpenAI key is loaded).
 Luna uses the OpenAI provider. Older saved profile/provider values of openai
 resolve to Luna; no database migration is needed. The chosen profile is pinned throughout each active request.
 

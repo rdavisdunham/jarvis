@@ -56,6 +56,8 @@ def enqueue(
     resources=None,
     credential_id=None,
     voice_source=None,
+    typed=False,
+    purpose=None,
 ):
     conv = owned(db, Conversation, conversation_id, owner)
     if conv.device_id != device:
@@ -78,9 +80,20 @@ def enqueue(
             "QUEUE_FULL", "Your work queue is full. Finish or cancel pending requests first.", 429
         )
     prefs = person_preferences(db, owner, device, preferences(db, owner))
-    agent = agent_models.selected(prefs, require_key=True)
+    # Typed chat has its own model; voice, bots and other background work use the task agent.
+    agent = (agent_models.typed_chat if typed else agent_models.selected)(prefs, require_key=True)
+    if not credential_id:
+        from .setup import SETUP_PROFILE, active as setup_active
+        # Set up with Dani runs typed and voice-delegated turns on Terra (decision 5); a continuation keeps it.
+        terra = agent_models.catalog().get(SETUP_PROFILE)
+        if terra and terra.available and agent.profile_id != SETUP_PROFILE and setup_active(db, owner, conversation_id):
+            agent = agent_models.selected({"agent_profile": SETUP_PROFILE}, require_key=True)
     profile = agent.profile_id
     transient = conv.private or not prefs["history_enabled"]
+    if transient and not conv.private:
+        from .setup import retained
+        # The setup conversation is kept even with history off (docs/SETUP_WITH_DANI_PLAN.md, decision 7).
+        transient = not retained(db, owner, conversation_id)
     deps = list(dependencies or [])
     job = Job(id=request_id, owner_id=owner, kind=kind, status="queued", payload={"profile": profile, "service_tier": agent.service_tier, "tool_policy": get_settings().agent_tool_policy})
     db.add(job)
@@ -95,7 +108,7 @@ def enqueue(
         voice_session_id=voice_session_id,
         credential_id=credential_id,
         input_hash=identity,
-        input_ciphertext=seal({"message": message, "context": context or [], "focus": focus, **({"voice_source": voice_source} if voice_source else {})}),
+        input_ciphertext=seal({"message": message, "context": context or [], "focus": focus, **({"voice_source": voice_source} if voice_source else {}), **({"purpose": purpose} if purpose else {})}),
         revision=1,
         dependencies=list(dict.fromkeys(deps)),
         resources=resources or [],
@@ -162,14 +175,13 @@ def eligible(db, job):
         return False
     # A resumed backend receives the actual predecessor outcome, including failures.
     # Waiting releases the worker slot; no model guesses whether a predecessor finished.
-    lane = "agent_action"
     busy = list(
         db.scalars(
             select(AgentWork)
             .join(Job)
             .where(
                 AgentWork.account_id == row.account_id,
-                Job.kind.in_({lane, "agent_intake"}),
+                Job.kind == "agent_action",
                 Job.id != row.id,
                 Job.status.in_({"running", "dispatched"}),
             )
@@ -188,7 +200,8 @@ def finish(db, row, status, message, **result):
     from .quick_sort import finished as finish_sort
     finish_sort(db, row, status, message, result)
     job.status, job.finished_at = status, now()
-    row.result = {**row.result, **result, "message": message}
+    # A settled card never shows a stale progress note.
+    row.result = {**{k: v for k, v in row.result.items() if k != "progress"}, **result, "message": message}
     row.updated_at = now()
     row.seen_at = None
     # Checkpoints contain retrieved data/native provider signatures; never retain after completion.
@@ -204,8 +217,6 @@ def finish(db, row, status, message, **result):
             in {
                 "actions",
                 "tool_calls",
-                "child_ids",
-                "route_kinds",
                 "quiet",
                 "receipt_ids",
                 "related_request_id", "continuation_root", "continuation_ids", "continued_as",
@@ -240,6 +251,10 @@ def checkpoint(request_id, state):
     with session_scope() as db:
         row = db.get(AgentWork, request_id)
         row.checkpoint_ciphertext = seal(state)
+        progress = state.get("progress")
+        if row.result.get("progress") != progress:
+            row.result = {**{k: v for k, v in row.result.items() if k != "progress"},
+                          **({"progress": progress} if progress else {})}
         row.updated_at = now()
         from .work_continuation import touch_root
         touch_root(db, row)
@@ -262,9 +277,9 @@ def cancel(db, row):
     db.flush()
     db.refresh(row)
     job = db.get(Job, row.id)
-    children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == row.id)))
-    for child in children:
-        cancel(db, child)
+    # Clarification continuations point at their root (work_continuation.adopt) and stop with it.
+    for attempt in list(db.scalars(select(AgentWork).where(AgentWork.parent_id == row.id))):
+        cancel(db, attempt)
     if job.status in ACTIVE or job.status == "needs_input":
         row.cancel_requested = True
         row.updated_at = now()
@@ -289,11 +304,6 @@ def revise(db, row, message, *, continue_work=False):
     job = db.get(Job, row.id)
     if job.kind == "external_command":
         raise DomainError("INVALID_ARGUMENT", "Edit the saved record to change this direct command.")
-    if row.parent_id is None and row.result.get("child_ids") and job.status != "needs_input":
-        children = [db.get(AgentWork, identity) for identity in row.result["child_ids"]]
-        if len(children) != 1:
-            raise DomainError("AMBIGUOUS_REQUEST", "Choose the specific request to correct.", 409)
-        return revise(db, children[0], message, continue_work=continue_work)
     if row.input_ciphertext is None:
         raise DomainError(
             "REQUEST_EXPIRED", "Start a new request; this request's temporary input was removed.", 409
@@ -312,9 +322,6 @@ def revise(db, row, message, *, continue_work=False):
     data["corrections"] = corrections[-15:]
     row.input_ciphertext = seal(data)
     row.revision += 1
-    if job.kind == "agent_intake":
-        job.kind = "agent_action"
-        row.checkpoint_ciphertext = None
     saved_state = unseal(row.checkpoint_ciphertext)
     if saved_state:
         saved_state["reply"] = None
@@ -322,6 +329,7 @@ def revise(db, row, message, *, continue_work=False):
         saved_state["round"] = 0
         saved_state["errors"] = []
         saved_state.pop("question_checked", None)
+        saved_state.pop("progress", None)  # A corrected request starts without the old run's note.
         row.checkpoint_ciphertext = seal(saved_state)
     row.cancel_requested = False
     row.expires_at = now() + timedelta(hours=24)
@@ -351,35 +359,13 @@ def reschedule(db, row):
         db.add(Outbox(job_id=row.id))
 
 
-def public(db, row, *, children=True):
+def public(db, row):
     from .action_history import changes_for_work
 
     job = db.get(Job, row.id)
     data = unseal(row.input_ciphertext)
     result = dict(row.result or {})
-    items = []
-    if children and not result.get("continuation_ids"):
-        items = [
-            public(db, child, children=False)
-            for child in db.scalars(
-                select(AgentWork).where(AgentWork.parent_id == row.id).order_by(AgentWork.updated_at)
-            )
-        ]
     status = "queued" if job.status == "dispatched" else job.status
-    if items and job.status != "needs_input":
-        statuses = {c["status"] for c in items}
-        status = next(
-            (
-                state
-                for state in ("running", "queued", "needs_input", "waiting_sync", "failed", "partial")
-                if state in statuses
-            ),
-            "cancelled"
-            if statuses == {"cancelled"}
-            else "partial"
-            if statuses & {"cancelled", "expired"}
-            else "succeeded",
-        )
     actions = changes_for_work(db, row)
     history = []
     from .work_continuation import question_for
@@ -389,11 +375,10 @@ def public(db, row, *, children=True):
         from .work_continuation import attempts
         chain = attempts(db, row)
         active = chain[-1]
-        current = public(db, active, children=False)
+        current = public(db, active)
         status = current["status"]
         result = {**result, "message": current["message"], "waiting_for": active.result.get("waiting_for", [])}
         clarification = current.get("clarification")
-        items = []  # Continuations share this card, unlike legacy independent child work.
         for attempt in chain[1:]:
             actions.extend(changes_for_work(db, attempt))
             answer = unseal(attempt.input_ciphertext).get("clarification_answer")
@@ -428,7 +413,8 @@ def public(db, row, *, children=True):
         "clarification": clarification,
         "clarification_history": history,
         "actions": actions,
-        "children": items,
+        # The latest mid-run step of the attempt now running, e.g. "looking that up"; None once settled.
+        "progress": active.result.get("progress") if status in ACTIVE else None,
         "cancel_requested": active.cancel_requested,
         "seen": bool(row.seen_at),
         "created_at": job.created_at.isoformat(),

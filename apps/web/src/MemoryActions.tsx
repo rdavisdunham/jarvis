@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { FileText, Pencil, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
+import { FileText, Pencil, Pin, PinOff, RefreshCw, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
-import type { Memory, MemoryMaintenance } from "./types";
+import type { AboutYou, Memory, MemoryMaintenance } from "./types";
 import "./notes.css";
 
 type LearningStatus = {enabled:boolean;pending:number;retrying:number;deferred:number;queued?:number;active?:number;failed?:number;retry_waiting?:number};
@@ -55,6 +55,48 @@ export function MemoryStatus({status, worker, reviews, maintenance, timezone, bu
 
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"});
 
+/** What Dani is told about the owner at the start of each voice call, read-only. Written in the background. */
+export function AboutYouSummary({about, onUnpin, onUpdate, onRefresh}: {about: AboutYou; onUnpin?: (id: string) => Promise<unknown>;
+  /** Re-run Set up with Dani focused on who you are. */
+  onUpdate?: () => void;
+  /** Queue a background rewrite now instead of waiting for the daily check. */
+  onRefresh?: () => Promise<unknown>}) {
+  const [asked, setAsked] = useState(false);
+  const refreshing = asked || !!about.refreshing;
+  useEffect(() => { if (!about.refreshing) setAsked(false); }, [about.refreshing, about.updated_at]);
+  const note = !about.enabled
+    ? "Off while automatic learning is off."
+    : !about.summary
+      ? "No summary yet. Dani writes one in the background from your saved memories, about once a day."
+      : !about.in_voice
+        ? "Not sent to voice while Memory during voice is off."
+        : "Dani is told this at the start of each voice call. It is rewritten in the background, about once a day, when your memories change.";
+  return <section className="panel memory-about" aria-labelledby="memory-about">
+    <div className="memory-section-head">
+      <h2 id="memory-about">About you</h2>
+      {about.updated_at && <span className="memory-section-sub tabular">Updated <time dateTime={about.updated_at}>{shortDate(about.updated_at)}</time></span>}
+    </div>
+    {about.summary && <p className="memory-about-text">{about.summary}</p>}
+    <p className="memory-status-help">{note}</p>
+    {!!about.core?.length && <>
+      <h3 className="memory-about-core-head">Always kept in mind</h3>
+      <ul className="memory-about-core">
+        {about.core.map(fact => <li key={fact.id}>
+          <span>{fact.content}</span>
+          {onUnpin && <button type="button" className="btn btn-ghost btn-sm" aria-label={"Unpin: " + fact.content}
+            onClick={() => void onUnpin(fact.id).catch(() => {})}><PinOff size={14} aria-hidden/>Unpin</button>}
+        </li>)}
+      </ul>
+    </>}
+    {(onUpdate || onRefresh) && <div className="memory-about-actions">
+      {onRefresh && about.enabled && <button type="button" className="btn btn-sm" disabled={refreshing} aria-live="polite"
+        onClick={() => { setAsked(true); void onRefresh().catch(() => setAsked(false)); }}>
+        <RefreshCw size={14} aria-hidden/>{refreshing ? "Refreshing…" : "Refresh now"}</button>}
+      {onUpdate && <button type="button" className="btn btn-sm" onClick={onUpdate}>Update with Dani</button>}
+    </div>}
+  </section>;
+}
+
 /** Where a fact came from. A fact Dani learned on its own names the conversation it came from (a link that opens
  * it) so a wrong fact can be traced; facts you stated or asked Dani to save say so. */
 export function MemorySource({memory, onOpenConversation}: {memory: Memory; onOpenConversation?: (id: string) => void}) {
@@ -69,9 +111,11 @@ export function MemorySource({memory, onOpenConversation}: {memory: Memory; onOp
 }
 
 /** One remembered fact as a list row: the fact, quiet provenance, an expandable evidence line and hover actions. */
-export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversation}: {
+export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversation, onPin}: {
   memory: Memory; onCorrect: () => void; onForget: (deleteSource: boolean) => Promise<unknown>; onWrong: () => Promise<unknown>;
   onOpenConversation?: (id: string) => void;
+  /** Pin or unpin the fact for About you. */
+  onPin?: (core: boolean) => Promise<unknown>;
 }) {
   return <article className="memory row memory-row">
     <div className="memory-main">
@@ -79,6 +123,7 @@ export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversat
       <div className="memory-meta">
         <MemorySource memory={memory} onOpenConversation={onOpenConversation}/>
         <time className="tabular" dateTime={memory.created_at}>{new Date(memory.created_at).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"})}</time>
+        {memory.core && <span className="chip">About you</span>}
         {memory.tags?.map(tag => <span className="chip" key={tag}>{tag}</span>)}
       </div>
       {memory.evidence && memory.evidence.trim() !== memory.content.trim() && <details className="memory-evidence">
@@ -87,6 +132,9 @@ export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversat
       </details>}
     </div>
     <div className="row-actions memory-actions">
+      {onPin && <button className="btn btn-ghost btn-sm" onClick={() => void onPin(!memory.core).catch(() => {})}
+        title={memory.core ? "Stop always keeping this in mind" : "Dani always keeps pinned facts in mind (About you)"}>
+        {memory.core ? <><PinOff size={14} aria-hidden/>Unpin</> : <><Pin size={14} aria-hidden/>Pin to About you</>}</button>}
       <MemoryActions memory={memory} onCorrect={onCorrect} onForget={onForget} onWrong={onWrong}/>
     </div>
   </article>;

@@ -838,7 +838,7 @@
   .task-filters select { width: 100%; min-width: 0; }
 }
 .work-card {border:1px solid var(--line);border-radius:var(--r-lg);padding:13px;margin:10px 0;background:var(--surface);font-size:13px;overflow-wrap:anywhere}
-.work-card.attention {border-color:var(--due-today)}.work-card.nested {background:transparent;margin:8px 0;padding:10px}
+.work-card.attention {border-color:var(--due-today)}
 .work-card>header {display:flex;justify-content:space-between;gap:8px;align-items:center}.work-card time {font-size: 12px;color:var(--ink-2)}
 .work-status {display:inline-flex;align-items:center;gap:5px;font-size: 12px;font-weight:600;color:var(--ink-2)}.work-status.succeeded {color:var(--done)}.work-status.failed,.work-status.partial,.work-status.needs_input {color:var(--due-today)}
 .work-result {line-height:1.6;color:var(--ink-2);white-space:pre-wrap;margin:6px 0}

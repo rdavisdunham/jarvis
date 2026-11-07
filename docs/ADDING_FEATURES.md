@@ -252,8 +252,8 @@ Verify: `pytest -q tests/test_drift_guards.py tests/test_external_agents.py test
 ## 4. A new Dani tool (chat and voice)
 
 Dani's tool list is `tools.registry()`: every `READ_TOOLS` entry plus every command in
-`VOICE_MUTATIONS` (name `a.b` becomes tool `a_b`). Chat (`conversation.py`), the voice controller
-(`voice.py`) and queued work (`work_runner.py`) each wrap it in `tool_policy.remotea_tools(...)`;
+`VOICE_MUTATIONS` (name `a.b` becomes tool `a_b`). Queued work (`work_runner.py`, typed chat and
+delegated voice) and the voice controller (`voice.py`) each wrap it in `tool_policy.remotea_tools(...)`;
 GPT-Live (`live_voice.py`) delegates to queued work.
 
 - [ ] Read tool: add to `READ_TOOLS` in `tools.py` (description + JSON schema) and implement it in

@@ -83,14 +83,14 @@ def responder(monkeypatch, responses):
 async def test_none_profile_is_explicit_and_frozen_for_accepted_work(client, monkeypatch, caplog):
     from jarvis import agent_models
     with session_scope() as db:
-        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna-none"})
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna-none", "chat_profile": "luna-none"})
     boot = client.get("/api/v1/bootstrap").json()
     assert boot["agent_profile"] == "luna-none" and boot["agent_reasoning"] == "none"
     assert next(m for m in boot["agent_options"] if m["id"] == "luna")["reasoning_effort"] == "low"
     work, _ = accept(client, "Add Alpha")
     with session_scope() as db:
         assert db.get(Job, work["id"]).payload["profile"] == "luna-none"
-        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna"})
+        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "luna", "chat_profile": "luna"})
     bodies = []
 
     streamed = []
@@ -632,7 +632,6 @@ async def test_natural_speech_runs_directly_without_an_intake_model(client, monk
     assert len(calls) == 2  # One tool plan and its confirmation; no routing round.
     result = client.get("/api/v1/work/" + work["id"]).json()
     assert result["status"] == "succeeded" and len(result["actions"]) == 2
-    assert not result["children"]
 
 
 @pytest.mark.asyncio
@@ -856,16 +855,6 @@ def test_followup_cannot_target_future_work_or_another_account(client):
 
 
 @pytest.mark.asyncio
-async def test_legacy_intake_retry_executes_original_request_without_quote_validation(client, monkeypatch):
-    work, _ = accept(client, "Um, at 10 p.m., please add a visit.")
-    with session_scope() as db:
-        db.get(Job, work["id"]).kind = "agent_intake"
-    responder(monkeypatch, [response([("task_create", {"title": "Visit"})]), response(message="Added.")])
-    await work_intake.run(work["id"])
-    assert client.get("/api/v1/work/" + work["id"]).json()["status"] == "succeeded"
-
-
-@pytest.mark.asyncio
 async def test_direct_voice_backend_ends_voice_and_hides_conversation_only_cards(client, monkeypatch):
     work, _ = accept(client, "That will be all, goodbye")
     with session_scope() as db:
@@ -1039,6 +1028,8 @@ async def test_queued_tier_is_pinned_and_downgrade_cost_is_recorded(
     from jarvis import agent_models
     from jarvis.models import Usage
     settings = get_settings()
+    with session_scope() as db:  # The Fast tier is Luna's; typed chat defaults to Terra.
+        execute(db, "davin", str(uuid4()), "settings.update", {"chat_profile": "luna"})
     monkeypatch.setattr(settings, "agent_service_tier", accepted_tier)
     monkeypatch.setattr(settings, "cost_tracking_enabled", True)
     work, _ = accept(client, "Hello")

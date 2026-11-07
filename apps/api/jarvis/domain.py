@@ -260,8 +260,11 @@ class SettingsUpdate(Args):
     notify_min_priority: Literal["low", "normal", "high", "urgent"] | None = None
     digest_cadence: Literal["off", "hourly", "every_3_hours", "daily"] | None = None
 
-    agent_profile: Literal["openai", "luna", "luna-none", "gemini", "groq"] | None = None
+    agent_profile: Literal["openai", "luna", "luna-none", "terra-6.1", "gemini", "groq"] | None = Field(
+        default=None, description="Task agent for voice-delegated, bot and other background work.")
     agent_provider: Literal["openai", "gemini", "groq"] | None = None
+    chat_profile: Literal["terra-6.1", "luna", "luna-none", "gemini", "groq"] | None = Field(
+        default=None, description="Model for requests typed in the app's chat.")
     preferred_name: str | None = Field(default=None, min_length=1, max_length=80)
     name_aliases: list[str] | None = Field(
         default=None, max_length=10,
@@ -398,7 +401,7 @@ def advisory(db, key):
 
 
 def preferences(db, owner):
-    from .agent_models import default_provider, selected
+    from .agent_models import default_provider, selected, typed_chat
 
     settings = get_settings()
     row = db.get(OwnerSettings, owner)
@@ -408,7 +411,7 @@ def preferences(db, owner):
         "name_aliases": [],
         "history_enabled": True,
         "memory_learning": True,
-        # Mid-session saved-memory updates in GPT-Live (docs/APP_FUNCTIONALITY.md §33); on, like start-of-session memory.
+        # Saved memory in GPT-Live (docs/APP_FUNCTIONALITY.md §33): the opening About you summary and mid-session updates.
         "live_memory_updates": True,
         "deep_sleep_enabled": True,
         "routing_mode": "automatic", "routing_learning": True, "routing_review_enabled": True,
@@ -430,8 +433,10 @@ def preferences(db, owner):
         **(row.values if row else {}),
     }
     agent = selected(values)
+    chat = typed_chat(values)
     from .access import shared_preferences
-    return shared_preferences(db, owner, {**values, "agent_profile": agent.profile_id, "agent_provider": agent.provider})
+    return shared_preferences(db, owner, {**values, "agent_profile": agent.profile_id, "agent_provider": agent.provider,
+                                          "chat_profile": chat.profile_id})
 
 
 def zone(name):
@@ -530,7 +535,11 @@ def capture_source(db, owner, content, native_id, role="user", conversation=None
         and not explicit
         and (conversation.private or not preferences(db, owner)["history_enabled"])
     ):
-        return None
+        from .setup import retained
+        # The setup conversation is kept even with history off (docs/SETUP_WITH_DANI_PLAN.md, decision 7).
+        if conversation.private or not retained(db, owner, conversation.id):
+            return None
+    existing = db.scalar(select(Source).where(Source.owner_id == owner, Source.native_id == native_id))
     existing = db.scalar(select(Source).where(Source.owner_id == owner, Source.native_id == native_id))
     if existing:
         return existing
@@ -606,7 +615,7 @@ def execute(db, owner, command_id, tool, arguments):
     if tool.startswith("memory."):
         advisory(db, f"memory:{owner}")
     if tool.startswith(
-        ("review.", "quicksort.", "quicklist.", "onboarding.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.", "template.")
+        ("review.", "quicksort.", "quicklist.", "onboarding.", "setup.", "settings.", "notelist.", "task.", "project.", "schedule.", "notification.", "note.", "space.", "area.", "goal.", "actor.", "record.", "structure.", "routing.", "template.")
     ):
         # Serialize owner graph changes so two concurrent parent edits cannot create a cycle.
         advisory(db, f"workspace:{owner}")
@@ -684,6 +693,15 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("onboarding."):
         from .onboarding import mutate as setup_mutate
         return setup_mutate(db, owner, tool, args, command_id)
+    if tool.startswith("setup.tree_"):
+        from .setup_tree import mutate as tree_mutate
+        return tree_mutate(db, owner, tool, args, command_id)
+    if tool in {"setup.memories_save", "memory.pin", "memory.unpin"}:
+        from .setup_memory import mutate as memory_setup_mutate
+        return memory_setup_mutate(db, owner, tool, args, command_id)
+    if tool == "setup.propose":
+        from .setup_synthesis import mutate as propose_mutate
+        return propose_mutate(db, owner, tool, args, command_id)
     if tool.startswith("routing."):
         from .routing import mutate as routing_mutate
         return routing_mutate(db,owner,tool,args,command_id)
@@ -1031,6 +1049,7 @@ def mutate(db, owner, tool, args, command_id):
                 supersedes_id=old.id,
                 fact_key=old.fact_key,
                 revision=old.revision + 1,
+                core=old.core,  # A corrected About you fact stays one.
             )
             db.add(row)
             db.flush()
@@ -1103,6 +1122,10 @@ def mutate(db, owner, tool, args, command_id):
                 raise DomainError("INVALID_ARGUMENT", "The selected model and provider do not match.")
             # Older clients can still select a provider; new clients select a model profile.
             values.update(agent_profile=agent.profile_id, agent_provider=agent.provider)
+        if "chat_profile" in values:
+            from .agent_models import typed_chat
+
+            values["chat_profile"] = typed_chat(values, require_key=True).profile_id
         if "scheduling_windows" in values:
             windows = values["scheduling_windows"]
             if set(windows) - {"work", "personal"} or any(len(rows)>14 or any(not w["days"] or any(d<0 or d>6 for d in w["days"]) or w["start"]==w["end"] for w in rows) for rows in windows.values()):
@@ -1269,6 +1292,16 @@ COMMANDS.update(QUICK_COMMANDS)
 
 from .onboarding import COMMANDS as SETUP_COMMANDS
 COMMANDS.update(SETUP_COMMANDS)
+
+from .setup_tree import COMMANDS as SETUP_TREE_COMMANDS
+COMMANDS.update(SETUP_TREE_COMMANDS)
+
+from .setup_synthesis import COMMANDS as SETUP_PROPOSE_COMMANDS
+COMMANDS.update(SETUP_PROPOSE_COMMANDS)
+
+from .setup_memory import COMMANDS as SETUP_MEMORY_COMMANDS, MEMORY_COMMANDS as CORE_MEMORY_COMMANDS
+COMMANDS.update(SETUP_MEMORY_COMMANDS)
+COMMANDS.update(CORE_MEMORY_COMMANDS)
 
 from .quick_sort_schema import COMMANDS as SORT_COMMANDS
 COMMANDS.update(SORT_COMMANDS)

@@ -5,12 +5,14 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from jarvis import budget, conversation
+from cryptography.fernet import Fernet
+from jarvis import budget, work_runner
 from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import DomainError, preferences
 from jarvis.models import BudgetReservation, Conversation, Usage, now
 from jarvis.voice import Controller
+from scripts.app_eval.work_turn import run_turn
 from sqlalchemy import select
 
 
@@ -50,9 +52,11 @@ def test_provider_evidence_reconciliation_is_audited_idempotent_and_owner_scoped
     "status,expected",
     [(400, "closed"), (401, "closed"), (429, "closed"), (408, "uncertain"), (500, "uncertain")],
 )
-async def test_text_rejections_release_allowance_but_timeouts_keep_it(monkeypatch, status, expected):
+async def test_text_rejections_release_allowance_but_timeouts_keep_it(client, monkeypatch, status, expected):
     monkeypatch.setattr(get_settings(), "openai_api_key", "test")
-    monkeypatch.setattr(conversation, "prompt_context", AsyncMock(return_value=""))
+    monkeypatch.setattr(get_settings(), "integration_encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(work_runner, "prompt_context", AsyncMock(return_value=""))
+    monkeypatch.setattr(work_runner.asyncio, "sleep", AsyncMock())  # 429 and 5xx retry with backoff.
 
     class Client:
         def __init__(self, **_):
@@ -67,14 +71,14 @@ async def test_text_rejections_release_allowance_but_timeouts_keep_it(monkeypatc
         async def post(self, url, **_):
             return httpx.Response(status, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(conversation.httpx, "AsyncClient", Client)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
     with session_scope() as db:
         conv = Conversation(owner_id="davin", device_id="test", private=True, learning=False)
         db.add(conv)
         db.flush()
         cid = conv.id
     rid = str(uuid4())
-    result = await conversation.chat("davin", "test", rid, cid, "Hello")
+    result = await run_turn("davin", "test", rid, cid, "Hello")
     assert result["status"] == "failed"
     with session_scope() as db:
         assert db.get(BudgetReservation, rid).state == expected

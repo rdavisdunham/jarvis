@@ -11,7 +11,7 @@ from .model_runner import PROBES
 
 GROUPS = {
     "contracts": "quick_capture onboarding task_capture task_edit task_lifecycle time_deadlines routines organization custom_schema custom_records planner_views planning notifications accounts workspaces privacy operations budget",
-    "agent": "queue clarifications receipts chat_agent quick_sort",
+    "agent": "queue clarifications receipts chat_agent quick_sort setup_interview",
     "pipeline": "notes note_tasks note_lists note_organization search search_aliases memory_capture memory_management memory_dream routing_rules routing_dream meeting_context",
     "integration": "google_sync google_writes linear_sync linear_writes external_agents agent_control",
     "browser": "site_controls browser_settings",
@@ -20,7 +20,7 @@ GROUPS = {
 FEATURE_TYPE = {feature: group for group, features in GROUPS.items() for feature in features.split()}
 MODES = ("offline", "live-model", "live-service")
 BROWSERS = {
-    "quick_capture":["batch-c.mjs"], "onboarding":["batch-c.mjs"],
+    "quick_capture":["batch-c.mjs"], "onboarding":["batch-c.mjs"], "setup_interview":["batch-c.mjs"],
     "planner_views": ["custom-planner.mjs", "batch-b.mjs"],
     "browser_settings": ["shell-navigation.mjs", "usage-report.mjs"],
     "site_controls": ["custom-planner.mjs", "shell-navigation.mjs"],

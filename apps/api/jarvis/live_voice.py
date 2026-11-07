@@ -15,15 +15,26 @@ from .agent_instructions import live_instructions
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
-from .memory_service import current_facts, prompt_context, semantic_search
+from .memory_service import current_facts, semantic_search
+from .people_links import mentioned
 from .models import AgentWork, Conversation, Job, Source, VoiceInbox, now, uid
-from .ui_control import get_context
 from .voice import Controller, controllers
 from .latency import mark, span
 from .work_intake import append_voice, claim_voice, mark_asked, open_voice
 from .voice_end_policy import EndPolicy, candidate_valid
 from .work_crypto import seal, unseal
 from .domain import advisory
+
+SLOW_WORK_SECONDS = 12  # A request still running after this gets one spoken "still working" note.
+# Mid-run progress notes from the backend ("looking that up"): a request must be busy this long before its
+# first note, notes in a session are this far apart, and one request gets at most this many (the generic
+# "still working" note counts as one).
+PROGRESS_MIN_BUSY_SECONDS = 4
+PROGRESS_SPACING_SECONDS = 8
+PROGRESS_MAX_NOTES = 3
+PROGRESS_PREFIX = "Progress, not a result: the backend is "
+PROGRESS_SUFFIX = ". Say so in a few words, once, without guessing the outcome."
+
 
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
 LIVE_PRICE_PER_SECOND = 0.05 / 60
@@ -56,6 +67,7 @@ class LiveController(Controller):
         self.startup_state = None
         self.startup_pending = False
         self.end_candidate = None
+        self.setup_notes = None  # set by connect() for the Set up with Dani conversation
         self.end_candidate_deadline = 0.0
         self.close_lock, self.delegation_lock = asyncio.Lock(), asyncio.Lock()
         self.delegations, self.work = set(), set()
@@ -71,10 +83,15 @@ class LiveController(Controller):
         self.final_reason = None
         self.memory_task = None
         self.context_sent = set()  # (memory id, revision) already in this session's context.
+        self.people_sent = set()  # (actor id, line) already in this session's context.
         self.context_pending = {}  # client event id -> fact count, until the provider acknowledges it.
         self.context_retrieved_at = None
-        self.context_stats = {"retrievals": 0, "facts_sent": 0, "facts_acknowledged": 0, "facts_dropped": 0}
+        self.context_stats = {"retrievals": 0, "facts_sent": 0, "facts_acknowledged": 0, "facts_dropped": 0,
+                              "people_sent": 0}
         self.announced_work = set()
+        self.busy_since, self.slow_noted = {}, set()  # Root request -> first seen running; "still working" sent.
+        self.progress_heard = {}  # Root request -> {"seq", "said", "count", "at"} of the notes spoken for it.
+        self.last_progress_at = float("-inf")
         self.review_delivery = None
         self.review_event = None
         self.review_offered = False
@@ -107,13 +124,17 @@ class LiveController(Controller):
             conv = owned(db, Conversation, self.conversation_id, self.owner)
             from .access import actor
             open_voice(db, self.id, self.owner, actor(db, self.owner), self.device, self.conversation_id)
-            if not conv.private and self.preferences["history_enabled"]:
+            from .setup import LIVE_HISTORY_WINDOW, active as setup_active
+            # Set up with Dani: GPT-Live holds the interview, so it reads more of the (always kept) setup transcript.
+            setup = None if self.preferences.get("shared_workspace") else setup_active(db, self.owner, conv.id)
+            self.setup_notes = dict(setup.notes or {}) if setup else None
+            if (not conv.private and self.preferences["history_enabled"]) or setup:
                 rows = list(
                     db.scalars(
                         select(Source)
                         .where(Source.conversation_id == conv.id, Source.deleted_at.is_(None))
                         .order_by(Source.created_at.desc())
-                        .limit(12)
+                        .limit(LIVE_HISTORY_WINDOW if setup else 12)
                     )
                 )
                 self.history = [
@@ -123,8 +144,10 @@ class LiveController(Controller):
                     }
                     for s in reversed(rows)
                 ]
-        self.memory_context = "" if self.preferences.get("shared_workspace") else await prompt_context(
-            self.owner, seen=self.context_sent)
+        # A short stored "About you" summary (about_you.py), never generated here. Specific facts arrive later,
+        # by what the owner says (refresh_memory_context); none are sent at start, so context_sent stays empty.
+        from .about_you import for_voice
+        self.memory_context = for_voice(self.owner, self.preferences)
         from .access import assert_current
         assert_current(self.owner,self.device)
         session = {
@@ -132,9 +155,9 @@ class LiveController(Controller):
             "store": False,
             "audio": {"output": {"voice": self.voice}},
             "delegation": {"type": "client"},
-            "instructions": live_instructions(
-                self.preferences, self.focus, get_context(self.owner, self.device)
-            )
+            "instructions": live_instructions(self.preferences, self.voice,
+                                              mode="setup" if self.setup_notes is not None else None,
+                                              setup_notes=self.setup_notes)
             + "\n"
             + self.memory_context,
             "input": [
@@ -414,13 +437,20 @@ class LiveController(Controller):
             if self.closed or self.closing or revision != self.input_revision:
                 return
             fresh = [f for f in facts if (f["id"], f["revision"]) not in self.context_sent]
-            if not fresh:
-                return
             # The search awaited a provider; recheck that each fact and its source still exist and are current.
+            # People the owner just named come along with the clients and projects they are linked to.
             with session_scope() as db:
-                current = current_facts(db, self.owner, fresh)
+                current = current_facts(db, self.owner, fresh) if fresh else []
+                people = [p for p in mentioned(db, self.owner, query) if p not in self.people_sent]
             self.context_stats["facts_dropped"] += len(fresh) - len(current)
-            payload, chosen = [], []
+            if not current and not people:
+                return
+            payload, chosen, named = [], [], []
+            for person in people:
+                proposed = CONTEXT_PREFIX + json.dumps([*payload, person[1][:300]], ensure_ascii=False)
+                if len(proposed) <= CONTEXT_MAX_CHARS and token_estimate(proposed) <= CONTEXT_MAX_TOKENS:
+                    payload.append(person[1][:300])
+                    named.append(person)
             for fact in current:
                 if len(payload) == CONTEXT_MAX_FACTS:
                     break
@@ -434,7 +464,9 @@ class LiveController(Controller):
             event_id = uid()
             self.context_pending[event_id] = len(payload)
             self.context_sent.update((f["id"], f["revision"]) for f in chosen)
-            self.context_stats["facts_sent"] += len(payload)
+            self.people_sent.update(named)
+            self.context_stats["facts_sent"] += len(chosen)
+            self.context_stats["people_sent"] += len(named)
             await self.send(
                 {
                     "type": "session.thinking.append",
@@ -526,73 +558,67 @@ class LiveController(Controller):
                     from .work_continuation import latest
                     if latest(db, root).voice_session_id != self.id:
                         continue
-                children = list(db.scalars(select(AgentWork).where(AgentWork.parent_id == root.id)))
-                leaves = [root] if root.result.get("continuation_ids") else children or [root]
-                snapshots = [public(db, leaf) for leaf in leaves]
-                entries.append((root, children, leaves, snapshots))
+                # One card per root: public() folds clarification continuations into it.
+                entries.append((root, public(db, root)))
             busy_statuses = {*ACTIVE, "waiting_sync", "retrying"}
-            self.pending_work = any(
-                snapshot["status"] in busy_statuses
-                for _, _, _, snapshots in entries for snapshot in snapshots
-            )
+            self.pending_work = any(snapshot["status"] in busy_statuses for _, snapshot in entries)
             self.pending_question = any(
-                (snapshot.get("clarification") or {}).get("id") in self.asked
-                for _, _, _, snapshots in entries for snapshot in snapshots
+                (snapshot.get("clarification") or {}).get("id") in self.asked for _, snapshot in entries
             )
             if (now() - inbox.last_input_at).total_seconds() < 2.5:
                 return
-            notices, stamps, asking = [], [], None
-            for root, children, leaves, snapshots in entries:
-                if any(snapshot["status"] in busy_statuses for snapshot in snapshots):
+            notices, stamps, asking, busy = [], [], None, []
+            for root, snapshot in entries:
+                if snapshot["status"] in busy_statuses:
+                    busy.append((root, snapshot, self.busy_since.setdefault(root.id, time.monotonic())))
                     continue
                 # Content, not root.revision: touch_root/continuation bumps must not re-announce.
-                stamp = (root.id, tuple((snapshot["id"], snapshot["status"], snapshot.get("message", ""),
+                stamp = (root.id, snapshot["status"], snapshot.get("message", ""),
                     (snapshot.get("clarification") or {}).get("id"),
-                    tuple((a.get("id"), a.get("remote_status")) for a in snapshot["actions"])) for snapshot in snapshots))
+                    tuple((a.get("id"), a.get("remote_status")) for a in snapshot["actions"]))
                 if stamp in self.announced_work:
                     continue
-                questions = [snapshot["clarification"] for snapshot in snapshots if snapshot.get("clarification")]
-                if questions and self.superseded(db, root, questions[0]):
+                question = snapshot.get("clarification")
+                if question and self.superseded(db, root, question):
                     # The conversation already moved on to later voice work; never ask a stale question.
                     self.announced_work.add(stamp)
                     continue
                 # A backend question is never a quiet result, however it was produced.
-                if not children and not questions and (root.result.get("route_kinds") == ["conversation"] or (
-                    root.result.get("quiet") and not root.result.get("tool_calls")
-                )):
+                if (not question and not root.result.get("continuation_ids")
+                        and root.result.get("quiet") and not root.result.get("tool_calls")):
                     self.announced_work.add(stamp)
                     continue
-                texts = []
-                for leaf, snapshot in zip(leaves, snapshots):
-                    remote = [action for action in snapshot["actions"] if action.get("remote_status")]
-                    if any(action["remote_status"] != "succeeded" for action in remote):
-                        text = "A connected-service change needs attention. Review Activity."
-                    elif remote:
-                        text = "Synchronization confirmed: " + ", ".join(action["title"] for action in remote)
-                    else:
-                        text = snapshot.get("message", "")
-                    if text and (leaf.result or {}).get("pending_confirmation"):
-                        # A proposed agent action (control_start / control_message): Live must ask for the owner's yes
-                        # and delegate it on its own as soon as it is spoken.
-                        text += " It is waiting for your yes."
-                    texts.append(text)
+                remote = [action for action in snapshot["actions"] if action.get("remote_status")]
+                if any(action["remote_status"] != "succeeded" for action in remote):
+                    text = "A connected-service change needs attention. Review Activity."
+                elif remote:
+                    text = "Synchronization confirmed: " + ", ".join(action["title"] for action in remote)
+                else:
+                    text = snapshot.get("message", "")
+                if text and root.result.get("pending_confirmation"):
+                    # A proposed agent action (control_start / control_message): Live must ask for the owner's yes
+                    # and delegate it on its own as soon as it is spoken.
+                    text += " It is waiting for your yes."
                 # One result per tick: never mark a question announced after truncating it out.
-                notices.extend(t for t in texts if t)
+                if text:
+                    notices.append(text)
                 stamps.append(stamp)
-                if questions:
-                    asking = questions[0]
-                for snapshot in snapshots:
-                    self.receipts.extend(a["command_id"] for a in snapshot["actions"]
-                        if a["command_id"] not in self.receipts)
+                if question:
+                    asking = question
+                self.receipts.extend(a["command_id"] for a in snapshot["actions"]
+                    if a["command_id"] not in self.receipts)
                 if notices:
                     break
             if not notices:
+                # Results always win; progress waits while the owner talks or answers a backend question.
+                if not self.pending_question and not self.input_speaking:
+                    await self.report_progress(busy)
                 return
         # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
         content = ("Verified background results: " + " ".join(notices)).encode()[:420].decode("utf-8", errors="ignore")
         # One spoken channel: a backend question is conveyed once, here, and owns the reply.
         suffix = (" The backend is waiting for the user's answer to this question. Ask it once, add no question of "
-            "your own, then delegate the reply." if asking else " Full details are in Activity.")
+            "your own, then send the reply with <|SpawnThinking|>." if asking else " Full details are in Activity.")
         await self.send({"type": "session.commentary.append", "event_id": uid(),
             "delegation_id": None, "content": content + suffix})
         for identity, *_ in stamps:
@@ -603,6 +629,55 @@ class LiveController(Controller):
             self.pending_question = True
             with session_scope() as db:
                 mark_asked(db, self.id, asking["id"])
+
+    async def report_progress(self, busy):
+        """At most one spoken progress note per tick, for (root, public snapshot, busy since) of running work.
+
+        A backend step note ("saving Call Alex") goes out when it is new for that request; otherwise a request
+        busy for SLOW_WORK_SECONDS gets one generic "still working" note. Either counts toward the request's
+        limit and the session spacing. With two requests busy, the one heard from least recently goes first."""
+        moment = time.monotonic()
+        if moment - self.last_progress_at < PROGRESS_SPACING_SECONDS:
+            return
+        choices = []
+        for root, snapshot, started in busy:
+            heard = self.progress_heard.get(root.id, {})
+            if heard.get("count", 0) >= PROGRESS_MAX_NOTES:
+                continue
+            step = snapshot.get("progress") or {}
+            note = step.get("note")
+            if (isinstance(note, str) and note and step.get("ok") is not False
+                    and int(step.get("seq", 0)) > heard.get("seq", 0)
+                    and [step.get("stage"), note] != heard.get("said")
+                    and moment - started >= PROGRESS_MIN_BUSY_SECONDS):
+                choices.append((heard.get("at", float("-inf")), 0, root, step))
+            elif root.id not in self.slow_noted and moment - started >= SLOW_WORK_SECONDS:
+                choices.append((heard.get("at", float("-inf")), 1, root, None))
+        if not choices:
+            return
+        _, _, root, step = min(choices, key=lambda choice: choice[:2])
+        heard = self.progress_heard.setdefault(root.id, {})
+        heard.update(count=heard.get("count", 0) + 1, at=moment)
+        self.last_progress_at = moment
+        self.slow_noted.add(root.id)  # A specific note stands in for the generic one.
+        if step is None:
+            await self.still_working(root.id, (unseal(root.input_ciphertext) or {}).get("message", "")
+                                     if root.input_ciphertext else "")
+            return
+        heard.update(seq=int(step["seq"]), said=[step.get("stage"), step["note"]])
+        # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
+        room = 420 - len((PROGRESS_PREFIX + PROGRESS_SUFFIX).encode())
+        note = step["note"].encode()[:room].decode("utf-8", errors="ignore")
+        await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
+                         "content": PROGRESS_PREFIX + note + PROGRESS_SUFFIX})
+        mark("live_progress_sent", root.id, progress_stage=step.get("stage"), progress_seq=step["seq"])
+
+    async def still_working(self, identity, request):
+        """One spoken progress note for a request that is taking a while; never a result."""
+        self.slow_noted.add(identity)
+        about = (" (" + json.dumps(request[:80], ensure_ascii=False) + ")") if request else ""
+        await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
+            "content": PROGRESS_PREFIX + "still working on an earlier request" + about + PROGRESS_SUFFIX})
 
     def superseded(self, db, root, question):
         asked = db.get(Job, question["request_id"])
@@ -645,7 +720,7 @@ class LiveController(Controller):
         try:
             await self.send({"type":"session.commentary.append","event_id":self.review_event,"delegation_id":None,
                 "content":"Optional review invitation, not a task result: "+invitation["message"]+
-                " You may ask if the user wants to review it. If they agree, delegate a request to open the personal Questions review; the backend should load review tools and ask the full question before resolving anything. Do not treat unrelated speech as an answer."})
+                " You may ask if the user wants to review it. If they agree, generate <|SpawnThinking|> to open the personal Questions review; the backend should load review tools and ask the full question before resolving anything. Do not treat unrelated speech as an answer."})
             with session_scope() as db:
                 acknowledge(db,self.owner,self.device,invitation["id"],"forwarded")
         except Exception:

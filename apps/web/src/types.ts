@@ -151,6 +151,8 @@ export interface Memory {
   attribution: string;
   created_at: string;
   revision: number;
+  /** Pinned: Dani always keeps it in mind (About you). */
+  core?: boolean;
   /** Where the fact came from (GET /memory only): origin and conversation, never the source text. */
   source?: MemorySourceInfo | null;
 }
@@ -165,6 +167,18 @@ export interface MemoryReview {
   question: string;
   candidates: Memory[];
 }
+/** The short "About you" summary Dani is told at the start of each voice call (GET /memory `about`). */
+export interface AboutYou {
+  enabled: boolean;
+  in_voice: boolean;
+  summary: string;
+  updated_at: string | null;
+  /** A rewrite is queued or running. */
+  refreshing?: boolean;
+  /** Pinned facts the summary always reflects. */
+  core?: { id: string; content: string }[];
+}
+
 export interface MemoryMaintenance {
   status: string;
   last_error: string | null;
@@ -179,9 +193,12 @@ export interface MemoryMaintenance {
   } | null;
 }
 export type AgentProvider = "openai" | "gemini" | "groq";
-export type AgentProfile = AgentProvider | "luna" | "luna-none";
+export type AgentProfile = AgentProvider | "luna" | "luna-none" | "terra-6.1";
 export interface Preferences {
+  /** Background work: voice-delegated tasks, bots and connected agents. */
   agent_profile: AgentProfile;
+  /** Requests typed in the app's chat; GPT-6.1 Terra unless changed. */
+  chat_profile?: AgentProfile;
   source_colors?: Record<string,string>;
   agent_provider: AgentProvider;
   preferred_name: string;
@@ -210,6 +227,10 @@ export interface Bootstrap {
   agent_reasoning: string | null;
   agent_service_tier?: "default" | "fast";
   agent_provider: AgentProvider;
+  /** Typed chat's own model; the agent_* fields describe background work. */
+  chat_profile?: AgentProfile;
+  chat_model?: string;
+  chat_reasoning?: string | null;
   agent_options: {
     id: AgentProfile;
     reasoning_effort: string | null;

@@ -3,7 +3,7 @@
 Start with [the functionality overview](../../docs/APP_FUNCTIONALITY.md),
 [Rowan’s persona](personas/rowan-v1.md), and [execution protocols](protocols.md).
 
-The catalog contains **1,155 scenarios across 45 features**. The on-demand runner
+The catalog contains **1,180 scenarios across 46 features**. The on-demand runner
 indexes every scenario, selects its available adapters, and reports unmet criteria.
 This does **not** mean every scenario is automated. Current bindings cover **245**
 complete acceptance scenarios; component evidence is available for **226** cases

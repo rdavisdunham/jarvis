@@ -118,8 +118,16 @@
       "feature": "memory_management"
     },
     {
+      "name": "memory.pin",
+      "feature": "memory_management"
+    },
+    {
       "name": "memory.resolve",
       "feature": "memory_dream"
+    },
+    {
+      "name": "memory.unpin",
+      "feature": "memory_management"
     },
     {
       "name": "note.append",
@@ -332,6 +340,22 @@
     {
       "name": "settings.update",
       "feature": "browser_settings"
+    },
+    {
+      "name": "setup.memories_save",
+      "feature": "setup_interview"
+    },
+    {
+      "name": "setup.propose",
+      "feature": "setup_interview"
+    },
+    {
+      "name": "setup.tree_apply",
+      "feature": "setup_interview"
+    },
+    {
+      "name": "setup.tree_preview",
+      "feature": "setup_interview"
     },
     {
       "name": "space.create",
@@ -566,6 +590,10 @@
     {
       "name": "session_search",
       "feature": "external_agents"
+    },
+    {
+      "name": "setup_state",
+      "feature": "setup_interview"
     },
     {
       "name": "structure_schema",
@@ -1700,6 +1728,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/memory/about/refresh",
+      "handler": "refresh_about_you",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "memory_management"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/memory/retry",
       "handler": "retry_memory",
       "source": "apps/api/jarvis/api.py",
@@ -2411,6 +2446,48 @@
       "handler": "link",
       "source": "apps/api/jarvis/session_routes.py",
       "feature": "external_agents"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/setup",
+      "handler": "setup_state",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "setup_interview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/finish",
+      "handler": "setup_finish",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "setup_interview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/mode",
+      "handler": "setup_mode",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "setup_interview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/setup/proposals/{proposal_id}",
+      "handler": "setup_proposal",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "setup_interview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/propose",
+      "handler": "setup_propose",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "setup_interview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/setup/start",
+      "handler": "setup_start",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "setup_interview"
     },
     {
       "method": "GET",

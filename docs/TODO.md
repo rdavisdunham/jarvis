@@ -83,6 +83,12 @@ next, not authorization to start runners.
 
 ## Requested follow-ups — connected-source onboarding and durable Google access
 
+- [ ] **Connections-first onboarding (Set up with Dani, decision 10).** A better first run that sets up
+  connections and syncs them first (Google Calendar, Linear, and the connection types still to come), then feeds
+  that data into the Set up with Dani interview, so Dani confirms what it already sees instead of asking. Wait until
+  there are more connection types and they are stable. On a first run no Eridani projects exist yet, so Linear
+  project matching may be skipped there. See [SETUP_WITH_DANI_PLAN.md](SETUP_WITH_DANI_PLAN.md).
+
 - [x] **Optional Linear structure onboarding.** On connection (and later from
   integration settings), offer a reviewable mapping of Linear teams/projects into
   Eridani types and real Home records. Let the owner reuse existing types/Homes,

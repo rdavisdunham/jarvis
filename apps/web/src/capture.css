@@ -8,3 +8,4 @@
 .setup-type-tree>li{border-inline-start:2px solid var(--line);padding:.4rem .7rem;margin-block:.5rem}
 .setup-type-tree p{margin:.3rem 0}.setup-type-tree ul{padding-inline-start:1.1rem}
 .setup-example{overflow-wrap:anywhere}.setup-panel .setup-actions>.btn{max-width:100%;white-space:normal}
+.setup-panel .setup-actions>.btn{min-height:44px}.setup-mode-choice>p{margin:.6rem 0 0}

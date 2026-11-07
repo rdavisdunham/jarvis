@@ -86,7 +86,10 @@ missing usage, frontend checks and phone/fold/desktop browser coverage.
 cost feature its usage is recorded under (the Model usage buckets above), the
 production call, and its model profile. Defaults are today's models, so nothing
 changed: Luna with low reasoning through `extraction_request` for every structured
-job, and the Settings task agent (Luna at the Fast tier by default) for Eri chat.
+job, and the Settings task agent (Luna at the Fast tier by default) for Eri chat that
+voice, bots and connected agents start. Requests typed in the app use the separate
+Settings → Typed chat choice (`agent_models.typed_chat`), GPT-6.1 Terra at Standard by
+default ($1.00 input / $0.05 cached / $5.00 output per million tokens, 5x Luna's Standard rates).
 
 | job type | cost feature | production call | default |
 |---|---|---|---|
@@ -98,9 +101,11 @@ job, and the Settings task agent (Luna at the Fast tier by default) for Eri chat
 | record_overview | record_overviews | record_overviews.ask (daily client and project overviews) | luna |
 | place_by_meaning | placement_by_meaning | placement.ask (files a new unfiled task in its client or project) | luna |
 | memory_extraction | memory_learning | memory_learning.process | luna |
+| about_you | about_you | about_you.ask (daily About you summary for voice sessions) | luna |
+| setup_synthesis | setup | setup_synthesis.ask (Set up with Dani proposal: organization and core facts) | terra-6.1 (pinned, `model_map.PINNED`) |
 | note_tasks | note_tasks | notes.suggest_tasks | luna |
 | swarm_plan | agent_control | swarm.ask (Play on a project: which tasks run in parallel) | luna |
-| eri_chat | assistant | conversation (tool loop) | Settings choice |
+| eri_chat | assistant | conversation (tool loop) | Settings choice (typed chat: Typed chat choice) |
 
 `route(job, prompt_tokens)` is the router hook: `RULES` (empty) are checked in
 order by job type and prompt length, first match wins, else `MODEL_MAP`. Production

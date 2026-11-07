@@ -236,6 +236,23 @@ class ChatInput(Input):
     conversation_id: UUID
     message: str = Field(min_length=1, max_length=12000)
     focus: str | None = None
+    # "setup": a typed turn of Set up with Dani; only valid in the owner's active setup conversation.
+    purpose: Literal["setup"] | None = None
+
+
+class SetupStart(Input):
+    mode: Literal["voice", "typed"] = "typed"
+    focus: Literal["both", "organization", "about_you"] = "both"
+    restart: bool = False
+
+
+class SetupMode(Input):
+    mode: Literal["voice", "typed"]
+
+
+class SetupFinish(Input):
+    status: Literal["completed", "abandoned"] = "completed"
+    delete_conversation: bool = False
 
 
 class PushInput(Input):
@@ -313,6 +330,7 @@ def bootstrap(user: User):
         worker_healthy = bool(health and now() - health.last_scan_at < timedelta(seconds=30))
         backup_health = db.get(WorkerHealth, "backup")
         agent = agent_models.selected(prefs)
+        chat = agent_models.typed_chat(prefs)
         return {
             "name": preferences(db,user.account_id or user.owner_id)["preferred_name"],
             "account_id":user.account_id or user.owner_id,
@@ -323,6 +341,10 @@ def bootstrap(user: User):
             "agent_reasoning": agent.reasoning_effort,
             "agent_service_tier": agent.service_tier,
             "agent_provider": agent.provider,
+            # Typed chat's own model (Settings → Typed chat); the agent_* fields are background work.
+            "chat_profile": chat.profile_id,
+            "chat_model": chat.model,
+            "chat_reasoning": chat.reasoning_effort,
             "agent_options": [m.public() for m in agent_models.catalog().values()],
             "csrf": user.csrf,
             "device_id": user.device_id,
@@ -332,7 +354,7 @@ def bootstrap(user: User):
             "budget": budget.summary(db, user.owner_id),
             "capabilities": {
                 "voice": bool(settings.openai_api_key),
-                "chat": agent.available,
+                "chat": chat.available,
                 "push": bool(settings.vapid_public_key) and not prefs.get("shared_workspace"),
                 "worker": worker_healthy,
             },
@@ -385,6 +407,50 @@ def onboarding(user: User):
     from .onboarding import state
     with session_scope() as db:
         return state(db,user.owner_id)
+
+
+# Set up with Dani (docs/SETUP_WITH_DANI_PLAN.md). Personal workspace only (access.PERSONAL_PATHS).
+@app.get("/api/v1/setup")
+def setup_state(user: User):
+    from .setup import state
+    with session_scope() as db:
+        return state(db, user.owner_id)
+
+
+@app.post("/api/v1/setup/start")
+def setup_start(body: SetupStart, user: User):
+    from .setup import Start, start
+    with session_scope() as db:
+        return start(db, user.owner_id, user.device_id, Start(**body.model_dump()))
+
+
+@app.post("/api/v1/setup/mode")
+def setup_mode(body: SetupMode, user: User):
+    from .setup import ModeChange, set_mode
+    with session_scope() as db:
+        return set_mode(db, user.owner_id, ModeChange(**body.model_dump()))
+
+
+@app.post("/api/v1/setup/propose")
+def setup_propose(user: User):
+    """The "Propose my organization" button: queue the synthesis; Dani posts the result in the setup conversation."""
+    from .setup_synthesis import propose
+    with session_scope() as db:
+        return propose(db, user.owner_id)
+
+
+@app.get("/api/v1/setup/proposals/{proposal_id}")
+def setup_proposal(proposal_id: str, user: User):
+    from .setup_tree import read
+    with session_scope() as db:
+        return read(db, user.owner_id, proposal_id)
+
+
+@app.post("/api/v1/setup/finish")
+def setup_finish(body: SetupFinish, user: User):
+    from .setup import Finish, finish
+    with session_scope() as db:
+        return finish(db, user.owner_id, Finish(**body.model_dump()))
 
 @app.get("/api/v1/projects")
 def projects(user: User):
@@ -649,8 +715,13 @@ def work_create(body: ChatInput, user: User):
     mark("work_http_received", str(body.turn_id), channel="work")
     with session_scope() as db:
         account = account_for(db, user.owner_id, user.device_id)
+        if body.purpose == "setup":
+            from .setup import active as setup_active, personal
+            personal(db, user.owner_id)
+            if not setup_active(db, user.owner_id, str(body.conversation_id)):
+                raise DomainError("SETUP_NOT_ACTIVE", "This setup conversation has ended. Start setup with Dani again.", 409)
         row = enqueue(db, user.owner_id, account, user.device_id, str(body.conversation_id),
-            str(body.turn_id), body.message, focus=body.focus)
+            str(body.turn_id), body.message, focus=body.focus, typed=True, purpose=body.purpose)
         conv = db.get(Conversation, row.conversation_id)
         source = capture_source(db, user.owner_id, body.message, "work:"+row.id+":user", role="user", conversation=conv)
         if source:
@@ -809,17 +880,21 @@ async def memories(user: User, q: str = ""):
         failed, retry_waiting = counts.get("failed", 0), counts.get("retrying", 0)
         pending, retrying = queued + active, failed + retry_waiting
         deferred = counts.get("deferred_budget", 0)
-        enabled = preferences(db, user.owner_id)["memory_learning"]
+        prefs = preferences(db, user.owner_id)
+        enabled = prefs["memory_learning"]
+        from .about_you import public as about_you
         from .memory_review import pending_reviews, review_data, status
         from .memory_service import with_sources
 
         items = with_sources(db, user.owner_id, items)
         reviews = [review_data(db, r) for r in pending_reviews(db, user.owner_id)]
         maintenance = status(db, user.owner_id)
+        about = about_you(db, user.owner_id, prefs)
     return {
         "items": items,
         "reviews": reviews,
         "maintenance": maintenance,
+        "about": about,
         "learning": {"enabled": enabled, "pending": pending, "retrying": retrying, "deferred": deferred,
                      "queued": queued, "active": active, "failed": failed, "retry_waiting": retry_waiting},
     }
@@ -834,6 +909,15 @@ def run_memory_review(user: User):
         if not job:
             raise DomainError("INVALID_ARGUMENT", "Enable learning and weekly memory review first.")
         return {"job_id": job.id, "status": job.status}
+
+
+@app.post("/api/v1/memory/about/refresh")
+def refresh_about_you(user: User):
+    """Rewrite the About you summary now, in the background."""
+    from .about_you import refresh
+
+    with session_scope() as db:
+        return refresh(db, user.owner_id, preferences(db, user.owner_id))
 
 
 @app.post("/api/v1/memory/retry")

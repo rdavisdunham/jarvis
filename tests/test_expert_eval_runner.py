@@ -240,7 +240,7 @@ async def test_stages_are_checked_before_next_turn_and_full_history_results_reac
         invoke_tool=None,
     )
     monkeypatch.setattr(runner, "outbound_guard", lambda *_: nullcontext())
-    monkeypatch.setattr(runner.conversation, "chat", fake_chat)
+    monkeypatch.setattr(runner, "run_turn", fake_chat)
     result = await runner.evaluate_case(
         module,
         profile(),
@@ -412,7 +412,7 @@ async def test_discovery_observer_preserves_production_loader_and_records_outcom
     }
 
     async def fake_chat(*args):
-        session = runner.conversation.ToolSession(runner.jarvis_tools.registry())
+        session = runner.work_runner.ToolSession(runner.jarvis_tools.registry())
         assert "note_update" not in session.names
         loaded = session.load({"groups": ["notes"]})
         assert loaded["status"] == "loaded" and "note_update" in session.names
@@ -428,7 +428,7 @@ async def test_discovery_observer_preserves_production_loader_and_records_outcom
         invoke_tool=None,
     )
     monkeypatch.setattr(runner, "outbound_guard", lambda *_: nullcontext())
-    monkeypatch.setattr(runner.conversation, "chat", fake_chat)
+    monkeypatch.setattr(runner, "run_turn", fake_chat)
     result = await runner.evaluate_case(
         module,
         profile(),
@@ -793,7 +793,7 @@ async def test_case_hooks_preserve_stateful_ui_and_integration_traces(monkeypatc
         return result
 
     async def fake_chat(*_args):
-        screens.append(runner.conversation.get_context("owner", "device")["view"])
+        screens.append(runner.work_runner.get_context("owner", "device")["view"])
         await runner.jarvis_tools.dispatch(
             "owner", "device", {"id": str(len(screens)), "kind": "show", "view": "notes"}
         )
@@ -811,7 +811,7 @@ async def test_case_hooks_preserve_stateful_ui_and_integration_traces(monkeypatc
         invoke_tool=None,
     )
     monkeypatch.setattr(runner, "outbound_guard", lambda *_: nullcontext())
-    monkeypatch.setattr(runner.conversation, "chat", fake_chat)
+    monkeypatch.setattr(runner, "run_turn", fake_chat)
     result = await runner.evaluate_case(
         module,
         profile(),

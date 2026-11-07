@@ -6,7 +6,7 @@ import json
 from .catalog import CATALOG, ROOT
 
 PREFIX = {
-    "quicklist": "quick_capture", "onboarding": "onboarding", "quicksort": "quick_sort",
+    "quicklist": "quick_capture", "onboarding": "onboarding", "setup": "setup_interview", "quicksort": "quick_sort",
     "actor": "organization",
     "area": "organization",
     "space": "organization",
@@ -87,6 +87,7 @@ def route_owner(path, source):
         return "meeting_context"
     if "/questions" in path:return "memory_dream"
     if "/quick-lists" in path:return "quick_capture"
+    if path.startswith("/api/v1/setup"):return "setup_interview"
     if "/onboarding" in path:return "onboarding"
     if "/auth/" in path or path.endswith("/bootstrap"):
         return "accounts"
