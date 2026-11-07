@@ -82,6 +82,12 @@ def enqueue(
     prefs = person_preferences(db, owner, device, preferences(db, owner))
     # Typed chat has its own model; voice, bots and other background work use the task agent.
     agent = (agent_models.typed_chat if typed else agent_models.selected)(prefs, require_key=True)
+    if not credential_id:
+        from .setup import SETUP_PROFILE, active as setup_active
+        # Set up with Dani runs typed and voice-delegated turns on Terra (decision 5); a continuation keeps it.
+        terra = agent_models.catalog().get(SETUP_PROFILE)
+        if terra and terra.available and agent.profile_id != SETUP_PROFILE and setup_active(db, owner, conversation_id):
+            agent = agent_models.selected({"agent_profile": SETUP_PROFILE}, require_key=True)
     profile = agent.profile_id
     transient = conv.private or not prefs["history_enabled"]
     if transient and not conv.private:

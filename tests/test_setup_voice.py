@@ -82,3 +82,23 @@ async def test_ordinary_voice_session_is_unchanged(monkeypatch):
         conv_id = conv.id
     session = await connect_payload(monkeypatch, conv_id)
     assert LIVE_DELEGATION in session["instructions"] and LIVE_SETUP not in session["instructions"]
+
+
+def test_setup_turns_run_on_terra(monkeypatch):
+    from uuid import uuid4
+
+    from jarvis import agent_work
+    from jarvis.models import Job
+
+    monkeypatch.setattr(get_settings(), "integration_encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(get_settings(), "openai_api_key", "synthetic")
+    with session_scope() as db:
+        started = setup.start(db, "davin", "device", setup.Start(mode="voice"))
+        other = Conversation(owner_id="davin", device_id="device")
+        db.add(other)
+        db.flush()
+        spoken = agent_work.enqueue(db, "davin", "davin", "device", started["conversation_id"], str(uuid4()),
+                                    "Propose my organization")
+        plain = agent_work.enqueue(db, "davin", "davin", "device", other.id, str(uuid4()), "Add milk")
+        assert db.get(Job, spoken.id).payload["profile"] == setup.SETUP_PROFILE
+        assert db.get(Job, plain.id).payload["profile"] != setup.SETUP_PROFILE

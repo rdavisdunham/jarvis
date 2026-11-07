@@ -24,6 +24,8 @@ FINISHED = ("completed", "abandoned")
 # starts a setup voice session with this much of it.
 HISTORY_WINDOW = 60
 LIVE_HISTORY_WINDOW = 40
+# Terra runs everything in setup (decision 5): typed turns, voice-delegated turns and the synthesis.
+SETUP_PROFILE = "terra-6.1"
 
 Mode = Literal["voice", "typed"]
 Focus = Literal["both", "organization", "about_you"]
