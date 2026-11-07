@@ -20,6 +20,7 @@ from sqlalchemy import select
 
 from .domain import DomainError, emit, owned
 from .models import Actor, Task, now
+from .name_match import THRESHOLD, alike, letters, score
 from .record_contents import subtree_query
 from .structure_models import PersonBucketLink, StructureRecord
 
@@ -173,35 +174,119 @@ def decide(db, owner, actor_id, record_id, status) -> dict:
     return public(link, record=record) if link else {"actor_id": actor_id, "record_id": record_id, "status": None}
 
 
+def directory(db, owner) -> list[tuple[str, str, list[str]]]:
+    """Every active person: (actor_id, display name, saved alternate spellings). The alternate spellings are the
+    person's aliases ("Also known as": meeting identities, the owner's Settings > Profile names)."""
+    from .assignees import _alias_rows
+
+    people = db.execute(select(Actor.id, Actor.name).where(
+        Actor.owner_id == owner, Actor.kind == "person", Actor.archived.is_(False))
+        .order_by(Actor.created_at, Actor.id)).all()
+    spellings = defaultdict(list)
+    for actor_id, normalized in _alias_rows(db, owner):
+        spellings[actor_id].append(normalized)
+    out = []
+    for actor_id, name in people:
+        display = " ".join(name.split())
+        if display:
+            others = [a for a in dict.fromkeys(spellings[actor_id]) if a != display.casefold()]
+            out.append((actor_id, display, others))
+    return out
+
+
+def _places(db, owner, actor_id, limit=MENTION_LINKS):
+    return [{"record_id": link["record_id"], "title": link["title"], "type": link["type_id"], "status": link["status"]}
+            for link in for_actor(db, owner, actor_id)[:limit]]
+
+
+def _owner_names(db, owner) -> set[str]:
+    from .domain import preferences
+
+    prefs = preferences(db, owner)
+    names = [prefs.get("preferred_name") or "", *(prefs.get("name_aliases") or [])]
+    return {letters(word) for name in names for word in name.split()}
+
+
+WORD = re.compile(r"[^\W\d_][\w'’-]*")
+
+
 def mentioned(db, owner, text, limit=MENTION_PEOPLE) -> list[tuple[str, str]]:
     """People the text names who are linked to clients or projects, as (actor_id, line), the latest named first.
 
-    A full name of two or more words matches anywhere in the text. A first name, or a one-word name, matches only when
-    no other person's name starts with it. Keys under three letters never match. People with no links (the owner included) give nothing. Rejected links stay out.
+    Exact: a name or saved spelling of two or more words matches anywhere; a one-word key (a first name, a one-word
+    name or alias) matches only when no other person's name or alias starts with it. Keys under three letters never
+    match.
+    Sound-alike (speech-to-text misspellings): a capitalized word no person or the owner is exactly called that
+    sounds like or is spelled close to exactly one person's first name or one-word spelling (`name_match`). Its line
+    says what was heard ("Janice" is probably Janiece). Ambiguous words match nobody.
+    People with no links (the owner included) give nothing. Rejected links stay out.
     """
     said = (text or "").casefold()
     if not said.strip():
         return []
-    people = db.execute(select(Actor.id, Actor.name).where(
-        Actor.owner_id == owner, Actor.kind == "person", Actor.archived.is_(False))).all()
-    firsts = Counter(name.split()[0].casefold() for _, name in people if name.split())
-    hits = []
-    for actor_id, name in people:
-        full = " ".join(name.split()).casefold()
-        if not full:
-            continue
-        # A one-word key (a first name, or a name that is one word) must belong to nobody else.
-        keys = {key for key in {full, full.split()[0]} if " " in key or firsts[key] == 1}
+    people = directory(db, owner)
+    firsts = Counter(first for _, name, others in people
+                     for first in {k.split()[0].casefold() for k in [name, *others] if k.split()})
+    hits = {}
+    for actor_id, name, others in people:
+        keys = set()
+        for spelled in [name, *others]:
+            full = spelled.casefold()
+            keys |= {key for key in {full, full.split()[0]} if " " in key or firsts[key] == 1}
         last = max((m.start() for key in keys if len(key) >= 3
                     for m in re.finditer(r"(?<!\w)" + re.escape(key) + r"(?!\w)", said)), default=-1)
         if last >= 0:
-            hits.append((last, " ".join(name.split()), actor_id))
+            hits[actor_id] = (last, name, None)
+    known = _owner_names(db, owner) | {letters(w) for _, name, others in people for k in [name, *others]
+                                       for w in k.split()}
+    for m in WORD.finditer(text or ""):
+        word = m.group().strip("'’-")
+        if not word[:1].isupper() or letters(word) in known or len(letters(word)) < 3:
+            continue
+        alike_ids = {actor_id for actor_id, name, others in people
+                     if any(alike(word, k.split()[0]) for k in [name, *others] if k.split())}
+        if len(alike_ids) == 1:
+            actor_id = next(iter(alike_ids))
+            if actor_id not in hits or hits[actor_id][0] < m.start():
+                name = next(n for a, n, _ in people if a == actor_id)
+                hits[actor_id] = (m.start(), name, word if actor_id not in hits or hits[actor_id][2] else None)
     out = []
-    for _, name, actor_id in sorted(hits, reverse=True):
-        links = for_actor(db, owner, actor_id)[:MENTION_LINKS]
-        if links:
-            places = ", ".join(f"{link['title']} ({link['type_id']})" for link in links)
-            out.append((actor_id, f"{name} works on or around: {places}."))
+    for actor_id, (_, name, heard) in sorted(hits.items(), key=lambda item: -item[1][0]):
+        places = _places(db, owner, actor_id)
+        if places:
+            where = ", ".join(f"{p['title']} ({p['type']})" for p in places)
+            who = f'"{heard}" is probably {name}, who' if heard else name
+            out.append((actor_id, f"{who} works on or around: {where}."))
             if len(out) == limit:
                 break
     return out
+
+
+def lookup(db, owner, name, limit=5) -> dict:
+    """The `person_lookup` read tool: people a possibly misspelled name may mean, best first, each with the clients
+    and projects they work on, so the caller can choose by what the conversation is about.
+
+    match: "exact" (the display name), "alias" (a saved spelling), "sounds_like" (`name_match` against the whole name,
+    or against each word of it when the name asked for is one word). Archived people never count."""
+    heard = " ".join((name or "").split())
+    if not letters(heard):
+        raise DomainError("INVALID_ARGUMENT", "Give a name to look up.")
+    one_word = len(heard.split()) == 1
+    found = []
+    for actor_id, display, others in directory(db, owner):
+        best, how = 0.0, ""
+        for spelled, kind in [(display, "exact"), *((o, "alias") for o in others)]:
+            if letters(spelled) == letters(heard):
+                best, how = 1.0, kind
+                break
+            candidates = [spelled, *(spelled.split() if one_word else [])]
+            close = max(score(heard, c) for c in candidates)
+            if close >= THRESHOLD and close > best:
+                best, how = close, "sounds_like"
+        if how:
+            found.append({"actor_id": actor_id, "name": display, "also_spelled": others[:5], "match": how,
+                          "score": round(best, 2), "works_on": _places(db, owner, actor_id)})
+    found.sort(key=lambda row: (-row["score"], row["match"] != "exact", row["name"]))
+    return {"query": heard, "people": found[:limit],
+            "note": ("Several people could be meant: choose by the clients and projects the conversation is about, "
+                     "or ask the owner." if len(found) > 1 else "")}

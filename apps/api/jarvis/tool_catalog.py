@@ -10,7 +10,7 @@ GROUPS = {
     "annotations": ("Eridani-only notes, separate from synced descriptions.", ["record_get", "record_update", "planning_get", "planning_annotate", "calendar_event_read", "calendar_annotate"]),
     "search": ("Semantic retrieval, search vocabulary and correcting a previous interpretation.", ["record_search", "search_select", "search_feedback", "record_get", "ui_records"]),
     "agents": ("Coding agents on the owner's desktop (remotea runs, when enabled): status, start one on a task, message or steer it (both wait for the owner's confirmation), confirm with a yes or a chosen repository, answer its questions, review its proposed plan changes, approve a finished run, stop it.", ["control_status", "control_start", "control_message", "control_confirm", "control_answer", "control_plan_review", "control_approve", "control_stop", "navigation_find"]),
-    "knowledge": ("What Eridani knows about a client or project: its description, living overview, people, meeting facts, latest brief and open work. Find the record first, then read it; this changes nothing.", ["record_overview", "record_search", "record_list", "record_get", "ui_records"]),
+    "knowledge": ("What Eridani knows about a client or project: its description, living overview, people, meeting facts, latest brief and open work. Find the record first, then read it; this changes nothing.", ["record_overview", "person_lookup", "record_search", "record_list", "record_get", "ui_records"]),
     "sessions": ("Where work happened with AI agents (Claude Code, Codex, ChatGPT and Claude desktop): find sessions by topic, issue, client or folder, see unfiled ones, and how to resume them.", ["session_search", "record_search", "record_get"]),
     "templates": ("Reusable templates: list them, preview what one creates under a home, then create independent copies on a clear request. Undo archives the created records.", ["template_list","record_instantiate_preview","record_instantiate","record_browse","work_revert"]),
     "review_cadence": ("Review cadence: records of reviewed types resurface for review. List what is due, mark one reviewed, snooze it, or stop or resume reviewing one record. Turning a type's cadence on or off is a structure edit.", ["reviews_due","record_mark_reviewed","record_review","record_get","ui_records","work_revert"]),
@@ -69,6 +69,7 @@ GROUPS = {
             "area_update",
             "actor_create",
             "actor_update",
+            "person_lookup",
             "project_list",
         ],
     ),
@@ -358,6 +359,7 @@ DESCRIPTIONS = {
     "Exclude completed work, negated/hypothetical statements and other people's commitments. "
     "Use only requested items, and trust existing/new counts in the receipt.",
     "organization_list": "Read all current spaces, areas, goals, projects, assignees and goal/project links with IDs and revisions. "
+    "For a person's name that may be misspelled (speech-to-text), use person_lookup. "
     + RELATIONSHIPS,
     "project_list": "Read actual projects and their current IDs/revisions. " + RELATIONSHIPS,
     "goal_create": "Create an outcome goal with optional metric, horizon, parent and supporting project links. "

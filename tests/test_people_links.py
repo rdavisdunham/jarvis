@@ -156,3 +156,46 @@ async def test_typed_chat_context_carries_named_people(monkeypatch):
     assert context.startswith("People named here and where they work (DATA): ")
     assert "Marco works on or around: Transcript Intelligence (project)." in context
     assert await memory_service.prompt_context(OWNER, "What is on my plate?") == ""
+
+
+def test_a_misheard_name_is_recalled_with_what_was_heard(monkeypatch):
+    _, project, people = setup()
+    monkeypatch.setattr("jarvis.context.views.me", lambda db, owner: people["me"])
+    refresh(project["id"])
+    with session_scope() as db:
+        db.get(Actor, people["priya"]).name = "Sreya"
+        db.get(Actor, people["marco"]).name = "Janiece"
+        db.add(Actor(owner_id=OWNER, name="Sarah"))  # No links: never recalled, but still a known name.
+    refresh(project["id"])
+    with session_scope() as db:
+        assert people_links.mentioned(db, OWNER, "What did Janice say about the rubric?") == [
+            (people["marco"], '"Janice" is probably Janiece, who works on or around: Transcript Intelligence (project).')]
+        assert [a for a, _ in people_links.mentioned(db, OWNER, "Ask Shreya, then Janiece")] == [
+            people["marco"], people["priya"]]
+        # Exact wins: no "probably" when the right spelling is also said.
+        assert "probably" not in people_links.mentioned(db, OWNER, "Janice, I mean Janiece")[0][1]
+        # Lowercase words and common words never fuzzy-match; nor do ambiguous ones.
+        assert people_links.mentioned(db, OWNER, "janice said hi") == []
+        assert people_links.mentioned(db, OWNER, "Sorry, wrong number") == []
+        db.add(Actor(owner_id=OWNER, name="Janise"))  # Now "Janice" could be either.
+        db.flush()
+        assert people_links.mentioned(db, OWNER, "What did Janice say?") == []
+
+
+async def test_person_lookup_tool_finds_misspelled_names_with_their_work(monkeypatch):
+    _, project, people = setup()
+    monkeypatch.setattr("jarvis.context.views.me", lambda db, owner: people["me"])
+    with session_scope() as db:
+        db.get(Actor, people["marco"]).name = "Janiece Moreno"
+        db.add(Actor(owner_id=OWNER, name="Janet"))
+    refresh(project["id"])
+    assert "person_lookup" in {t["name"] for t in registry()} and len(READ_TOOLS["person_lookup"]["description"]) < 400
+    found = await _call_tool(OWNER, "turn", 0, "person_lookup", {"name": "Janice"})
+    assert [p["name"] for p in found["people"]] == ["Janiece Moreno"]
+    best = found["people"][0]
+    assert best["actor_id"] == people["marco"] and best["match"] == "sounds_like" and best["score"] >= 0.8
+    assert best["works_on"] == [{"record_id": project["id"], "title": "Transcript Intelligence", "type": "project",
+                                 "status": "inferred"}]
+    exact = await _call_tool(OWNER, "turn", 1, "person_lookup", {"name": "janiece moreno"})
+    assert exact["people"][0]["match"] == "exact"
+    assert (await _call_tool(OWNER, "turn", 2, "person_lookup", {"name": "Zed"}))["people"] == []

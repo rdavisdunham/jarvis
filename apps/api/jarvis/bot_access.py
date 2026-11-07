@@ -68,6 +68,7 @@ READ_SCOPES = {
     "task_get": "tasks:read",
     "task_resolve": "tasks:read",
     "organization_list": "organization:read",
+    "person_lookup": "organization:read",
     "project_list": "organization:read",
     "note_search": "notes:read",
     "note_read": "notes:read",
