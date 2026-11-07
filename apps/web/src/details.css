@@ -1124,3 +1124,14 @@ button.detail-link-row:hover,
 }
 .placement-note strong { color: var(--ink); }
 .record-overview .overview-people { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
+/* A client or project without the owner's description asks for one (RecordCard). */
+.describe-nudge {
+  margin: 4px 0 6px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--sunken);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+.describe-nudge strong { color: var(--ink); }

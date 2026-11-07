@@ -242,3 +242,28 @@ def test_refresh_explains_when_there_is_not_enough_yet(client, on):
 
 def test_cost_is_its_own_eridani_line():
     assert LABELS["record_overviews"] == "Client and project overviews (Eridani)"
+
+
+# ---------------------------------------------------------------- asking for descriptions
+
+
+def test_undescribed_clients_and_projects_are_counted_listed_and_flagged_for_dani():
+    from jarvis import routing
+
+    described = create("client", "ABC", body="Home services; we run their customer service analytics.")
+    bare = create("project", "Andi", parent_id=described["id"])
+    blank = create("client", "Whitespace", body="   ")
+    gone = create("project", "Old project")
+    change(gone, archived=True)
+    create("task", "Not a bucket")
+    with session_scope() as db:
+        got = ro.coverage(db, OWNER)
+        assert (got["total"], got["described"], got["more_missing"]) == (3, 1, 0)
+        assert {m["id"] for m in got["missing"]} == {bare["id"], blank["id"]}
+        assert ro.coverage(db, OWNER, limit=1)["more_missing"] == 1
+        assert routing.state(db, OWNER)["descriptions"]["described"] == 1
+        assert "description_missing" in ro.knowledge(db, OWNER, bare["id"])
+        assert "description_missing" not in ro.knowledge(db, OWNER, described["id"])
+    change(bare, body="Andi: an assistant pilot for ABC's trainers.")
+    with session_scope() as db:
+        assert ro.coverage(db, OWNER)["described"] == 2

@@ -16,6 +16,7 @@ import { HomePathChip, homePathText } from "./HomePath";
 import { boardColumns, boardMeaning, statusForColumn } from "./board-status";
 import {QuickListDetail} from "./QuickLists";
 import { RecordCard } from "./RecordCard";
+import { OVERVIEW_TYPES } from "./RecordOverview";
 import { RunButton } from "./RunButton";
 import { StructureEditor } from "./StructureEditor";
 import { StartFromTemplateDialog, useTemplates, useUndoToast } from "./Templates";
@@ -159,7 +160,9 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
       if(fresh.contents?.work_open&&!window.confirm("Complete only "+row.title+"? "+fresh.contents.work_open+" unfinished descendants will stay open."))return;
     }
     await run("record.update",{record_id:row.id,expected_revision:row.revision,schema_revision:schema.revision,...changes});await refreshAll();};
-  const create=async()=>{if(!title.trim()||!captureType)return;await run<CustomRecord>("record.create",{type_id:captureType.id,title:title.trim(),schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});setTitle("");await refreshAll();};
+  const create=async()=>{if(!title.trim()||!captureType)return;const made=await run<CustomRecord>("record.create",{type_id:captureType.id,title:title.trim(),schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});setTitle("");await refreshAll();describeNew(made);};
+  // A new client or project opens straight away, so its description (which the card asks for) gets written now.
+  const describeNew=(made:CustomRecord|undefined)=>{if(made?.id&&OVERVIEW_TYPES.includes(made.type_id))open(made);};
   const gf=type?.fields.find(f=>f.id===group);
   const typedStatus=type?boardColumns(type.statuses):null;
   const groups=group==="status"?(typedStatus?.columns??meanings.filter(m=>visible.some(r=>boardMeaning(r.status_meaning)===m)).map(m=>({id:m,name:describe(m),meaning:m}))):group==="parent"?items.filter(r=>visible.some(v=>v.parent_id===r.id)).map(r=>({id:r.id,name:r.title,meaning:""})):gf?.kind==="relation"?items.filter(r=>gf.target_types.includes(r.type_id)).map(r=>({id:r.id,name:r.title,meaning:""})):(gf?.options.length?gf.options.map(o=>({...o,meaning:""})):Array.from(new Set(visible.map(r=>String(r.values[group]??"")).filter(Boolean))).map(v=>({id:v,name:v,meaning:""})));
@@ -372,7 +375,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
         onEditTypes={(draft,type)=>{setProposal(undefined);setDesignDraft({draft,type});setDesign(true);}}/></Suspense>
        :(layout==="browse"||layout==="atlas")&&!capability?<OrganizationBrowse schema={schema} parent={parent} section={browseSection} onSection={setBrowseSection} query={query} archived={archived} status={status} refresh={refresh+browseRefresh} canEdit={canEdit}
         onBrowse={id=>{setParent(id);setBrowseSection(id?"all":"groups");setQueryForBrowse();}} onOpen={open} onVisible={onVisible}
-        onCreate={async(type,title)=>{await run("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();}} onChanged={refreshAll}/>
+        onCreate={async(type,title)=>{const made=await run<CustomRecord>("record.create",{type_id:type,title,schema_revision:schema.revision,...(parent?{parent_id:parent}:{})});await refreshAll();describeNew(made);}} onChanged={refreshAll}/>
        :!visible.length?empty:layout==="tree"?<OrganizationTree items={items} visible={visible} schema={schema} disabled={!canEdit||busy} onOpen={open} onBrowse={r=>{setParent(r.id);setLayout("browse");setBrowseSection("all");}} onMove={async(r,c)=>{if(c.parent_id!==r.parent_id){setMoving({row:r,parentId:c.parent_id as string|null});}else await edit(r,c);}}/>:layout==="board"?board:layout==="timeline"?timeline:list}
     </div>
     {capability&&tab==="today"&&!archived&&!query.trim()&&todayFinished}
