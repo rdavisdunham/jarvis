@@ -421,7 +421,12 @@ limit is 500 tokens), never a fact already sent in this session, and only after 
 merged or superseded, and its source not deleted). When the owner names a person (a full name, or a first
 name nobody else shares), the same update carries one line per person, for at most three people, with up to
 four clients and projects they are linked to (`people_links.mentioned`; rejected links are left out), once
-per session. Typed chat gets the same people lines with its saved-memory context. Closing the session
+per session. A capitalized word that sounds like or is spelled close to exactly one person's first name also
+counts (speech-to-text misspellings: `name_match`), and its line says what was heard ("Janice" is probably
+Janiece); words that are a known name, common words and ambiguous words never do. Typed chat gets the same people
+lines with its saved-memory context. The task agent has the read tool `person_lookup` (organization and knowledge
+tools): exact names, saved alternate spellings (aliases) and sound-alikes, best first, each with the clients and
+projects that person works on, so it can choose by context or ask. Closing the session
 cancels a pending lookup.
 The provider's `session.thinking.appended` acknowledgement only means the context was delivered; it
 does not mean the next spoken words use it. A query embedding, when stored vectors exist, is billed
