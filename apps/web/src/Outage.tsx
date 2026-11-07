@@ -38,13 +38,26 @@ export function OutageScreen() {
   </div>;
 }
 
-/** Shown above a signed-in page while requests fail; the page and anything typed stay put. */
+/** Show outages and a readable recovery notice while preserving the page and drafts. */
 export function OutageBanner() {
   const state = useConnectivity();
   const seconds = useRetryIn(state.nextProbeAt);
-  if (state.reachable) return null;
-  return <div className="error-banner outage-banner" role="status">
-    <span>Can't reach Eridani. Changes you make may not save until it reconnects. {retryText(seconds)}</span>
-    <button type="button" onClick={() => void probeNow()}>Retry now</button>
+  const [visible, setVisible] = useState(!state.reachable);
+  useEffect(() => {
+    if (!state.reachable) {
+      setVisible(true);
+      return;
+    }
+    const timer = setTimeout(() => setVisible(false), 6000);
+    return () => clearTimeout(timer);
+  }, [state.reachable]);
+  if (state.reachable && !visible) return null;
+  return <div className={"error-banner outage-banner" + (state.reachable ? " outage-banner--restored" : "")} role="status">
+    <span>{state.reachable
+      ? "Connection restored. Eridani is reachable again."
+      : <>Can't reach Eridani. Changes you make may not save until it reconnects. {retryText(seconds)}</>}</span>
+    {state.reachable
+      ? <button type="button" onClick={() => setVisible(false)}>Dismiss</button>
+      : <button type="button" onClick={() => void probeNow()}>Retry now</button>}
   </div>;
 }

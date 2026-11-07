@@ -16,6 +16,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select, text
+from starlette.concurrency import run_in_threadpool
 from starlette.routing import Route
 
 from . import agent_models, budget
@@ -187,8 +188,6 @@ async def security(request, call_next):
         response = await call_next(request)
         if is_external and response.status_code < 400:
             try:
-                from starlette.concurrency import run_in_threadpool
-
                 from .bot_access import authenticate as authenticate_bot
                 await run_in_threadpool(authenticate_bot, request, touch=False)
             except DomainError as exc:
@@ -196,7 +195,7 @@ async def security(request, call_next):
         # A long retrieval cannot return shared data after access was revoked.
         if request.url.path.startswith("/api/v1/") and not request.url.path.startswith(("/api/v1/accounts","/api/v1/auth","/api/v1/integrations/google/unlink","/api/v1/external/")) and response.status_code < 400:
             try:
-                authenticate(request)
+                await run_in_threadpool(authenticate, request)
             except DomainError as exc:
                 return JSONResponse({"error":{"code":exc.code,"message":exc.message}},status_code=exc.status)
     finally:
@@ -906,35 +905,43 @@ async def events(request: Request, user: User, after: int = 0):
         finally:
             work_stream.unsubscribe(user.owner_id, user.device_id, previews)
 
+    def read_events(cursor):
+        with session_scope() as db:
+            session = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
+            if not session or session.expires_at <= now():
+                return None
+            from .access import identity as resolve_identity
+            try:
+                namespace, _ = resolve_identity(db, session)
+                if namespace != user.owner_id or session.device_id != user.device_id:
+                    return "access_revoked", {"code": "WORKSPACE_CHANGED"}
+            except DomainError:
+                return "access_revoked", {}
+            events = list(
+                db.scalars(
+                    select(Event)
+                    .where(Event.owner_id == user.owner_id, Event.id > cursor)
+                    .order_by(Event.id)
+                    .limit(200)
+                )
+            )
+            return "events", [(event.id, serial(event)) for event in events]
+
     async def poll(cursor, ticks, previews):
         from . import work_stream
 
         loop = asyncio.get_running_loop()
         while not await request.is_disconnected():
-            with session_scope() as db:
-                session = db.get(AuthSession, digest(request.cookies.get("jarvis_session", "")))
-                if not session or session.expires_at <= now():
-                    return
-                from .access import identity as resolve_identity
-                try:
-                    namespace,_=resolve_identity(db,session)
-                    if namespace!=user.owner_id or session.device_id!=user.device_id:
-                        yield 'event: access_revoked\ndata: {"code":"WORKSPACE_CHANGED"}\n\n'
-                        return
-                except DomainError:
-                    yield "event: access_revoked\ndata: {}\n\n"
-                    return
-                events = list(
-                    db.scalars(
-                        select(Event)
-                        .where(Event.owner_id == user.owner_id, Event.id > cursor)
-                        .order_by(Event.id)
-                        .limit(200)
-                    )
-                )
-            for event in events:
-                cursor = event.id
-                yield f"id: {cursor}\ndata: {json.dumps(serial(event))}\n\n"
+            batch = await run_in_threadpool(read_events, cursor)
+            if batch is None:
+                return
+            kind, payload = batch
+            if kind == "access_revoked":
+                yield f"event: access_revoked\ndata: {json.dumps(payload)}\n\n"
+                return
+            for identity, event in payload:
+                cursor = identity
+                yield f"id: {cursor}\ndata: {json.dumps(event)}\n\n"
             ticks += 1
             if ticks % 10 == 0:
                 yield ": heartbeat\n\n"
