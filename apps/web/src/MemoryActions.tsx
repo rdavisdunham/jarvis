@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Pencil, Pin, PinOff, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
+import { FileText, Pencil, Pin, PinOff, RefreshCw, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
 import type { AboutYou, Memory, MemoryMaintenance } from "./types";
@@ -56,9 +56,14 @@ export function MemoryStatus({status, worker, reviews, maintenance, timezone, bu
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"});
 
 /** What Dani is told about the owner at the start of each voice call, read-only. Written in the background. */
-export function AboutYouSummary({about, onUnpin, onUpdate}: {about: AboutYou; onUnpin?: (id: string) => Promise<unknown>;
+export function AboutYouSummary({about, onUnpin, onUpdate, onRefresh}: {about: AboutYou; onUnpin?: (id: string) => Promise<unknown>;
   /** Re-run Set up with Dani focused on who you are. */
-  onUpdate?: () => void}) {
+  onUpdate?: () => void;
+  /** Queue a background rewrite now instead of waiting for the daily check. */
+  onRefresh?: () => Promise<unknown>}) {
+  const [asked, setAsked] = useState(false);
+  const refreshing = asked || !!about.refreshing;
+  useEffect(() => { if (!about.refreshing) setAsked(false); }, [about.refreshing, about.updated_at]);
   const note = !about.enabled
     ? "Off while automatic learning is off."
     : !about.summary
@@ -83,7 +88,12 @@ export function AboutYouSummary({about, onUnpin, onUpdate}: {about: AboutYou; on
         </li>)}
       </ul>
     </>}
-    {onUpdate && <div className="memory-about-actions"><button type="button" className="btn btn-sm" onClick={onUpdate}>Update with Dani</button></div>}
+    {(onUpdate || onRefresh) && <div className="memory-about-actions">
+      {onRefresh && about.enabled && <button type="button" className="btn btn-sm" disabled={refreshing} aria-live="polite"
+        onClick={() => { setAsked(true); void onRefresh().catch(() => setAsked(false)); }}>
+        <RefreshCw size={14} aria-hidden/>{refreshing ? "Refreshing…" : "Refresh now"}</button>}
+      {onUpdate && <button type="button" className="btn btn-sm" onClick={onUpdate}>Update with Dani</button>}
+    </div>}
   </section>;
 }
 

@@ -411,7 +411,9 @@ once (cost feature "About you summary") and rewrites the owner's single `about_y
 forgotten, corrected, merged or had its source deleted is withheld at once and rebuilt on the next
 sweep; an owner with no live memories has none. Automatic learning off (`memory_learning`) clears it
 and stops generation; Memory during voice off stops sending it. The Memory page shows it read-only
-with its updated date. The paused Realtime controller opens with the same summary.
+with its updated date and a "Refresh now" button (`POST /api/v1/memory/about/refresh`): it queues one forced
+job that rewrites even when nothing changed (a pending job is reused; refused when learning is off, the
+account has no memories, or the budget is used up) and the page shows "Refreshing…" until it lands. The paused Realtime controller opens with the same summary.
 While the owner talks, Eridani retrieves facts (1.5 s after the last transcript words,
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,
 at most six facts, 1,200 characters and a conservative 450-token estimate per update (Live's append

@@ -1728,6 +1728,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/memory/about/refresh",
+      "handler": "refresh_about_you",
+      "source": "apps/api/jarvis/api.py",
+      "feature": "memory_management"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/memory/retry",
       "handler": "retry_memory",
       "source": "apps/api/jarvis/api.py",

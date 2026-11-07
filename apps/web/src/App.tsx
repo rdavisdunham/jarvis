@@ -861,6 +861,12 @@ export default function App() {
       clearTimeout(timer);
     };
   }, [view, query, !!boot, memoryRevision]);
+  // While About you is being rewritten, check back until the new summary lands.
+  useEffect(() => {
+    if (view !== "memory" || !aboutYou?.refreshing) return;
+    const timer = setTimeout(() => setMemoryRevision((v) => v + 1), 5000);
+    return () => clearTimeout(timer);
+  }, [view, aboutYou?.refreshing, memoryRevision]);
   useEffect(() => {
     const listen = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -3031,7 +3037,17 @@ export default function App() {
                 />
                 {aboutYou && !query && <AboutYouSummary about={aboutYou}
                   onUpdate={!boot.workspace?.id && aboutYou.enabled ? () => setSetupModeFor("about_you") : undefined}
-                  onUnpin={id => mutate("memory.unpin", {memory_id: id}, "Unpinned from About you")}/>}
+                  onUnpin={id => mutate("memory.unpin", {memory_id: id}, "Unpinned from About you")}
+                  onRefresh={async () => {
+                    try {
+                      await post("/memory/about/refresh");
+                      setToast("About you is being rewritten");
+                      setMemoryRevision((v) => v + 1);
+                    } catch (e) {
+                      setError((e as Error).message);
+                      throw e;
+                    }
+                  }}/>}
                 {memoryReviews.map((review) => (
                   <MemoryReviewCard
                     key={review.id}

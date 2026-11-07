@@ -335,7 +335,34 @@ async def test_voice_session_without_a_summary_sends_no_memory(live, monkeypatch
 def test_memory_page_shows_the_summary_and_when_it_was_written(client, on):
     fact("The user prefers tea over coffee.")
     assert client.get("/api/v1/memory").json()["about"] == {"enabled": True, "in_voice": True, "summary": "",
-                                                            "updated_at": None, "core": []}
+                                                            "updated_at": None, "refreshing": False, "core": []}
     build(Model())
     about = client.get("/api/v1/memory").json()["about"]
     assert about["summary"] == EXAMPLE and about["updated_at"] and about["in_voice"] is True
+
+
+def test_refresh_now_queues_one_forced_rewrite(client, on, monkeypatch):
+    # Nothing to summarize yet: refused, nothing queued.
+    assert client.post("/api/v1/memory/about/refresh").status_code == 400 and jobs() == []
+    fact("The user prefers tea over coffee.")
+    model = Model()
+    build(model)
+    # Material unchanged, but the owner asked: one forced job, reused on a double click, shown as refreshing.
+    first = client.post("/api/v1/memory/about/refresh").json()
+    assert first["queued"] is True
+    again = client.post("/api/v1/memory/about/refresh").json()
+    assert again == {"job_id": first["job_id"], "queued": False}
+    assert client.get("/api/v1/memory").json()["about"]["refreshing"] is True
+    about_you.process(first["job_id"], model=model)
+    assert len(model.calls) == 2
+    with session_scope() as db:
+        assert db.get(Job, first["job_id"]).result["stored"] is True
+    assert client.get("/api/v1/memory").json()["about"]["refreshing"] is False
+    # Without the model key or background services: unavailable, not queued.
+    monkeypatch.setattr(about_you, "enabled", lambda: False)
+    assert client.post("/api/v1/memory/about/refresh").status_code == 503
+    monkeypatch.setattr(about_you, "enabled", lambda: True)
+    # Automatic learning off: refused.
+    settings(memory_learning=False)
+    assert client.post("/api/v1/memory/about/refresh").status_code == 400
+    assert len(jobs()) == 2
