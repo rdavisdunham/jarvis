@@ -87,7 +87,7 @@ def route_owner(path, source):
         return "meeting_context"
     if "/questions" in path:return "memory_dream"
     if "/quick-lists" in path:return "quick_capture"
-    if "/onboarding" in path:return "onboarding"
+    if "/onboarding" in path or path.startswith("/api/v1/setup"):return "onboarding"
     if "/auth/" in path or path.endswith("/bootstrap"):
         return "accounts"
     if (path.startswith("/api/v1/remotea") or "/external/agents/session/" in path

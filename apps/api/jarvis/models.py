@@ -743,6 +743,8 @@ from .note_list_models import NoteList, NoteOrganization, NoteEntrySource  # noq
 
 from .session_models import AgentSession, AgentSessionRule, AgentHost, AgentCommand, AgentTurn, AgentQuestion, AgentParity  # noqa: E402,F401
 
+from .setup_models import SetupSession, OrganizationProposal  # noqa: E402,F401
+
 # Context platform tables (jarvis/context/models.py); the module's only registration point here.
 from .context import models as context_models  # noqa: E402,F401
 

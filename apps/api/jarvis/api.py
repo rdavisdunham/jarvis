@@ -236,6 +236,23 @@ class ChatInput(Input):
     conversation_id: UUID
     message: str = Field(min_length=1, max_length=12000)
     focus: str | None = None
+    # "setup": a typed turn of Set up with Dani; only valid in the owner's active setup conversation.
+    purpose: Literal["setup"] | None = None
+
+
+class SetupStart(Input):
+    mode: Literal["voice", "typed"] = "typed"
+    focus: Literal["both", "organization", "about_you"] = "both"
+    restart: bool = False
+
+
+class SetupMode(Input):
+    mode: Literal["voice", "typed"]
+
+
+class SetupFinish(Input):
+    status: Literal["completed", "abandoned"] = "completed"
+    delete_conversation: bool = False
 
 
 class PushInput(Input):
@@ -390,6 +407,35 @@ def onboarding(user: User):
     from .onboarding import state
     with session_scope() as db:
         return state(db,user.owner_id)
+
+
+# Set up with Dani (docs/SETUP_WITH_DANI_PLAN.md). Personal workspace only (access.PERSONAL_PATHS).
+@app.get("/api/v1/setup")
+def setup_state(user: User):
+    from .setup import state
+    with session_scope() as db:
+        return state(db, user.owner_id)
+
+
+@app.post("/api/v1/setup/start")
+def setup_start(body: SetupStart, user: User):
+    from .setup import Start, start
+    with session_scope() as db:
+        return start(db, user.owner_id, user.device_id, Start(**body.model_dump()))
+
+
+@app.post("/api/v1/setup/mode")
+def setup_mode(body: SetupMode, user: User):
+    from .setup import ModeChange, set_mode
+    with session_scope() as db:
+        return set_mode(db, user.owner_id, ModeChange(**body.model_dump()))
+
+
+@app.post("/api/v1/setup/finish")
+def setup_finish(body: SetupFinish, user: User):
+    from .setup import Finish, finish
+    with session_scope() as db:
+        return finish(db, user.owner_id, Finish(**body.model_dump()))
 
 @app.get("/api/v1/projects")
 def projects(user: User):
@@ -654,8 +700,13 @@ def work_create(body: ChatInput, user: User):
     mark("work_http_received", str(body.turn_id), channel="work")
     with session_scope() as db:
         account = account_for(db, user.owner_id, user.device_id)
+        if body.purpose == "setup":
+            from .setup import active as setup_active, personal
+            personal(db, user.owner_id)
+            if not setup_active(db, user.owner_id, str(body.conversation_id)):
+                raise DomainError("SETUP_NOT_ACTIVE", "This setup conversation has ended. Start setup with Dani again.", 409)
         row = enqueue(db, user.owner_id, account, user.device_id, str(body.conversation_id),
-            str(body.turn_id), body.message, focus=body.focus, typed=True)
+            str(body.turn_id), body.message, focus=body.focus, typed=True, purpose=body.purpose)
         conv = db.get(Conversation, row.conversation_id)
         source = capture_source(db, user.owner_id, body.message, "work:"+row.id+":user", role="user", conversation=conv)
         if source:

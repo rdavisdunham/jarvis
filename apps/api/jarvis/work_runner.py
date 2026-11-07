@@ -175,6 +175,9 @@ async def initial_state(row, agent, reservation=None, *, tool_policy="baseline")
     with session_scope() as db:
         prefs = person_preferences(db, row.owner_id, row.device_id, preferences(db, row.owner_id))
         history = []
+        from .setup import HISTORY_WINDOW, interview_block
+        # Set up with Dani: the interview text (dynamic half only) and a longer transcript window.
+        setup = "" if row.credential_id or row.voice_session_id else interview_block(db, row.owner_id, row.conversation_id)
         if not row.transient:
             sources = list(
                 db.scalars(
@@ -185,7 +188,7 @@ async def initial_state(row, agent, reservation=None, *, tool_policy="baseline")
                         Source.created_at <= db.get(Job, row.id).created_at,
                     )
                     .order_by(Source.created_at.desc())
-                    .limit(12)
+                    .limit(HISTORY_WINDOW if setup else 12)
                 )
             )
             history = [{"role": s.role, "content": s.content[:4000]} for s in reversed(sources)]
@@ -222,10 +225,10 @@ async def initial_state(row, agent, reservation=None, *, tool_policy="baseline")
     compact = lean(tool_policy)
     if compact:
         # Static text first, per-request DATA in a later message: the prefix stays cacheable across requests.
-        system, dynamic = instructions(prefs, data.get("focus"), get_context(row.owner_id, row.device_id), tool_policy=tool_policy, parts=True)
+        system, dynamic = instructions(prefs, data.get("focus"), get_context(row.owner_id, row.device_id), tool_policy=tool_policy, parts=True, setup=setup)
         dynamic = [dynamic]
     else:
-        system = instructions(prefs, data.get("focus"), get_context(row.owner_id, row.device_id), tool_policy=tool_policy)
+        system = instructions(prefs, data.get("focus"), get_context(row.owner_id, row.device_id), tool_policy=tool_policy, setup=setup)
     system += """\nYou are executing one accepted, durable request. Complete ONLY this request and its explicit corrections.
 Other requests may be running; they do not replace this one. Use saved receipts for completed work.
 Interpret the original user input directly, including natural speech, filler words and multiple clauses.

@@ -57,6 +57,7 @@ def enqueue(
     credential_id=None,
     voice_source=None,
     typed=False,
+    purpose=None,
 ):
     conv = owned(db, Conversation, conversation_id, owner)
     if conv.device_id != device:
@@ -83,6 +84,10 @@ def enqueue(
     agent = (agent_models.typed_chat if typed else agent_models.selected)(prefs, require_key=True)
     profile = agent.profile_id
     transient = conv.private or not prefs["history_enabled"]
+    if transient and not conv.private:
+        from .setup import retained
+        # The setup conversation is kept even with history off (docs/SETUP_WITH_DANI_PLAN.md, decision 7).
+        transient = not retained(db, owner, conversation_id)
     deps = list(dependencies or [])
     job = Job(id=request_id, owner_id=owner, kind=kind, status="queued", payload={"profile": profile, "service_tier": agent.service_tier, "tool_policy": get_settings().agent_tool_policy})
     db.add(job)
@@ -97,7 +102,7 @@ def enqueue(
         voice_session_id=voice_session_id,
         credential_id=credential_id,
         input_hash=identity,
-        input_ciphertext=seal({"message": message, "context": context or [], "focus": focus, **({"voice_source": voice_source} if voice_source else {})}),
+        input_ciphertext=seal({"message": message, "context": context or [], "focus": focus, **({"voice_source": voice_source} if voice_source else {}), **({"purpose": purpose} if purpose else {})}),
         revision=1,
         dependencies=list(dict.fromkeys(deps)),
         resources=resources or [],

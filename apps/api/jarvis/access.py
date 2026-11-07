@@ -55,7 +55,7 @@ def authorize_execution(db, owner, *, write=False):
         raise DomainError("READ_ONLY", "You have view access to this workspace.", 403)
     return row.account_id, permission
 
-PERSONAL_TOOLS = ("review.", "onboarding.", "memory.", "settings.", "calendar.", "linear.", "control.", "context.")
+PERSONAL_TOOLS = ("review.", "onboarding.", "setup.", "memory.", "settings.", "calendar.", "linear.", "control.", "context.")
 PERSONAL_PATHS = (
     "/api/v1/questions",
     "/api/v1/memory",
@@ -69,6 +69,8 @@ PERSONAL_PATHS = (
     "/api/v1/remotea",
     # Bug reports and their tasks land in the reporter's own workspace.
     "/api/v1/bug-reports",
+    # Set up with Dani reads personal memory and designs the owner's own organization.
+    "/api/v1/setup",
 )
 
 
@@ -208,7 +210,7 @@ def tool_access(db, owner, name):
         check_tool(db, owner, name)
     if not db.get(SharedWorkspace, owner):
         return
-    if name.startswith(("review_", "onboarding_", "memory_", "linear_", "settings_", "control_", "context_")) or name in {
+    if name.startswith(("review_", "onboarding_", "setup_", "memory_", "linear_", "settings_", "control_", "context_")) or name in {
         "calendar_event_read",
         "calendar_connection",
         "calendar_sync",
