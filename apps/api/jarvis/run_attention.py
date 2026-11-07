@@ -91,6 +91,11 @@ def attention(db, run, detail=""):
         return None
     reason = run.state_reason or ""
     headline, action = ATTENTION.get(reason, ("This run needs your attention.", "Open the run and decide what is next."))
+    failure = (getattr(run, "sync_state", None) or {}).get("coordination_failure")
+    if reason == "receipt_uncertain" and failure:
+        headline, action = ("The planning submission was rejected.", "Retry planning so the agent can correct the rejected submission.") \
+            if failure.get("outcome") == "rejected" else \
+            ("The planning submission result is unconfirmed.", "Reconcile the submission receipt before retrying planning.")
     last_output = []
     if reason in VERIFY_REASONS:
         attempt = latest_verify(db, run)

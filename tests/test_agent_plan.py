@@ -515,3 +515,44 @@ def test_phase_is_stripped_and_bounded(model):
     assert model(title="x").phase == ""
     with pytest.raises(ValueError):
         model(title="x", phase="p" * 121)
+
+
+def test_a_verify_criterion_selects_its_named_check_before_the_generic_default(verifying_host):  # noqa: F811
+    with session_scope() as db:
+        row = db.get(AgentHost, verifying_host.id)
+        row.caps = {**row.caps, "targets": [{**row.caps["targets"][0], "verify": ["quick", "full"]}]}
+    _, run_id = interviewing(verifying_host)
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
+                **{**PLAN, "success_criteria": [{"id": "tests", "kind": "verify", "verify_id": "full",
+                                                "text": "The full verify passes."}]})
+    assert plan["verify"]["verify_id"] == "full"
+    assert plan["success_criteria"][0]["verify_id"] == "full"
+    assert plan["proposals"]["verify"]["proposed"]["verify_id"] == "full"
+    with session_scope() as db:
+        assert coordinator.frozen(db, db.get(AgentRun, run_id)).approval_status != "approved"
+
+
+def test_mismatched_verify_returns_actionable_error_and_saves_no_plan(verifying_host):  # noqa: F811
+    created, run_id = interviewing(verifying_host)
+    with pytest.raises(DomainError) as error:
+        call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
+             **{**PLAN, "verify": {"target_id": verifying_host.target_id, "verify_id": "tests"},
+                "success_criteria": [{"id": "bad", "kind": "verify", "verify_id": "other", "text": "Check passes"}]})
+    assert error.value.code == "INVALID_ARGUMENT"
+    assert error.value.data == {"criterion_id": "bad", "criterion_verify_id": "other", "verify_id": "tests", "verify_ids": ["tests"]}
+    with session_scope() as db:
+        assert db.get(Task, created["id"]).plan_revision == 0
+        assert coordinator.frozen(db, db.get(AgentRun, run_id)) is None
+
+
+def test_a_named_criterion_cannot_replace_the_human_verify_floor(verifying_host):  # noqa: F811
+    created, run_id = interviewing(verifying_host)
+    with session_scope() as db:
+        row = db.get(AgentHost, verifying_host.id)
+        row.caps = {**row.caps, "targets": [{**row.caps["targets"][0], "verify": ["quick", "full"]}]}
+        db.get(Task, created["id"]).verify = {"target_id": verifying_host.target_id, "verify_id": "quick", "by": "human"}
+    with pytest.raises(DomainError) as error:
+        call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id,
+             **{**PLAN, "success_criteria": [{"kind": "verify", "verify_id": "full", "text": "Full passes"}]})
+    assert error.value.code == "INVALID_ARGUMENT"
+    assert error.value.data["verify_id"] == "quick"

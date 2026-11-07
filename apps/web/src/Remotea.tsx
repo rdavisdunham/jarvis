@@ -810,7 +810,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
   const [verifyPick, setVerifyPick] = useState("");
   const packet = run ? reviewPacket(run) : null;
   // Edit criteria / Judge again: only while the run is parked for you (not during a plan review).
-  const parked = !!run && bound && !run.freestyle && (run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason)));
+  const parked = !!run?.plan && bound && !run.freestyle && !recoveryShown(run) && (run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason)));
   const busyHost = run ? hostBusyText(run) : null;
   const [editing, setEditing] = useState(false);
   // Host lease, transcript, state, verification, workspace and unconfirmed controls, each with its own age (E-S6).
@@ -821,7 +821,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
   const attention = run ? sectionAttention(run) : { plan: false, run: false, verify: false };
   const toggleSection = (name: "plan" | "run" | "verify") => { if (run) setView({ sections: toggleSections(run, view.sections, name) }); };
   // Each card is built once and placed by view: in chat beside the conversation, otherwise in its stage's section.
-  const recoveryCard = run && bound && recoveryShown(run) ? <DecisionCard title={run.coordination_failure?.recovering ? "Retrying planning" : "Planning needs recovery"} reason={run.coordination_failure ? (run.coordination_failure.outcome === "uncertain" ? "The tool result is unconfirmed. Reconcile it before retrying." : "The planning submission was rejected; your interview was not saved.") : run.reason_text || "The planner stopped without saving questions or a plan."}>
+  const recoveryCard = run && bound && recoveryShown(run) ? <DecisionCard title={run.coordination_failure?.recovering ? "Retrying planning" : "Planning needs recovery"} reason={run.coordination_failure ? (run.coordination_failure.outcome === "uncertain" ? "The tool result is unconfirmed. Reconcile it before retrying." : "The planning submission was rejected. The agent can correct it and retry.") : run.reason_text || "The planner stopped without saving questions or a plan."}>
     {run.coordination_failure?.code && <p>{run.coordination_failure.code}</p>}
     <button className="btn btn-sm btn-primary" disabled={off || (!!run.paused && (run.operator_paused !== false || run.pause_reason !== "receipt_uncertain")) || !!run.automation?.held || !!run.coordination_failure?.recovering || run.coordination_failure?.outcome === "uncertain"} onClick={() => { void postAction(`/remotea/runs/${run.id}/retry-planning`, { expected_revision: run.state_revision }).then(refresh).catch(e => setError(message(e))); }}>Retry planning</button>
     <button className="btn btn-sm" onClick={() => setView({ chat: true })}>Show conversation</button>
@@ -844,7 +844,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
   </DecisionCard> : null;
   // What a parked run needs from you (run_attention) and GitHub CI (run_ci.py): the stop card sits in the current stage's
   // section; the CI card does too while it has news (awaiting CI, failed), otherwise its chip line stays in Verify.
-  const stopEl = run && bound ? <RunStopCard run={run} disabled={off} onApprove={note => void act("approve", note ? { note } : {})}
+  const stopEl = run && bound && !recoveryShown(run) ? <RunStopCard run={run} disabled={off} onApprove={note => void act("approve", note ? { note } : {})}
     onVerifyAgain={() => void act("judge")} onSendBack={note => void act("message", { text: note, mode: "queue" })}/> : null;
   const ciEl = run ? <RunCiCard run={run} now={now}/> : null;
   const ciCardHere = !!run && !!ciCard(run, now);

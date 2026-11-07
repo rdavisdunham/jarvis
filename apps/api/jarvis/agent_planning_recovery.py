@@ -38,7 +38,15 @@ def retry(db, run, *, actor, automatic=False):
     coordinator.resume_paused_timers(db, run)
     coordinator.transition(db, run, "interviewing", actor=actor, reason="planning_retry")
     coordinator.command(db, run, "run.resume", {"surf": run.surf, "incarnation": run.incarnation})
-    coordinator.say(db, run, "Your previous planning submission was rejected and saved nothing. The run-scoped Eridani tool connection now supplies your run identity automatically. First read task_plan and verify actor.verified is true. Then retry the SAME prepared interview questions (including their IDs and options), or the same rejected plan submission with its original submission_id. Do not change code, invent answers, or approve anything. Stop after a confirmed saved interview or plan. If this retry fails, explain the error and stop.", "planning_retry", actor=actor)
+    if failure.get("code") in ("RUN_TOKEN_REQUIRED", "RUN_NOT_BOUND"):
+        message = "Your previous planning submission was rejected and saved nothing. The run-scoped Eridani tool connection now supplies your run identity automatically. First read task_plan and verify actor.verified is true. Then retry the SAME prepared interview questions (including their IDs and options), or the same rejected plan submission with its original submission_id. Do not change code, invent answers, or approve anything. Stop after a confirmed saved interview or plan. If this retry fails, explain the error and stop."
+    else:
+        message = ("Your previous planning submission was rejected and saved no plan. First read task_plan. "
+                   "Correct the server-reported validation error and resubmit the prepared plan. Preserve the operator's "
+                   "interview answers and success criteria. A verify criterion must name the plan's selected verify_id. "
+                   "Use a new submission_id if you change the submission body. Stop after a confirmed saved plan and "
+                   "wait for human approval. Do not implement or approve anything.")
+    coordinator.say(db, run, message, "planning_retry", actor=actor)
     run.last_progress_at = now()
     coordinator.note(run, "planning_retry", automatic=automatic, attempt=attempts[key], actor=actor.record())
     emit(db, run.owner_id, "agent.changed", run.id)
