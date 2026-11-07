@@ -167,3 +167,31 @@ def test_an_exited_planner_cannot_submit_until_its_host_confirms_it_alive(durabl
     with pytest.raises(DomainError, match='needs_you'):
         call(agent_plan.task_interview, agent_plan.InterviewInput, rid,
              questions=[{'id':'original','question':'Which scope?','free_text':True}])
+
+
+def test_validation_recovery_preserves_answers_and_requires_approval(durable):
+    rid = new_run(durable)
+    with session_scope() as db:
+        run = failed(db, rid)
+        run.sync_state = {**run.sync_state, 'coordination_failure': {
+            'code': 'INVALID_ARGUMENT', 'tool': 'submit_plan', 'outcome': 'rejected', 'request_id': 'bad-plan'}}
+        assert recovery.retry(db, run, actor=HUMAN)
+        prompt = db.scalar(select(AgentCommand).where(AgentCommand.run_id == rid, AgentCommand.kind == 'input')).payload['text']
+        assert 'validation error' in prompt
+        assert "new submission_id" in prompt
+        assert 'wait for human approval' in prompt
+        assert 'token' not in prompt
+
+
+def test_a_planning_tool_error_is_not_presented_as_a_missing_interview_answer_receipt():
+    from types import SimpleNamespace
+    from jarvis import run_attention
+    run = SimpleNamespace(state='needs_you', state_reason='receipt_uncertain',
+                          sync_state={'coordination_failure': {'outcome': 'uncertain'}})
+    result = run_attention.attention(None, run)
+    assert 'planning submission' in result['headline']
+    assert 'answer' not in result['headline']
+    run.sync_state['coordination_failure']['outcome'] = 'rejected'
+    assert 'rejected' in run_attention.attention(None, run)['headline']
+    run.sync_state = {}
+    assert 'answer was saved' in run_attention.attention(None, run)['headline']

@@ -540,7 +540,10 @@ def default_verify(db, run, criteria, verify):
     if verify or not needs_evidence(criteria):
         return verify, None
     _targets, offered = verify_ids(db, run)
-    chosen = pick_verify(offered, verify_ready(db, run))
+    # A verify criterion is an explicit choice. Preserve it before choosing a generic default.
+    named = {c.get("verify_id") if isinstance(c, dict) else c.verify_id
+             for c in criteria if (c.get("kind") if isinstance(c, dict) else c.kind) == "verify"}
+    chosen = next(iter(named)) if len(named) == 1 and named.issubset(offered) else pick_verify(offered, verify_ready(db, run))
     if not chosen:
         return None, None
     picked = {"target_id": run.execution_target_id, "verify_id": chosen, "by": "default"}
@@ -624,7 +627,9 @@ def _submit_plan(db, bot, body):
     verify, default_proposal = default_verify(db, run, body.success_criteria, verify)
     for criterion in body.success_criteria:
         if criterion.kind == "verify" and (not verify or criterion.verify_id != verify["verify_id"]):
-            raise DomainError("INVALID_ARGUMENT", "A verify criterion names the plan's verify_id.")
+            raise DomainError("INVALID_ARGUMENT", "Each verify criterion must name the plan's selected verify_id.",
+                              data={"criterion_id": criterion.id, "criterion_verify_id": criterion.verify_id,
+                                    "verify_id": verify["verify_id"] if verify else None, "verify_ids": sorted(offered)})
     kids = coordinator.children(db, task)
     steps = seeded_steps(db, task, body.steps, kids)
     open_row = coordinator.open_interview(db, run)

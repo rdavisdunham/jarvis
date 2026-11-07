@@ -201,3 +201,15 @@ it.each([false, true])("permits a confirmed rejected-call retry only outside an 
   await mount();
   expect(button("Retry planning").disabled).toBe(operatorPaused);
 });
+
+it("shows one planning recovery action instead of unrelated final-work approval controls", async () => {
+  current = fixture({ state: "needs_you", stage: "interviewing", state_reason: "receipt_uncertain", plan: null, plan_revision: 0,
+    paused: true, operator_paused: false, pause_reason: "receipt_uncertain",
+    coordination_failure: { code: "DELIVERY_UNCONFIRMED", outcome: "uncertain", recovering: false } });
+  await mount();
+  expect(host.textContent).toContain("Planning needs recovery");
+  expect(button("Retry planning").disabled).toBe(true);
+  expect(host.textContent).not.toContain("Judge again");
+  expect([...host.querySelectorAll("button")].some(button => button.textContent === "Approve")).toBe(false);
+  expect(host.textContent).not.toContain("Your answer was saved");
+});
