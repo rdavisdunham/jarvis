@@ -53,16 +53,38 @@ The same polling applies to a run stopped on `ci_timeout` or `ci_unavailable`. G
 
 ## When CI is not the gate
 
-The CI wait applies only when both of these hold:
-- the plan's verify entry is a quick check (its id is in `JARVIS_AGENT_CI_QUICK_VERIFY_IDS`, default `quick`), or the
-  plan names no verify entry (CI is then the only verification; a pull request with no checks on two polls means the
-  run needs your verification instead: the "Needs your verification" card with Verified, approve and Describe what's
-  wrong). A full local entry never consults CI. See the ruleset in [AGENT_CONTROL.md](AGENT_CONTROL.md#ci-as-the-final-verification);
-- the completion policy is `code_ready` or `pr_open`.
+CI is preferred wherever it exists (Davis, 2026-11-07). The CI wait applies to every plan under completion policy
+`code_ready` or `pr_open`:
 
-In every other case, the run finishes as before:
-- A plan whose verify entry runs the full suite locally (`full`, `./scripts/verify.sh`) finishes on its local pass.
-- A plan with policy `pr_merged` finishes when the pull request merges.
+- **A quick check and CI** is the best setup: the quick check after every turn, then green CI.
+- **No verify entry and CI:** green CI alone.
+- **A full local check and CI:** the local check is skipped once Eridani knows the repository has CI; CI stands in
+  for it after every turn and the judge reads its result. The first run on a repository runs the full check and then
+  waits for CI once, which teaches Eridani that the repository has CI.
+- **A local check and no CI:** the local pass finishes the run. Once the repository is known to have no CI, the run
+  does not wait at all.
+- **Neither:** the run needs your verification (the "Needs your verification" card with Verified, approve and
+  Describe what's wrong).
+
+See the ruleset in [AGENT_CONTROL.md](AGENT_CONTROL.md#ci-as-the-final-verification). A plan with policy `pr_merged`
+finishes when the pull request merges.
+
+## Merging from Eridani
+
+The Verify section has a merge panel beside the CI card, inside Final acceptance while the run awaits it
+([run_merge.py](../apps/api/jarvis/run_merge.py), [plan](MERGE_FROM_ERIDANI_PLAN.md)):
+
+- **Merge into main** is live once CI is green on the pull request's head, or always when the repository has no CI.
+  While CI runs it is grayed out: "Waiting on CI". Merging completes the run.
+- **Update branch** replaces it when the pull request is behind its base (eridani's `main` requires up-to-date
+  branches). GitHub merges the base in, CI runs again on the new head, and a run waiting for approval waits for that CI.
+- **Send back** appears for merge conflicts or failing CI.
+- The host does the merge with its own `gh` (`pr.merge`, `pr.update_branch`; remotea #59), only on the head CI passed
+  on. Eridani holds no GitHub credential.
+- **Auto-merge** is a toggle in the drawer header (the default for new runs is in Settings, off). It is offered only
+  when the run has a real check: a verify entry or CI. When the run would wait for approval, it merges by itself;
+  behind main it updates the branch and waits for CI again, at most 3 times; anything else GitHub refuses stops the
+  run in `needs_you(merge_blocked)`. A merged run completes like automatic completion.
 
 ## Where it shows
 

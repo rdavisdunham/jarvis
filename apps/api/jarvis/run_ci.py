@@ -1,28 +1,37 @@
 """GitHub CI as a run's final verification (docs/AGENT_CONTROL.md, "CI as the final verification").
 
-The ruleset (Davis, 2026-11-05), per plan under completion policy code_ready or pr_open:
+The ruleset (Davis, 2026-11-05, revised 2026-11-07: CI is preferred wherever it exists), per plan under completion
+policy code_ready or pr_open:
 
-- a quick local check and CI: the quick check runs after every turn, green CI on the pull request head finishes the run;
+- a quick local check and CI: the quick check runs after every turn, green CI on the pull request head finishes the run
+  (the best setup);
 - CI only (the plan names no verify entry): green CI finishes the run, nothing runs locally;
+- a full local check (any entry not in `agent_ci_quick_verify_ids`) and CI: the local check is skipped and CI stands in
+  for it: after each turn the run waits for CI on the PR head, green goes to the judge (which counts it as the
+  verification), red sends the agent the failed jobs (`stands_in`, `verify_by_ci`);
 - a local check only (the pull request has no checks): the local pass finishes the run, CI is not waited for;
 - neither: the run stops in `needs_you(verify_manual)`, "needs your verification": Davis checks the work and
   approves it as verified (recorded as a manual verification) or describes what is wrong and sends the agent back.
 
-Nothing is added automatically: no quick check is written into a repository, no CI workflow. A plan whose verify
-entry is a full local suite (`full`: ./scripts/verify.sh) finishes on its local pass without consulting CI. Policy
-pr_merged is unchanged: a merge is the human's final word.
+Nothing is added automatically: no quick check is written into a repository, no CI workflow. Policy pr_merged is
+unchanged: a merge is the human's final word.
 
-Mechanics: a plan whose verify entry is only a pre-push check (its id in `agent_ci_quick_verify_ids`, default `quick`:
-scripts/verify-quick.sh), or that names no verify entry, is not finished by the judge's met verdict alone. The run
-waits in `awaiting_ci` until the pull request head's checks are terminal: green completes it (approval or
-auto_complete), red sends the agent a gap with the failed jobs and the failing log's last lines, a pull request with
-no checks on `ABSENT_POLLS` consecutive polls means "no CI" (the quick pass finishes the run, or no verification at all
-needs you), and nothing terminal within `agent_ci_wait_seconds` (default 90 min) needs you (`ci_timeout`).
+Whether a repository has CI is learned, not configured (`target_ci`): the newest CI answer for any run on the same
+host target says so (checks reported: yes; none on `ABSENT_POLLS` polls: no). Until a first answer, a full local entry
+runs locally and the run then waits for CI once; a target known to have no CI never waits.
+
+Mechanics: a met verdict is not final while CI is required (`required`). The run waits in `awaiting_ci` until the pull
+request head's checks are terminal: green completes it (approval or auto_complete), red sends the agent a gap with the
+failed jobs and the failing log's last lines, a pull request with no checks on `ABSENT_POLLS` consecutive polls means
+"no CI" (the local pass finishes the run, or with no local check at all it needs you; a run where CI stood in for the
+local check runs that check after all), and nothing terminal within `agent_ci_wait_seconds` (default 90 min) needs you
+(`ci_timeout`).
 
 Eridani holds no GitHub credential. It asks the run's host with the read-only `ci.status` command (sent only to a host
-whose hello caps list `ci.status`); the host runs `gh` with its own login in the run's worktree and answers in the
-command outcome's `result`. Each answer is recorded as an attempt of kind `ci` (verify_id `github_ci`), one per run
-tuple and PR head, updated in place on every poll, beside the local verify attempts.
+whose hello caps list `ci.status`); the host runs `gh` with its own login in the run's worktree (or the target's
+repository once the worktree is gone) and answers in the command outcome's `result`, including whether GitHub would
+merge the pull request now (run_merge.py reads that). Each answer is recorded as an attempt of kind `ci` (verify_id
+`github_ci`), one per run tuple and PR head, updated in place on every poll, beside the local verify attempts.
 """
 
 import re
@@ -35,7 +44,7 @@ from . import run_coordinator as coordinator
 from .config import get_settings
 from .domain import emit
 from .models import now
-from .session_models import AgentAttempt, AgentCommand, AgentRun
+from .session_models import AgentAttempt, AgentCommand, AgentRun, ExecutionTarget
 
 KIND = "ci"
 SOURCE = "github_ci"
@@ -51,6 +60,8 @@ ABSENT_POLLS = 2
 # Fail fast: a check that failed while others still run is a failure now. If the host has no log for it yet, wait at
 # most this many more polls for one before sending the gap without it.
 LOG_WAITS = 2
+# How far back target_ci looks for a CI answer about the run's repository.
+TARGET_CI_ROWS = 10
 # needs_you reasons a green CI run on the current head un-parks, as a late local pass does (verify_infra goes to the
 # judge, which counts green CI as the verification; the CI reasons were met already and go on to approval).
 UNPARK = ("verify_infra", "ci_timeout", "ci_unavailable", "verify_manual")
@@ -77,14 +88,59 @@ def quick_ids():
 
 
 def required(plan):
-    """Whether a met verdict on this plan consults GitHub CI before finishing: its verify entry is a quick pre-push
-    check or it names no verify entry at all, and its completion policy is code_ready or pr_open (pr_merged ends on
-    the merge itself). A full local entry finishes on its own pass."""
+    """Whether a met verdict on this plan consults GitHub CI before finishing: any plan under completion policy
+    code_ready or pr_open (pr_merged ends on the merge itself). CI is preferred wherever it exists; a pull request
+    without CI lets a local pass stand (`no_ci`, or at once for a target known to have none: gate)."""
     if plan is None:
         return False
-    verify_id = (plan.verify or {}).get("verify_id") or ""
-    policy = plan.completion_policy or "code_ready"
-    return (not verify_id or verify_id in quick_ids()) and policy in ("code_ready", "pr_open")
+    return (plan.completion_policy or "code_ready") in ("code_ready", "pr_open")
+
+
+def quick(plan):
+    """The plan's verify entry is a quick pre-push check (or it names none)."""
+    verify_id = ((plan.verify or {}).get("verify_id") or "") if plan is not None else ""
+    return not verify_id or verify_id in quick_ids()
+
+
+def target_ci(db, run):
+    """Whether the run's repository has CI: True (checks reported on a pull request), False (none on ABSENT_POLLS
+    polls), None (no answer yet). Read from the newest CI answers for any run on the same host target."""
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    if target is None:
+        return None
+    same = select(ExecutionTarget.id).where(ExecutionTarget.host_id == target.host_id,
+                                            ExecutionTarget.host_target == target.host_target)
+    rows = db.scalars(select(AgentAttempt).join(AgentRun, AgentRun.id == AgentAttempt.run_id).where(
+        AgentAttempt.kind == KIND, AgentRun.execution_target_id.in_(same))
+        .order_by(AgentAttempt.updated_at.desc()).limit(TARGET_CI_ROWS))
+    for row in rows:
+        result = row.result or {}
+        if result.get("checks"):
+            return True
+        if result.get("state") == "absent" and (result.get("polls") or 0) >= ABSENT_POLLS:
+            return False
+    return None
+
+
+def stands_in(db, run, plan):
+    """CI stands in for the plan's local check: a full (not quick) local entry, a policy that consults CI, a host
+    that reports it, and a repository known to have CI. The local check is then skipped (verify_by_ci)."""
+    return bool(plan is not None and local_pass(plan) and not quick(plan) and required(plan)
+                and coordinator.host_cap(db, run.host_id, COMMAND) and target_ci(db, run) is True)
+
+
+def verify_by_ci(db, run, plan, actor=None):
+    """After a turn (run_coordinator.after_turn), instead of the full local check: wait for CI on the PR head; green
+    goes to the judge, red sends the agent the failed jobs, no CI after all runs the local check (no_ci)."""
+    coordinator.transition(db, run, "awaiting_ci", actor=actor, reason="ci_verify")
+    save(run, since=now().isoformat(), turn_seq=run.turn_seq, error=None, absent_polls=0, verify_turn=tuple_key(run))
+    request(db, run)
+    return run
+
+
+def verifying(run):
+    """CI stands in for the local check on this turn: green goes to the judge, not straight to approval."""
+    return ci_state(run).get("verify_turn") == tuple_key(run)
 
 
 def local_pass(plan):
@@ -128,9 +184,11 @@ def log_lines(failed_logs, limit=LOG_LINES):
     return lines[-limit:]
 
 
-def parse(result):
+def parse(result, stale_local=()):
     """The host's `ci.status` result → {state, head_sha, pr_url, pr_number, run_url, checks, failed, log,
-    worktree_head}. Never raises: anything malformed reads as no pull request or no checks."""
+    worktree_head, pr_state, base, draft, mergeable, merge_state}. Never raises: anything malformed reads as no pull
+    request or no checks. `stale_local`: worktree heads known to be behind the PR only because Eridani updated the
+    branch on GitHub (run_merge) are not "unpushed" work."""
     result = result if isinstance(result, dict) else {}
     pr = result.get("pr") if isinstance(result.get("pr"), dict) else None
     head = str((pr or {}).get("head_sha") or (pr or {}).get("headRefOid") or "").lower()[:64]
@@ -146,7 +204,7 @@ def parse(result):
     buckets = {c["bucket"] for c in checks}
     if pr is None:
         state = "no_pr"
-    elif local and head and not local.startswith(head) and not head.startswith(local):
+    elif local and head and not local.startswith(head) and not head.startswith(local) and local not in stale_local:
         state = "unpushed"
     elif not checks:
         state = "absent"
@@ -167,7 +225,22 @@ def parse(result):
             "pr_number": (pr or {}).get("number") if isinstance((pr or {}).get("number"), int) else None,
             "run_url": run_url or (f"{pr_url}/checks" if pr_url else None), "checks": checks,
             "failed": [{"name": c["name"], "link": c["link"]} for c in failing],
-            "log": log_lines(result.get("failed_logs")) if failing else [], "worktree_head": local or None}
+            "log": log_lines(result.get("failed_logs")) if failing else [], "worktree_head": local or None,
+            **pr_facts(pr)}
+
+
+def word(value, limit=20):
+    text = str(value or "").upper()[:limit]
+    return text if re.fullmatch(r"[A-Z_]*", text) else ""
+
+
+def pr_facts(pr):
+    """Whether GitHub would merge the pull request now (remotea #59; older hosts send none of it: empty strings)."""
+    pr = pr or {}
+    base = str(pr.get("base") or "")[:200]
+    return {"pr_state": word(pr.get("state")), "base": base if re.fullmatch(r"[A-Za-z0-9._/-]*", base) else "",
+            "draft": pr.get("draft") is True, "mergeable": word(pr.get("mergeable")),
+            "merge_state": word(pr.get("merge_state"))}
 
 
 # ---------------------------------------------------------------- records
@@ -225,11 +298,15 @@ def gate(db, run, plan, actor):
     green for this turn; else the run waits in awaiting_ci (or needs you when the host cannot report CI)."""
     if not required(plan) or passed_now(db, run) or ci_state(run).get("no_ci") == tuple_key(run):
         return None  # Not consulted, already green, or this turn's pull request was found to have no CI.
+    if local_pass(plan) and target_ci(db, run) is False:
+        return None  # The repository has no CI: the local pass is the verification, nothing to wait for.
     if not coordinator.host_cap(db, run.host_id, COMMAND):
         if not local_pass(plan):
             # An older host cannot report CI, and there is no local check either: nothing to wait for, so the judge's
             # verdict stands (approval, or auto_complete) as it did before the ruleset. Updating remotea restores CI.
             return None
+        if not quick(plan):
+            return None  # A full local pass stands on its own when CI cannot be read.
         return coordinator.transition(db, run, "needs_you", actor=actor, reason="ci_unavailable",
                                       detail="The host does not report GitHub CI (no ci.status capability).")
     coordinator.transition(db, run, "awaiting_ci", actor=actor, reason="ci_pending")
@@ -241,8 +318,10 @@ def gate(db, run, plan, actor):
 def request(db, run, clock=None):
     """Ask the host for the PR head's checks now (`ci.status`, read-only, 2-minute expiry)."""
     clock = clock or now()
-    row = coordinator.command(db, run, COMMAND, {"branch": run.branch, "turn_seq": run.turn_seq, "log_lines": LOG_LINES},
-                              expires_at=clock + POLL, source="eridani")
+    target = db.get(ExecutionTarget, run.execution_target_id) if run.execution_target_id else None
+    body = {"branch": run.branch, "turn_seq": run.turn_seq, "log_lines": LOG_LINES,
+            **({"target": target.host_target} if target else {})}
+    row = coordinator.command(db, run, COMMAND, body, expires_at=clock + POLL, source="eridani")
     save(run, requested_at=clock.isoformat())
     return row
 
@@ -337,10 +416,14 @@ def on_outcome(db, run, row, state, detail="", result=None):
         return None
     payload = row.payload or {}
     tuple_ = (row.generation, payload.get("turn_seq", run.turn_seq), payload.get("plan_revision", run.plan_revision))
-    facts = parse(result)
+    facts = parse(result, ((run.sync_state or {}).get("merge") or {}).get("stale_heads") or ())
     attempt = record(db, run, tuple_, facts, clock)
     save(run, error=None, answered_at=clock.isoformat())
     emit(db, run.owner_id, "agent.changed", run.id)
+    from . import run_merge
+
+    if run_merge.on_ci(db, run, facts):
+        return attempt  # The pull request merged (an answer Eridani lost): the run completed.
     if tuple_ != (run.generation, run.turn_seq, run.plan_revision) or run.paused or automation.blocked(run):
         return attempt
     if run.state == "needs_you" and run.state_reason in UNPARK:
@@ -349,6 +432,8 @@ def on_outcome(db, run, row, state, detail="", result=None):
         return attempt
     if facts["state"] == "passed":
         coordinator.note(run, "ci_passed", attempt_id=attempt.id, head_sha=facts["head_sha"])
+        if verifying(run):
+            return coordinator.to_judging(db, run, None, reason="ci_passed")  # CI was this turn's verification.
         return coordinator.judged_met(db, run, coordinator.frozen(db, run), coordinator.judge_actor(run))
     if facts["state"] == "failed":
         waits = dict(ci_state(run).get("log_waits") or {})
@@ -379,8 +464,14 @@ def absent(db, run, attempt, facts):
 def no_ci(db, run, facts, why):
     plan = coordinator.frozen(db, run)
     actor = coordinator.judge_actor(run)
-    save(run, absent_polls=0, no_ci=tuple_key(run))
+    standing_in = verifying(run)
+    save(run, absent_polls=0, no_ci=tuple_key(run), verify_turn=None)
     coordinator.note(run, "ci_absent", head_sha=facts.get("head_sha") or "", detail=why[:300])
+    if standing_in and local_pass(plan):
+        # CI was to stand in for the local check, but this pull request has none: run the local check after all.
+        coordinator.transition(db, run, "verifying", actor=actor, reason="ci_absent_local")
+        coordinator.start_verify(db, run, plan)
+        return run
     if local_pass(plan):
         return coordinator.judged_met(db, run, plan, actor)
     return coordinator.transition(db, run, "needs_you", actor=actor, reason="verify_manual",
@@ -394,7 +485,7 @@ def unpark(db, run, attempt, facts):
     if facts["state"] != "passed":
         return attempt
     coordinator.note(run, "ci_passed", attempt_id=attempt.id, head_sha=facts["head_sha"], unparked=run.state_reason)
-    if run.state_reason == "verify_infra":
+    if run.state_reason == "verify_infra" or verifying(run):
         return coordinator.to_judging(db, run, None, reason="ci_passed")
     return coordinator.judged_met(db, run, coordinator.frozen(db, run), coordinator.judge_actor(run))
 

@@ -248,3 +248,14 @@ a.run-ci-chip:hover { text-decoration: underline; }
 .run-ci-card .run-ci-wait { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
 .run-ci-card.run-ci-failed { border-color: var(--danger); }
 .run-ci-jobs { margin: 0; padding-left: 18px; }
+
+/* Merge from Eridani (RunMergePanel): beside the CI card in Verify. */
+.run-merge { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.run-merge.tone-ok { border-color: var(--done); }
+.run-merge.tone-warn { border-color: var(--danger); }
+.run-merge-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.run-merge-row .btn { min-height: 36px; display: inline-flex; align-items: center; gap: 6px; }
+.run-merge-line { margin: 0; color: var(--ink-2); font-size: 0.85rem; }
+.run-merge-line a { display: inline-flex; align-items: center; gap: 3px; }
+.run-merge-refused { margin: 0; }
+.run-auto-merge { display: inline-flex; flex: none; align-items: center; gap: 6px; min-height: 32px; font-size: 0.85rem; color: var(--ink-2); white-space: nowrap; }

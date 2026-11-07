@@ -745,9 +745,10 @@ Describe what's wrong). Nothing is added to a repository automatically. Merges s
 - [ ] **Judge reads the diff.** An extra layer for every row of the ruleset, and the only layer for the last one:
   the judge reviews the actual diff against the criteria (not the agent's report and the test output alone) and
   names concrete problems. Plan it once the ruleset has run on real tasks for a while.
-- [ ] **Automatic merge.** Once the loop (quick check, judge, CI, approval) is trusted on jarvis, let a green,
-  approved run merge its own pull request under a policy (`pr_merged` already ends on the merge; the missing
-  piece is Eridani asking the host to merge). Davis wants to test the loop first.
+- [x] **Automatic merge.** Davis decided on 2026-11-07 to offer it, behind the real-check rule: a per-run Auto-merge
+  toggle (default from Settings, off) for runs with a verify entry or CI; runs with neither keep a manual Merge
+  button. Behind main it updates the branch and retries up to 3 times. See
+  [Merge from Eridani](MERGE_FROM_ERIDANI_PLAN.md) and `run_merge.py`.
 - Decided against for now, with the reasons, so they are not re-proposed by accident:
   - *Agents setting up a light quick check on targets without one.* Rejected: other engineers' agents would pick
     the committed check up on shared repositories such as brainforge-platform, which already have CI. Rely on CI

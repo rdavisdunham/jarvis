@@ -1860,6 +1860,13 @@
       "feature": "agent_control"
     },
     {
+      "method": "POST",
+      "path": "/api/v1/remotea/auto-merge",
+      "handler": "set_auto_merge",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
       "method": "GET",
       "path": "/api/v1/remotea/decisions",
       "handler": "decisions",
@@ -2036,6 +2043,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/auto-merge",
+      "handler": "run_auto_merge",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/automation/resume",
       "handler": "resume_automation",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -2045,6 +2059,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/cancel",
       "handler": "cancel_run",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/ci/refresh",
+      "handler": "ci_refresh",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
@@ -2073,6 +2094,13 @@
       "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/judge",
       "handler": "judge_again",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/merge",
+      "handler": "merge",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
@@ -2136,6 +2164,13 @@
       "method": "GET",
       "path": "/api/v1/remotea/runs/{identity}/turns/{turn_id}",
       "handler": "run_turn",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/update-branch",
+      "handler": "update_branch",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },

@@ -9,13 +9,14 @@ its outbound command in one transaction (run_coordinator.py owns the transitions
 import json
 import re
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, not_, or_, select
 
-from . import agent_link, run_attention, run_ci, run_summaries
+from . import agent_link, run_attention, run_ci, run_merge, run_summaries
 from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
@@ -118,6 +119,16 @@ class ApproveInput(Input):
     # Approving a run that is not awaiting approval overrides the completion policy (e.g. no passing verification);
     # the approver's reason is recorded with the override (approve).
     note: str | None = Field(default=None, max_length=2000)
+
+
+class AutoMergeInput(Input):
+    enabled: bool
+
+
+class MergeInput(Input):
+    # The pull request head the operator saw green (run_merge.check): a newer head refuses with HEAD_MOVED.
+    expected_head_sha: str | None = Field(default=None, pattern=r"^[0-9a-f]{40}$")
+    action_id: UUID | None = None  # agent_receipts.once
 
 
 class VerifyNowInput(Input):
@@ -895,20 +906,27 @@ def stop_run(db, owner, run_id, body, *, actor):
 
 def approve(db, owner, run_id, body, *, actor):
     """Approval is a human completing the task; the gate then settles the run as completed."""
-    from .domain import execute
-
     run = coordinator.load(db, owner, run_id)
     coordinator.ensure_eridani_control(run, allow_verified_exit=True)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
+    complete_approved(db, run, body.note, actor, f"run-approve:{run.id}")
+    return public_run(db, run)
+
+
+def complete_approved(db, run, note, actor, key):
+    """A human completes the run's task (approve, or a merge from Eridani: run_merge.py); the gate then settles the
+    run as completed. Approving anything but awaiting_approval records the override and why."""
     from . import agent_sync
+    from .domain import execute
     from .linear_sync import for_run
 
-    override = policy_override(db, run, body, actor)
+    db.flush()  # The refresh below must not drop what the caller changed on the run.
+    override = policy_override(db, run, SimpleNamespace(note=note), actor)
     task = db.get(Task, run.task_id)
     with acting(Actor("human", credential_id=actor.credential_id, reason="approve")), for_run(run.id, "done") as outcome:
-        execute(db, owner, f"run-approve:{run.id}", "task.complete", {"task_id": task.id, "expected_revision": task.revision})
+        execute(db, run.owner_id, key, "task.complete", {"task_id": task.id, "expected_revision": task.revision})
     db.refresh(run)
     if override:
         # The run's journal says the human accepted the work without the policy's evidence, and why.
@@ -917,7 +935,6 @@ def approve(db, owner, run_id, body, *, actor):
         run.sync_state = {**(run.sync_state or {}), "completion": {**completion, "policy_override": override}}
     if outcome.get("status"):
         agent_sync.save(run, "done", outcome)
-    return public_run(db, run)
 
 
 def policy_override(db, run, body, actor):
@@ -1303,6 +1320,9 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "verification": verification_fact(db, run),
         # GitHub CI on the PR head, the final verification after a quick local check (run_ci.py); null without one.
         "ci": run_ci.public(db, run),
+        # Merge from Eridani (run_merge.py): whether the pull request can be merged or updated now, and why not.
+        "merge": run_merge.public(db, run),
+        "auto_merge": run_merge.public_auto(db, run),
         "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question") or harness.get("managed_questions")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
