@@ -43,7 +43,7 @@ UPDATE = "pr.update_branch"
 # Run states where the agent is still at work: Merge waits for it to finish.
 WORKING = ("queued", "spawning", "interviewing", "planning", "plan_reviewing", "handing_off", "executing",
            "waiting_answer", "verifying", "judging", "replanning", "awaiting_integration", "stopping")
-SETTLED = ("completed", "stopped", "capped", "failed")
+SETTLED = run_ci.SETTLED
 # GitHub's mergeStateStatus values that mean "it would merge" (UNSTABLE: a non-required check failed; HAS_HOOKS: a
 # pre-receive hook will run; UNKNOWN: GitHub has not computed it yet, it tells us on the click).
 MERGEABLE = ("CLEAN", "UNSTABLE", "HAS_HOOKS", "UNKNOWN", "")
