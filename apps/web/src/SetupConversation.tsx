@@ -11,6 +11,7 @@ export function SetupConversation({ session, voiceActive, voiceAvailable, busy, 
   onReview?: () => void;
 }) {
   const covered = new Set(session.notes?.covered ?? []);
+  const proposing = session.status === "proposing";
   return <div className="setup-conversation" aria-label="Setup progress" role="group">
     <ul className="setup-topics" aria-label="Setup topics">
       {SETUP_TOPICS.map(topic => <li key={topic.id} className={"chip" + (covered.has(topic.id) ? " chip-done" : "")}>
@@ -18,9 +19,10 @@ export function SetupConversation({ session, voiceActive, voiceAvailable, busy, 
         {topic.label}{covered.has(topic.id) && <span className="sr-only"> (covered)</span>}
       </li>)}
     </ul>
+    {proposing && <p className="setup-status" role="status">Dani is putting your proposal together. It opens here when it’s ready.</p>}
     <div className="setup-conversation-actions">
       {onReview && <button type="button" className="btn btn-primary" disabled={busy} onClick={onReview}>Review proposed organization</button>}
-      {onPropose && <button type="button" className={"btn" + (onReview ? "" : " btn-primary")} disabled={busy} onClick={onPropose}>Propose my organization</button>}
+      {onPropose && !proposing && <button type="button" className={"btn" + (onReview ? "" : " btn-primary")} disabled={busy} onClick={onPropose}>Propose my organization</button>}
       {!voiceActive && <button type="button" className="btn" disabled={busy || !voiceAvailable} onClick={onSwitchToVoice}
         title={voiceAvailable ? undefined : "Voice is unavailable. Check Settings."}>
         <Mic size={16} aria-hidden="true"/>Switch to voice

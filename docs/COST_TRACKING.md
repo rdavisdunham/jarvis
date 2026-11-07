@@ -102,6 +102,7 @@ default ($1.00 input / $0.05 cached / $5.00 output per million tokens, 5x Luna's
 | place_by_meaning | placement_by_meaning | placement.ask (files a new unfiled task in its client or project) | luna |
 | memory_extraction | memory_learning | memory_learning.process | luna |
 | about_you | about_you | about_you.ask (daily About you summary for voice sessions) | luna |
+| setup_synthesis | setup | setup_synthesis.ask (Set up with Dani proposal: organization and core facts) | terra-6.1 (pinned, `model_map.PINNED`) |
 | note_tasks | note_tasks | notes.suggest_tasks | luna |
 | swarm_plan | agent_control | swarm.ask (Play on a project: which tasks run in parallel) | luna |
 | eri_chat | assistant | conversation (tool loop) | Settings choice (typed chat: Typed chat choice) |

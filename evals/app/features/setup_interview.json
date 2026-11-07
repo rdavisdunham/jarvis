@@ -1,0 +1,852 @@
+[
+  {
+    "id": "setup_interview.01",
+    "feature": "setup_interview",
+    "title": "Start Set up with Dani typed in a new account and answer the opening.",
+    "inputs": [
+      "Start Set up with Dani typed in a new account and answer the opening."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "A setup session is interviewing with Dani's fixed opening as the first assistant message; the typed answer runs on Terra."
+    ],
+    "invariants": [
+      "No records, memories or settings change during the interview."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Start Set up with Dani typed in a new account and answer the opening.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.02",
+    "feature": "setup_interview",
+    "title": "Choose voice at the mode question, then end voice midway.",
+    "inputs": [
+      "Choose voice at the mode question, then end voice midway."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Voice starts in the setup conversation; ending voice returns to the same conversation in typed mode."
+    ],
+    "invariants": [
+      "Voice and typing never run at once; the transcript stays one conversation."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Choose voice at the mode question, then end voice midway.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.03",
+    "feature": "setup_interview",
+    "title": "Resume an interrupted typed setup on another device.",
+    "inputs": [
+      "Resume an interrupted typed setup on another device."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Resume reopens the same conversation and moves it to the new device without a mode question."
+    ],
+    "invariants": [
+      "A second run is not created; earlier answers stay in the transcript."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Resume an interrupted typed setup on another device.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.04",
+    "feature": "setup_interview",
+    "title": "Run setup with conversation history turned off.",
+    "inputs": [
+      "Run setup with conversation history turned off."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The setup transcript is kept, Dani says so once, and the finish step offers to delete it."
+    ],
+    "invariants": [
+      "Ordinary conversations stay unretained while history is off."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Run setup with conversation history turned off.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.05",
+    "feature": "setup_interview",
+    "title": "Ask Dani to propose an organization after five interview answers.",
+    "inputs": [
+      "Ask Dani to propose an organization after five interview answers."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "A proposal of spaces, areas, goals and projects is previewed with an impact line; the review opens."
+    ],
+    "invariants": [
+      "Nothing is created until the owner confirms."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Ask Dani to propose an organization after five interview answers.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.06",
+    "feature": "setup_interview",
+    "title": "Press Propose my organization twice quickly.",
+    "inputs": [
+      "Press Propose my organization twice quickly."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Both presses return the same pending proposal job."
+    ],
+    "invariants": [
+      "Only one synthesis call is made and charged."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Press Propose my organization twice quickly.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.07",
+    "feature": "setup_interview",
+    "title": "Propose when an existing space named Work already exists.",
+    "inputs": [
+      "Propose when an existing space named Work already exists."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The proposal keeps the existing Work space instead of creating a duplicate."
+    ],
+    "invariants": [
+      "The existing space's name, description and revision are unchanged."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Propose when an existing space named Work already exists.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.08",
+    "feature": "setup_interview",
+    "title": "Edit a proposed area title in the review, then create the organization.",
+    "inputs": [
+      "Edit a proposed area title in the review, then create the organization."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The edit re-previews; the applied records match the edited preview exactly."
+    ],
+    "invariants": [
+      "One command receipt covers every created record."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Edit a proposed area title in the review, then create the organization.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.09",
+    "feature": "setup_interview",
+    "title": "Create the organization, then revert it from the receipt.",
+    "inputs": [
+      "Create the organization, then revert it from the receipt."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Every created space, area, goal and project is archived as one group."
+    ],
+    "invariants": [
+      "Records that existed before the apply are restored to their earlier names and states."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Create the organization, then revert it from the receipt.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.10",
+    "feature": "setup_interview",
+    "title": "Change an existing project's name between preview and create.",
+    "inputs": [
+      "Change an existing project's name between preview and create."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Create is refused as stale and asks for a new preview."
+    ],
+    "invariants": [
+      "No partial organization is created."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Change an existing project's name between preview and create.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.11",
+    "feature": "setup_interview",
+    "title": "Ask Dani by voice to rename a proposed goal.",
+    "inputs": [
+      "Ask Dani by voice to rename a proposed goal."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The voice model delegates the change; the rebuilt proposal shows the new goal title."
+    ],
+    "invariants": [
+      "The voice model does not claim the change was saved before the backend confirms."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Ask Dani by voice to rename a proposed goal.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.12",
+    "feature": "setup_interview",
+    "title": "Say yes by voice to creating the proposed organization.",
+    "inputs": [
+      "Say yes by voice to creating the proposed organization."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The backend applies the open proposal with its preview hash and Dani relays the verified count."
+    ],
+    "invariants": [
+      "Apply without a clear yes is never attempted."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Say yes by voice to creating the proposed organization.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.13",
+    "feature": "setup_interview",
+    "title": "Propose with an empty interview (only the opening).",
+    "inputs": [
+      "Propose with an empty interview (only the opening)."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Dani says there is not enough to propose yet and the run stays interviewing."
+    ],
+    "invariants": [
+      "No proposal row or record is created."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Propose with an empty interview (only the opening).",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.14",
+    "feature": "setup_interview",
+    "title": "Propose while the model budget is exhausted.",
+    "inputs": [
+      "Propose while the model budget is exhausted."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The run returns to interviewing and Dani explains the budget stopped the proposal."
+    ],
+    "invariants": [
+      "No partial proposal is stored."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Propose while the model budget is exhausted.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.15",
+    "feature": "setup_interview",
+    "title": "Restart setup while a proposal is still being built.",
+    "inputs": [
+      "Restart setup while a proposal is still being built."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The old proposal job is discarded as stale; the new run starts interviewing."
+    ],
+    "invariants": [
+      "The discarded job does not change the new run."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Restart setup while a proposal is still being built.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.16",
+    "feature": "setup_interview",
+    "title": "Try Set up with Dani in a shared workspace.",
+    "inputs": [
+      "Try Set up with Dani in a shared workspace."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The setup routes and tools are refused with a personal-workspace message."
+    ],
+    "invariants": [
+      "No setup session, transcript or proposal is created for the shared workspace."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Try Set up with Dani in a shared workspace.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.17",
+    "feature": "setup_interview",
+    "title": "Interview mentions a Client record type that does not exist.",
+    "inputs": [
+      "Interview mentions a Client record type that does not exist."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Dani suggests refining types later in Types & fields; the proposal stays spaces, areas, goals and projects."
+    ],
+    "invariants": [
+      "No record type or field is created."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Interview mentions a Client record type that does not exist.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.18",
+    "feature": "setup_interview",
+    "title": "Propose an organization that would exceed 80 rows.",
+    "inputs": [
+      "Propose an organization that would exceed 80 rows."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The proposal is capped at 80 rows and still previews."
+    ],
+    "invariants": [
+      "Rows beyond the cap are dropped, never applied."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Propose an organization that would exceed 80 rows.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.19",
+    "feature": "setup_interview",
+    "title": "A proposed project name matches an archived project.",
+    "inputs": [
+      "A proposed project name matches an archived project."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The review marks the row as blocking and asks to restore or rename."
+    ],
+    "invariants": [
+      "Create is refused while the blocking issue remains."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "A proposed project name matches an archived project.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.20",
+    "feature": "setup_interview",
+    "title": "Archive an existing area through the proposal without ticking Archive.",
+    "inputs": [
+      "Archive an existing area through the proposal without ticking Archive."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The area stays active after create."
+    ],
+    "invariants": [
+      "Archiving happens only for ticked rows."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Archive an existing area through the proposal without ticking Archive.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.21",
+    "feature": "setup_interview",
+    "title": "Interview topics covered so far appear as ticked chips after a proposal.",
+    "inputs": [
+      "Interview topics covered so far appear as ticked chips after a proposal."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The chips for covered topics are ticked from the synthesizer's notes."
+    ],
+    "invariants": [
+      "The live model never ticks chips directly."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Interview topics covered so far appear as ticked chips after a proposal.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.22",
+    "feature": "setup_interview",
+    "title": "Keep the Fill out the form path working alongside Set up with Dani.",
+    "inputs": [
+      "Keep the Fill out the form path working alongside Set up with Dani."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The form saves, previews and completes setup exactly as before."
+    ],
+    "invariants": [
+      "Set up with Dani remains reachable by its accessible name."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Keep the Fill out the form path working alongside Set up with Dani.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.23",
+    "feature": "setup_interview",
+    "title": "Re-run setup after completing it.",
+    "inputs": [
+      "Re-run setup after completing it."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The opening asks what changed and the proposal only adds, renames or archives on top of the existing tree."
+    ],
+    "invariants": [
+      "Existing records left out of the proposal are untouched."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Re-run setup after completing it.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.24",
+    "feature": "setup_interview",
+    "title": "Typed setup turn asks a question as a plain reply.",
+    "inputs": [
+      "Typed setup turn asks a question as a plain reply."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "Dani asks one question per reply as plain text, not a clarification card."
+    ],
+    "invariants": [
+      "The owner can switch to voice at any point without an open clarification."
+    ],
+    "partition": "holdout",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Typed setup turn asks a question as a plain reply.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  },
+  {
+    "id": "setup_interview.25",
+    "feature": "setup_interview",
+    "title": "Inspect the synthesis request for private identifiers.",
+    "inputs": [
+      "Inspect the synthesis request for private identifiers."
+    ],
+    "persona": "rowan-v1",
+    "expected": [
+      "The model sees short refs for sources, records and memories, never their IDs."
+    ],
+    "invariants": [
+      "Transcript text is never written to logs."
+    ],
+    "partition": "development",
+    "execution": {
+      "kind": "acceptance_protocol",
+      "status": "not_run",
+      "layer": "command_or_agent",
+      "protocol": "evals/app/protocols.md#command-or-agent"
+    },
+    "setup": [
+      "Use a fresh disposable synthetic database and authenticated owner; never production.",
+      "Create only the records and boundary conditions named in the scenario."
+    ],
+    "steps": [
+      "Inspect the synthesis request for private identifiers.",
+      "Read persisted state and receipt after the operation; compare all affected IDs, revisions and expected outcomes."
+    ],
+    "evidence": [
+      "Before/after saved rows and receipts.",
+      "Scenario-specific assertion results; device/voice evidence where requested."
+    ]
+  }
+]

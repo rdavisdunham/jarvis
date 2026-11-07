@@ -722,8 +722,12 @@ body:has(.modal-backdrop) .bug-report-launcher {
   align-items: center;
   gap: 6px;
 }
-.setup-conversation .footnote {
+.setup-conversation .footnote,
+.setup-status {
   margin: 0;
+}
+.setup-status {
+  color: var(--ink-2);
 }
 /* Set up with Dani: the proposed organization review. */
 .setup-tree-rows {

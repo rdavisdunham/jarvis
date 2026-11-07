@@ -170,16 +170,18 @@ export function subscribeEvents(
 // Agent turns and terminal states arrive often; only the remotea page and Sessions drawer listen.
 // Meeting context (`context.changed`) is read only by the meetings pages, through `eri-context-changed`;
 // published tasks arrive as their own `task.changed`.
-const LOAD_SKIP = new Set(["work.changed", "memory.changed", "note.indexed", "note.changed", "agent.changed", "session.changed", "context.changed"]);
-const REVISION_SKIP = new Set(["work.changed", "memory.changed", "notification.changed", "membership.changed", "agent.changed", "session.changed", "context.changed"]);
+const LOAD_SKIP = new Set(["setup.changed", "work.changed", "memory.changed", "note.indexed", "note.changed", "agent.changed", "session.changed", "context.changed"]);
+const REVISION_SKIP = new Set(["setup.changed", "work.changed", "memory.changed", "notification.changed", "membership.changed", "agent.changed", "session.changed", "context.changed"]);
 export function signalScope(signal: EventSignal) {
-  if (signal.reason === "open") return { load: true, revision: true, memory: true };
-  if (signal.reason !== "event") return { load: true, revision: false, memory: false };
-  if (!signal.kind) return { load: true, revision: true, memory: true };
+  if (signal.reason === "open") return { load: true, revision: true, memory: true, setup: true };
+  if (signal.reason !== "event") return { load: true, revision: false, memory: false, setup: false };
+  if (!signal.kind) return { load: true, revision: true, memory: true, setup: true };
   return {
     load: !LOAD_SKIP.has(signal.kind),
     revision: !REVISION_SKIP.has(signal.kind),
     memory: signal.kind === "memory.changed",
+    /** Set up with Dani's run changed (a proposal started or finished). */
+    setup: signal.kind === "setup.changed",
   };
 }
 

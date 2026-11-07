@@ -15,7 +15,8 @@ export const setupEstablished = (organization: Pick<Organization, "spaces" | "pr
 export type SetupSession = {
   status: "not_started" | "interviewing" | "proposing" | "reviewing" | "completed" | "abandoned";
   revision: number; conversation_id: string | null; mode: "voice" | "typed" | null;
-  focus: "both" | "organization" | "about_you"; notes: { covered?: string[]; rerun?: boolean };
+  focus: "both" | "organization" | "about_you";
+  notes: { covered?: string[]; missing?: string[]; rerun?: boolean; propose_error?: string | null };
   tree_proposal_id: string | null; history_off: boolean;
   /** The backend can build a proposal from the interview. */
   can_propose?: boolean;

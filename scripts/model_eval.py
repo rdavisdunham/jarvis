@@ -62,6 +62,13 @@ PRICES = {
         "source": "docs/archive/2026-10-02/BACKGROUND_MODEL_COMPARISON.md ($2 / $12); long-prompt and cached "
                   "rates assumed to follow Luna's multipliers (agent_models.PRICES)",
     },
+    "gpt-6.1-terra": {
+        "input": 1.00, "cached_input": 0.05, "output": 5.00,
+        "long": {"above": 272_000, "input": 2.00, "cached_input": 0.10, "output": 7.50},
+        "checked": "2026-11-07",
+        "source": "OpenAI pricing page as recorded in agent_models.PRICES (#191): $1.00 in / $0.05 cached / $5.00 out; "
+                  "above 272K input tokens 2x input and 1.5x output",
+    },
     "claude-haiku-5-5": {
         "input": 0.10, "output": 0.50,
         "long": {"above": 100_000, "input": 0.50, "output": 2.50},
