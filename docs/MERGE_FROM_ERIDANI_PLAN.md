@@ -95,6 +95,7 @@ A merge panel sits beside the CI card, inside Final acceptance:
 | Conflicts | **Send back to fix conflicts** |
 | No pull request | "No pull request yet". Approve only |
 | Host offline, or no `pr.merge` capability | disabled, with the reason |
+| The host answered `ci.status` with a failure and there is no earlier answer | disabled, with the host's reason (e.g. an old `gh`) instead of "Checking the pull request…" |
 | Merged | "Merged PR #n into main", with a link |
 
 - **Approve without merging** stays as a secondary action, for work merged elsewhere or not meant to merge.
