@@ -118,8 +118,16 @@
       "feature": "memory_management"
     },
     {
+      "name": "memory.pin",
+      "feature": "memory_management"
+    },
+    {
       "name": "memory.resolve",
       "feature": "memory_dream"
+    },
+    {
+      "name": "memory.unpin",
+      "feature": "memory_management"
     },
     {
       "name": "note.append",
@@ -332,6 +340,10 @@
     {
       "name": "settings.update",
       "feature": "browser_settings"
+    },
+    {
+      "name": "setup.memories_save",
+      "feature": "setup_interview"
     },
     {
       "name": "setup.propose",

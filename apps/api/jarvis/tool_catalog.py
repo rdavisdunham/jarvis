@@ -14,7 +14,7 @@ GROUPS = {
     "sessions": ("Where work happened with AI agents (Claude Code, Codex, ChatGPT and Claude desktop): find sessions by topic, issue, client or folder, see unfiled ones, and how to resume them.", ["session_search", "record_search", "record_get"]),
     "templates": ("Reusable templates: list them, preview what one creates under a home, then create independent copies on a clear request. Undo archives the created records.", ["template_list","record_instantiate_preview","record_instantiate","record_browse","work_revert"]),
     "review_cadence": ("Review cadence: records of reviewed types resurface for review. List what is due, mark one reviewed, snooze it, or stop or resume reviewing one record. Turning a type's cadence on or off is a structure edit.", ["reviews_due","record_mark_reviewed","record_review","record_get","ui_records","work_revert"]),
-    "setup_interview": ("Set up with Dani: read the interview run, build the proposed organization and core facts from the conversation (also after the owner asks for changes), and create the reviewed organization only after the owner's clear yes.", ["setup_state","setup_propose","setup_tree_apply"]),
+    "setup_interview": ("Set up with Dani: read the interview run, build the proposed organization and core facts from the conversation (also after the owner asks for changes), and create the reviewed organization only after the owner's clear yes.", ["setup_state","setup_propose","setup_tree_apply","setup_memories_save"]),
     "routing": ("Separate organization learning, explicit rules, field clarification and weekly review. No personal memory writes.", ["routing_state","routing_run","routing_create","routing_change","routing_answer","routing_understand","routing_preview","routing_apply"]),
     "structure": ("Discover or redesign user-defined types, fields, workflows and relationships. Preview structural edits and wait for explicit confirmation before applying.", ["ui_records", "structure_schema", "structure_preview", "structure_apply", "structure_restore"]),
     "records": ("Find records by meaning and learned vocabulary; create, read and edit using the current schema.", ["record_search", "search_select", "ui_records", "structure_schema", "record_list", "record_get", "record_create", "record_update", "record_link"]),
@@ -143,7 +143,7 @@ GROUPS = {
         ["review_questions","review_defer","memory_resolve","routing_answer","routing_understand","context_resolve"],
     ),
     "memory": (
-        "Read, capture, correct, forget and resolve learned personal facts.",
+        "Read, capture, correct, forget and resolve learned personal facts; pin the ones About you always includes.",
         [
             "memory_search",
             "memory_capture",
@@ -151,6 +151,8 @@ GROUPS = {
             "memory_forget",
             "memory_review_list",
             "memory_resolve",
+            "memory_pin",
+            "memory_unpin",
         ],
     ),
     "notifications": (
@@ -262,6 +264,9 @@ DESCRIPTIONS = {
     "setup_state":"Read the Set up with Dani run: status, topics covered, what is missing, and the open organization proposal (id, preview_hash, impact counts and blocking issues). Personal workspace only.",
     "setup_propose":"Build or rebuild the Set up with Dani proposal from the setup conversation, including any changes the owner just asked for; it reads the conversation itself, so pass nothing. It never changes records: the owner reviews the proposal on screen. Returns the run state once ready, or status proposing while it is still being built (it opens on screen when ready). Describe the impact briefly; never claim anything was created.",
     "setup_tree_apply":"Create the proposed organization exactly as previewed, only after the owner clearly said yes to creating it in this conversation. Read setup_state first for proposal_id and preview_hash. Refused when blocking issues remain or the preview is stale: then call setup_propose or ask the owner to review on screen. One command; it can be reverted as a group.",
+    "setup_memories_save":"Save what Dani should always keep in mind from the Set up with Dani suggestions (memory_candidates in setup_state), only after the owner confirmed them in this conversation. Send every candidate ID with the wording the owner agreed to, and include=false for any they declined. Declined ones are discarded, not rejected.",
+    "memory_pin":"Mark a saved fact as one Dani should always keep in mind (it goes into the About you summary). Only on the owner's request; read the memory ID first.",
+    "memory_unpin":"Stop treating a saved fact as an About you fact. It stays saved; use memory_forget to remove it.",
     "onboarding_save":"Save actual user answers and progress in Personal, including design_notes summarizing only their stated organization needs and decisions. Read onboarding_state first. Ask one useful question at a time about roles, types, reusable fields, statuses/behaviors, homes and links; reuse known answers. Skip preserves progress. Do not invent answers or mark completed until the linked reviewed proposal was applied.",
     "onboarding_preview":"Preview setup without creating records. For a full custom design, first read structure_schema, then supply the complete definition and schema_revision together, preserving unaffected definitions and stable IDs. Use supported types, reusable fields, statuses, behaviors, allowed homes, relationships and layout; include status_mappings when replacing statuses. The simple manual path omits definition and keeps existing defaults plus an optional described group. Show the actual proposal and impact (ui_records proposal_id), ask for explicit confirmation, and wait for a later turn before structure_apply. Then save completed using current onboarding_state. Client/Project are types; ABC/a named project are records: create real containers separately only when requested, never from illustrative examples.",
     "quicksort_start": "Start Quick Sort on the user's request: review active unfiled tasks by default, or their requested notes/selection/home. This snapshots a bounded set and asks a server-authored question about one eligible item. Starting a guided session is a complete request; do not demand an item/home first. Never invent choices or treat the workflow itself as permission to auto-file everything.",

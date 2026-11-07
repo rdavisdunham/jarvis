@@ -71,7 +71,19 @@ def public(db, owner, row=None):
         "history_off": not preferences(db, owner)["history_enabled"],
         # The interview can be turned into a proposal (needs the model; not while one is being built).
         "can_propose": row.status in ("interviewing", "reviewing") and enabled(),
+        **({"known_memory_count": known_memories(db, owner, row.memory_candidates)} if row.memory_candidates else {}),
     }
+
+
+def known_memories(db, owner, candidates):
+    """Saved facts the suggestions leave as they are ("Also learned: n facts from earlier chats...")."""
+    from sqlalchemy import func
+
+    from .about_you import live_memories
+
+    named = {c.get("existing_memory_id") for c in candidates if c.get("existing_memory_id")}
+    total = db.scalar(select(func.count()).select_from(live_memories(owner).subquery())) or 0
+    return max(0, total - len(named))
 
 
 def state(db, owner):

@@ -67,6 +67,7 @@ SYSTEM = (
     "- Refer to the owner by their preferred name. Use pronouns only if the material states them.\n"
     "- Cover what the material supports, most useful first: who the owner is; key people and who each is to them; "
     "their work and roles; ongoing priorities; stable preferences and how they like things done.\n"
+    "- core_facts, when present, are facts the owner confirmed Dani should always keep in mind: reflect every one.\n"
     "- Only stable facts. Leave out one-off tasks, plans for a particular day, passing moods and anything dated.\n"
     "- Use only the supplied material. Never invent people, roles or facts. Name a person only when the material "
     "says who they are to the owner. Saved facts are newest first; when two disagree, the newer one wins.\n"
@@ -128,7 +129,11 @@ def live_memories(owner, ids=None):
 
 def gather(db, owner, prefs) -> tuple[dict, list[str]]:
     """The material one summary is built from, and the IDs of the facts in it."""
-    facts = list(db.scalars(live_memories(owner).order_by(Memory.created_at.desc(), Memory.id).limit(FACTS)))
+    # Facts the owner confirmed for About you (Memory.core) always go in; the rest fill up to FACTS.
+    core = list(db.scalars(live_memories(owner).where(Memory.core.is_(True))
+                           .order_by(Memory.created_at.desc(), Memory.id).limit(FACTS)))
+    facts = core + list(db.scalars(live_memories(owner).where(Memory.core.is_(False))
+                                   .order_by(Memory.created_at.desc(), Memory.id).limit(FACTS - len(core))))
     records = db.scalars(
         select(StructureRecord)
         .where(StructureRecord.owner_id == owner, StructureRecord.type_id.in_(ORGANIZATION_TYPES),
@@ -151,7 +156,8 @@ def gather(db, owner, prefs) -> tuple[dict, list[str]]:
     material = {
         "profile": {"preferred_name": prefs.get("preferred_name") or "",
                     "also_known_as": list(prefs.get("name_aliases") or [])},
-        "saved_facts_newest_first": [clip(m.content, FACT_CHARS) for m in facts],
+        **({"core_facts": [clip(m.content, FACT_CHARS) for m in core]} if core else {}),
+        "saved_facts_newest_first": [clip(m.content, FACT_CHARS) for m in facts[len(core):]],
         "organization": [{"type": r.type_id, "name": clip(r.title, 120),
                           **({"about": clip(r.body, ABOUT_CHARS)} if (r.body or "").strip() else {})}
                          for r in records],
@@ -382,4 +388,7 @@ def public(db, owner, prefs) -> dict:
         "in_voice": allowed(prefs) and bool(prefs.get("live_memory_updates", True)),
         "summary": row.summary if row else "",
         "updated_at": row.generated_at.isoformat() if row and row.generated_at else None,
+        # Facts the owner pinned (Set up with Dani or the Memory page); the summary always reflects them.
+        "core": [{"id": m.id, "content": m.content} for m in db.scalars(
+            live_memories(owner).where(Memory.core.is_(True)).order_by(Memory.created_at.desc(), Memory.id).limit(FACTS))],
     }

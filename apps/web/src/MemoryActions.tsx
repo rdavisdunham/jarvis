@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Pencil, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
+import { FileText, Pencil, Pin, PinOff, RotateCcw, ThumbsDown, Trash2, X } from "lucide-react";
 import { api } from "./api";
 import { Dialog } from "./ux";
 import type { AboutYou, Memory, MemoryMaintenance } from "./types";
@@ -56,7 +56,7 @@ export function MemoryStatus({status, worker, reviews, maintenance, timezone, bu
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"});
 
 /** What Dani is told about the owner at the start of each voice call, read-only. Written in the background. */
-export function AboutYouSummary({about}: {about: AboutYou}) {
+export function AboutYouSummary({about, onUnpin}: {about: AboutYou; onUnpin?: (id: string) => Promise<unknown>}) {
   const note = !about.enabled
     ? "Off while automatic learning is off."
     : !about.summary
@@ -71,6 +71,16 @@ export function AboutYouSummary({about}: {about: AboutYou}) {
     </div>
     {about.summary && <p className="memory-about-text">{about.summary}</p>}
     <p className="memory-status-help">{note}</p>
+    {!!about.core?.length && <>
+      <h3 className="memory-about-core-head">Always kept in mind</h3>
+      <ul className="memory-about-core">
+        {about.core.map(fact => <li key={fact.id}>
+          <span>{fact.content}</span>
+          {onUnpin && <button type="button" className="btn btn-ghost btn-sm" aria-label={"Unpin: " + fact.content}
+            onClick={() => void onUnpin(fact.id).catch(() => {})}><PinOff size={14} aria-hidden/>Unpin</button>}
+        </li>)}
+      </ul>
+    </>}
   </section>;
 }
 
@@ -88,9 +98,11 @@ export function MemorySource({memory, onOpenConversation}: {memory: Memory; onOp
 }
 
 /** One remembered fact as a list row: the fact, quiet provenance, an expandable evidence line and hover actions. */
-export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversation}: {
+export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversation, onPin}: {
   memory: Memory; onCorrect: () => void; onForget: (deleteSource: boolean) => Promise<unknown>; onWrong: () => Promise<unknown>;
   onOpenConversation?: (id: string) => void;
+  /** Pin or unpin the fact for About you. */
+  onPin?: (core: boolean) => Promise<unknown>;
 }) {
   return <article className="memory row memory-row">
     <div className="memory-main">
@@ -98,6 +110,7 @@ export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversat
       <div className="memory-meta">
         <MemorySource memory={memory} onOpenConversation={onOpenConversation}/>
         <time className="tabular" dateTime={memory.created_at}>{new Date(memory.created_at).toLocaleDateString([], {month: "short", day: "numeric", year: "numeric"})}</time>
+        {memory.core && <span className="chip">About you</span>}
         {memory.tags?.map(tag => <span className="chip" key={tag}>{tag}</span>)}
       </div>
       {memory.evidence && memory.evidence.trim() !== memory.content.trim() && <details className="memory-evidence">
@@ -106,6 +119,9 @@ export function MemoryRow({memory, onCorrect, onForget, onWrong, onOpenConversat
       </details>}
     </div>
     <div className="row-actions memory-actions">
+      {onPin && <button className="btn btn-ghost btn-sm" onClick={() => void onPin(!memory.core).catch(() => {})}
+        title={memory.core ? "Stop always keeping this in mind" : "Dani always keeps pinned facts in mind (About you)"}>
+        {memory.core ? <><PinOff size={14} aria-hidden/>Unpin</> : <><Pin size={14} aria-hidden/>Pin to About you</>}</button>}
       <MemoryActions memory={memory} onCorrect={onCorrect} onForget={onForget} onWrong={onWrong}/>
     </div>
   </article>;

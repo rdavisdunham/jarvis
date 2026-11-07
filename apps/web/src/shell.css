@@ -781,6 +781,48 @@ body:has(.modal-backdrop) .bug-report-launcher {
   margin: 12px 0 0;
   color: var(--ink-2);
 }
+/* Set up with Dani: what Dani keeps in mind (About you). */
+.setup-memory-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.setup-memory-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.setup-memory-row.skipped .setup-memory-text {
+  color: var(--ink-3);
+}
+.setup-memory-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+.setup-memory-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--violet);
+}
+.setup-memory-main {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+.setup-memory-main .chip {
+  justify-self: start;
+}
+.setup-memory-text {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+}
 .history-note {
   display: flex;
   align-items: center;

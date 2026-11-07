@@ -935,6 +935,30 @@ button.note-chip-link:disabled {
   line-height: 22px;
   overflow-wrap: anywhere;
 }
+.memory-about-core-head {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.memory-about-core {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.memory-about-core li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.memory-about-core .btn {
+  min-height: 44px;
+  flex: none;
+}
 
 /* Review question */
 .memory-page .memory-review {
