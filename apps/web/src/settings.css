@@ -1321,12 +1321,6 @@
 .activity-panel .work-card.attention {
   border-color: var(--line);
 }
-.activity-panel .work-card.nested {
-  margin: 8px 0 0;
-  padding: 10px 0 10px 14px;
-  border: 0;
-  border-left: 2px solid var(--line);
-}
 .activity-panel .work-actor,
 .activity-panel .work-related {
   margin: 0 0 4px;

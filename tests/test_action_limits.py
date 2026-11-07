@@ -5,12 +5,14 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from jarvis import conversation
+from cryptography.fernet import Fernet
+from jarvis import agent_work, work_runner
 from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import execute
-from jarvis.models import BudgetReservation, Conversation, Job, Task
+from jarvis.models import AgentWork, Conversation, Job, Task
 from jarvis.tools import call_tool, registry
+from scripts.app_eval.work_turn import run_turn
 from sqlalchemy import select
 
 
@@ -24,7 +26,8 @@ def setup(monkeypatch, responses):
     monkeypatch.setattr(get_settings(), "gemini_api_key", "synthetic-test-key")
     with session_scope() as db:
         execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "gemini"})
-    monkeypatch.setattr(conversation, "prompt_context", AsyncMock(return_value=""))
+    monkeypatch.setattr(get_settings(), "integration_encryption_key", Fernet.generate_key().decode())
+    monkeypatch.setattr(work_runner, "prompt_context", AsyncMock(return_value=""))
     sent = []
 
     class Client:
@@ -40,6 +43,8 @@ def setup(monkeypatch, responses):
         async def post(self, url, *, json, **_):
             sent.append(json)
             msg = responses.pop(0)
+            if callable(msg):
+                msg = msg()
             if isinstance(msg, BaseException):
                 raise msg
             return httpx.Response(
@@ -52,7 +57,7 @@ def setup(monkeypatch, responses):
                 },
             )
 
-    monkeypatch.setattr(conversation.httpx, "AsyncClient", Client)
+    monkeypatch.setattr(httpx, "AsyncClient", Client)
     with session_scope() as db:
         conv = Conversation(owner_id="davin", device_id="test", private=True, learning=False)
         db.add(conv)
@@ -68,7 +73,7 @@ def response(*calls):
     return {"role": "assistant", "content": None, "tool_calls": list(calls)}
 
 
-async def test_bulk_edits_survive_more_than_four_calls_and_five_rounds(monkeypatch):
+async def test_bulk_edits_survive_more_than_four_calls_and_five_rounds(client, monkeypatch):
     tasks = [task(str(i)) for i in range(8)]
     responses = [response(call("task_list", {}))]
     responses += [
@@ -81,20 +86,20 @@ async def test_bulk_edits_survive_more_than_four_calls_and_five_rounds(monkeypat
     ]
     responses += [{"role": "assistant", "content": "Updated all eight tasks."}]
     cid, sent = setup(monkeypatch, responses)
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Update all eight tasks")
+    result = await run_turn("davin", "test", str(uuid4()), cid, "Update all eight tasks")
     assert result["status"] == "succeeded" and len(result["actions"]) == 8
     assert result["tool_calls"] == 9 and len(sent) == 10
     with session_scope() as db:
         assert all(t.title.startswith("Updated") for t in db.scalars(select(Task)))
 
 
-async def test_limit_retains_saved_results_and_suppresses_further_mutations(monkeypatch):
+async def test_limit_retains_saved_results_and_suppresses_further_mutations(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "max_tool_calls_per_request", 2)
     calls = [call("task_create", {"title": str(i)}) for i in range(3)]
     cid, sent = setup(
         monkeypatch, [response(*calls), {"role": "assistant", "content": "Saved two; one is unfinished."}]
     )
-    result = await conversation.chat("davin", "test", str(uuid4()), cid, "Create three tasks")
+    result = await run_turn("davin", "test", str(uuid4()), cid, "Create three tasks")
     assert result["status"] == "partial" and len(result["actions"]) == 2
     assert result["tool_errors"][0]["error"] == "LIMIT_EXCEEDED"
     assert sent[-1]["tool_choice"] == "none"
@@ -102,32 +107,39 @@ async def test_limit_retains_saved_results_and_suppresses_further_mutations(monk
         assert len(list(db.scalars(select(Task)))) == 2
 
 
-async def test_spoken_correction_blocks_remaining_calls_from_the_same_old_plan(monkeypatch):
-    cid, _ = setup(
+async def test_spoken_correction_blocks_remaining_calls_from_the_same_old_plan(client, monkeypatch):
+    turn = str(uuid4())
+
+    def corrected():
+        # The owner corrects the request while the model is still planning against the old wording.
+        with session_scope() as db:
+            agent_work.revise(db, db.get(AgentWork, turn), "Actually, don't create anything.")
+        return response(call("task_create", {"title": "Stale A"}), call("task_create", {"title": "Stale B"}))
+
+    cid, sent = setup(
         monkeypatch,
-        [
-            response(call("task_create", {"title": "Stale A"}), call("task_create", {"title": "Stale B"})),
-            {"role": "assistant", "content": "I stopped to consider your correction."},
-        ],
+        [corrected, {"role": "assistant", "content": "I stopped to consider your correction."}],
     )
-    guard = iter(["The user changed the request.", None])
-    result = await conversation.chat(
-        "davin", "test", str(uuid4()), cid, "Create things", tool_guard=lambda: next(guard)
-    )
-    assert not result["actions"]
+    result = await run_turn("davin", "test", turn, cid, "Create things")
+    assert not result["actions"] and len(sent) == 2
+    assert "don't create anything" in json.dumps(sent[-1]["messages"])
     with session_scope() as db:
         assert list(db.scalars(select(Task))) == []
 
 
-async def test_cancelled_request_finalizes_local_job_without_replaying_actions(monkeypatch):
-    cid, _ = setup(monkeypatch, [response(call("task_create", {"title": "Saved"})), asyncio.CancelledError()])
+async def test_interrupted_request_resumes_without_replaying_actions(client, monkeypatch):
+    cid, sent = setup(monkeypatch, [response(call("task_create", {"title": "Saved"})), asyncio.CancelledError(),
+                                    {"role": "assistant", "content": "Saved it."}])
     turn = str(uuid4())
     with pytest.raises(asyncio.CancelledError):
-        await conversation.chat("davin", "test", turn, cid, "Save and summarize")
+        await run_turn("davin", "test", turn, cid, "Save and summarize")
+    with session_scope() as db:
+        # A stopped process is not an outcome: the durable request stays owned by its workflow.
+        assert db.get(Job, turn).status == "running"
+    result = await run_turn("davin", "test", turn, cid, "Save and summarize")
+    assert result["status"] == "succeeded" and len(result["actions"]) == 1 and len(sent) == 3
     with session_scope() as db:
         assert len(list(db.scalars(select(Task)))) == 1
-        assert db.get(Job, turn).status == "cancelled"
-        assert db.get(BudgetReservation, turn).state == "uncertain"
 
 
 async def test_existing_memory_and_notification_actions_are_in_shared_registry():
@@ -162,16 +174,13 @@ async def test_task_list_paginates_instead_of_silently_truncating():
     assert len({t["id"] for t in first["tasks"] + second["tasks"]}) == 35
 
 
-async def test_cancel_during_initial_memory_lookup_releases_chat_reservation(monkeypatch):
-    cid, sent = setup(monkeypatch, [])
-    monkeypatch.setattr(get_settings(), "gemini_api_key", "synthetic-test-key")
-    with session_scope() as db:
-        execute(db, "davin", str(uuid4()), "settings.update", {"agent_profile": "gemini"})
-    monkeypatch.setattr(conversation, "prompt_context", AsyncMock(side_effect=asyncio.CancelledError()))
+async def test_cancel_during_initial_memory_lookup_calls_no_model_and_resumes(client, monkeypatch):
+    cid, sent = setup(monkeypatch, [{"role": "assistant", "content": "Nothing found."}])
+    monkeypatch.setattr(work_runner, "prompt_context", AsyncMock(side_effect=asyncio.CancelledError()))
     turn = str(uuid4())
     with pytest.raises(asyncio.CancelledError):
-        await conversation.chat("davin", "test", turn, cid, "Look something up")
-    with session_scope() as db:
-        assert db.get(Job, turn).status == "cancelled"
-        assert db.get(BudgetReservation, turn).state == "closed"
+        await run_turn("davin", "test", turn, cid, "Look something up")
     assert not sent
+    monkeypatch.setattr(work_runner, "prompt_context", AsyncMock(return_value=""))
+    result = await run_turn("davin", "test", turn, cid, "Look something up")
+    assert result["status"] == "succeeded" and len(sent) == 1

@@ -475,8 +475,6 @@ async def perform(request_id):
         service_tier = job.payload.get("service_tier", "default")
         tool_policy = job.payload.get("tool_policy", "baseline")
         state = unseal(row.checkpoint_ciphertext)
-        if state and "messages" not in state:
-            state = {}  # Legacy intake checkpoints contain a routing plan, not a tool loop.
         row.result = {**row.result, "waiting_for": []}
         mark("runner_started", row.id, revision=row.revision, channel="live" if row.voice_session_id else "work",
              profile=profile, tool_policy=tool_policy, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))

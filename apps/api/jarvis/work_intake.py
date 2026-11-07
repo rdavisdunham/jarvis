@@ -254,22 +254,3 @@ def flush_voice(db):
             row.input_ciphertext = None
             row.checkpoint_ciphertext = None
 
-
-async def run(request_id):
-    """Compatibility for an intake job accepted before the direct-execution release."""
-    from . import work_runner
-
-    with session_scope() as db:
-        job = db.get(Job, request_id)
-        row = db.get(AgentWork, request_id)
-        if not job or not row or job.status not in ACTIVE:
-            return
-        if row.result.get("child_ids"):
-            # Already-routed legacy work must never be executed a second time.
-            finish(db, row, "succeeded", "See saved changes below.")
-            return
-        job.kind = "agent_action"
-        state = unseal(row.checkpoint_ciphertext)
-        if state and "messages" not in state:
-            row.checkpoint_ciphertext = None
-    await work_runner.run(request_id)

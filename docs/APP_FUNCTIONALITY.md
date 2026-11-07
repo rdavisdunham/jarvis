@@ -330,7 +330,7 @@ Actual saved changes, compact anchored cards, field-level reversion and history 
 Production tool discovery, context, personality, provider continuity and honest reporting.
 
 - Acceptance set: [25 cases](../evals/app/features/chat_agent.json).
-- Implementation: [conversation.py](../apps/api/jarvis/conversation.py), [agent_models.py](../apps/api/jarvis/agent_models.py), [responses_adapter.py](../apps/api/jarvis/responses_adapter.py).
+- Implementation: [work_runner.py](../apps/api/jarvis/work_runner.py), [agent_models.py](../apps/api/jarvis/agent_models.py), [responses_adapter.py](../apps/api/jarvis/responses_adapter.py).
 - Existing regression evidence: [test_agent_models.py](../tests/test_agent_models.py), [test_responses_agent.py](../tests/test_responses_agent.py), [test_tool_refinement.py](../tests/test_tool_refinement.py).
 
 ### 31. Conversational site controls

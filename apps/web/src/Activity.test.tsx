@@ -4,7 +4,7 @@ import { ActivityPanel, attentionFirst, WorkCard, type WorkItem } from "./Activi
 import { FooterStatus, NotificationBell } from "./app-chrome";
 
 const base: WorkItem = { id:"work-1",parent_id:null,conversation_id:"chat-1",request:"Um, actually, make that call tomorrow please.",
-  status:"succeeded",revision:1,message:"Updated.",actions:[],children:[],cancel_requested:false,seen:false,
+  status:"succeeded",revision:1,message:"Updated.",actions:[],cancel_requested:false,seen:false,
   created_at:"2026-09-16T15:00:00Z",updated_at:"2026-09-16T15:00:00Z",can_continue:false };
 const render = (item: WorkItem) => renderToStaticMarkup(<WorkCard item={item} onRefresh={async()=>{}} onOpen={async()=>{}}/>);
 describe("confirmed action cards",()=>{
