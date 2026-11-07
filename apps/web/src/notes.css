@@ -922,6 +922,20 @@ button.note-chip-link:disabled {
   margin-left: auto;
 }
 
+/* About you: what Dani is told at the start of a voice call */
+.memory-page .memory-about {
+  margin-bottom: 16px;
+  padding: 16px 20px;
+}
+.memory-about-text {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 22px;
+  overflow-wrap: anywhere;
+}
+
 /* Review question */
 .memory-page .memory-review {
   margin: 0 0 16px;

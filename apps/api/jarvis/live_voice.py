@@ -15,7 +15,7 @@ from .agent_instructions import live_instructions
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
-from .memory_service import current_facts, prompt_context, semantic_search
+from .memory_service import current_facts, semantic_search
 from .models import AgentWork, Conversation, Job, Source, VoiceInbox, now, uid
 from .voice import Controller, controllers
 from .latency import mark, span
@@ -136,8 +136,10 @@ class LiveController(Controller):
                     }
                     for s in reversed(rows)
                 ]
-        self.memory_context = "" if self.preferences.get("shared_workspace") else await prompt_context(
-            self.owner, seen=self.context_sent)
+        # A short stored "About you" summary (about_you.py), never generated here. Specific facts arrive later,
+        # by what the owner says (refresh_memory_context); none are sent at start, so context_sent stays empty.
+        from .about_you import for_voice
+        self.memory_context = for_voice(self.owner, self.preferences)
         from .access import assert_current
         assert_current(self.owner,self.device)
         session = {

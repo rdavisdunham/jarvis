@@ -111,6 +111,8 @@ JOBS = {
             "Filing new tasks by meaning"),
         Job("memory_extraction", "memory_learning", "memory_learning.process", "extraction",
             "Memory fact extraction"),
+        Job("about_you", "about_you", "about_you.ask", "extraction",
+            "Daily About you summary for voice sessions"),
         Job("note_tasks", "note_tasks", "notes.suggest_tasks", "extraction", "Tasks extracted from notes"),
         Job("swarm_plan", "agent_control", "swarm.ask", "extraction",
             "Swarm plans: which of a project's tasks run in parallel"),
