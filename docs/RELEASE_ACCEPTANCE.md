@@ -44,6 +44,7 @@ provider items; retain IDs until both local and remote cleanup are verified.
 | Google / Linear | Local and remote edits agree after readback; source tags, recurrence/all-day boundaries, retry/conflict and local notes correct | Pending |
 | Notifications | Locked phone receives correct item; snooze/quiet hours/urgent settings and morning summary; no Dani completion spam | Pending |
 | New user | Invited person completes or skips/resumes setup on a phone without developer explanation; own Personal data stays separate | Pending |
+| Set up with Dani on a phone | On a real phone: "Use voice mode" opens the microphone after only the browser prompt; the voice interview asks one question at a time and never creates anything before a spoken or tapped yes; ending voice returns to the same conversation typed; "Switch to voice" works mid-interview; the proposal review and About you review fit the screen with 44px targets; created records match the review, and Revert undoes them as a group | Pending |
 | Operations | Pending synthetic work survives cloud restart with home PC off; backup/restore/PITR evidence; Google consent readiness | Pending |
 
 For every check, record:

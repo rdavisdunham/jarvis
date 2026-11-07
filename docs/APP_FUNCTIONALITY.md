@@ -511,6 +511,42 @@ switching on the pilot: [CONTEXT_PILOT_RELEASE_NOTE.md](CONTEXT_PILOT_RELEASE_NO
 - Implementation: [context/](../apps/api/jarvis/context/) ([sources.py](../apps/api/jarvis/context/sources.py), [pipeline.py](../apps/api/jarvis/context/pipeline.py), [service.py](../apps/api/jarvis/context/service.py), [mcp.py](../apps/api/jarvis/context/mcp.py), [notices.py](../apps/api/jarvis/context/notices.py)), [web](../apps/web/src/context/).
 - Existing regression evidence: [tests/context/](../tests/context/) (one module per context module, including [test_end_to_end.py](../tests/context/test_end_to_end.py)).
 
+### 42. Set up with Dani
+
+A guided interview that proposes how to organize Eridani and what Dani should always keep in mind. It starts from
+Today's setup banner or Settings → Organization ("Set up with Dani", "Resume with Dani" or "Update with Dani"), and
+from Memory → About you ("Update with Dani"). Before it starts, the owner chooses voice or typing (either/or). In
+typed mode, "Switch to voice" stays available, and ending voice returns to the same conversation typed. Both modes
+write one transcript: the setup conversation, which is kept even when conversation history is off and can be deleted
+when setup finishes. Personal workspace only.
+
+- **Interview.** Typed turns carry a setup block in the dynamic half of the prompt. In voice, GPT-Live holds the
+  interview itself and delegates only proposing, confirming, revising and ending voice. Every setup turn runs on
+  GPT-6.1 Terra.
+- **Proposal.** "Propose my organization" (or Dani's `setup_propose`) runs one Terra synthesis (cost feature "Set up
+  with Dani"). It reads the transcript, the current spaces, areas, goals and projects, saved memories and About you.
+  It produces a previewed tree (`setup.tree_preview`, nothing written), core-fact suggestions, and the topics
+  covered, which tick the chips.
+- **Review.** The tree review opens on its own. It lets the owner edit, add, remove and tick archives, and
+  re-previews before "Create this organization". That runs one `setup.tree_apply` command, matched to existing
+  records by name and revertible as a group.
+- **About you.** The About you review (`setup.memories_save`) saves the ticked facts as pinned (`Memory.core`)
+  owner statements. It deduplicates against learned facts and discards unticked ones. Pinned facts always feed
+  the About you summary. Any memory can be pinned or unpinned from the Memory page.
+- **Finishing.** Finishing posts Dani's closing line, marks setup complete once something was created or saved
+  (the banner retires), and queues the About you rebuild.
+- **Re-runs.** A re-run opens with "Tell me what's changed since we last talked." It focuses on the organization
+  (from Settings) or on who you are (from Memory). It proposes only additions, renames and ticked archives;
+  records it leaves out stay as they are.
+
+The form path ("Fill out the form") and "Refine with Dani" in Types & fields are unchanged. Plan, decisions and
+deviations: [SETUP_WITH_DANI_PLAN.md](SETUP_WITH_DANI_PLAN.md).
+
+- Acceptance set: [25 cases](../evals/app/features/setup_interview.json) (none bound yet); a physical phone and
+  microphone check is in [RELEASE_ACCEPTANCE.md](RELEASE_ACCEPTANCE.md).
+- Implementation: [setup.py](../apps/api/jarvis/setup.py), [setup_synthesis.py](../apps/api/jarvis/setup_synthesis.py), [setup_tree.py](../apps/api/jarvis/setup_tree.py), [setup_memory.py](../apps/api/jarvis/setup_memory.py), [SetupConversation.tsx](../apps/web/src/SetupConversation.tsx), [SetupTreeReview.tsx](../apps/web/src/SetupTreeReview.tsx), [SetupMemoryReview.tsx](../apps/web/src/SetupMemoryReview.tsx).
+- Existing regression evidence: [test_setup_session.py](../tests/test_setup_session.py), [test_setup_voice.py](../tests/test_setup_voice.py), [test_setup_synthesis.py](../tests/test_setup_synthesis.py), [test_setup_tree.py](../tests/test_setup_tree.py), [test_setup_memory.py](../tests/test_setup_memory.py), [test_setup_rerun.py](../tests/test_setup_rerun.py).
+
 ## Bug reports (Report a bug)
 
 A round red bug button floats bottom-left on every signed-in page (shortcut Alt+Shift+B). It takes a

@@ -26,6 +26,7 @@ export type SetupSession = {
   can_propose?: boolean;
 };
 export type SetupMode = "voice" | "typed";
+export type SetupFocus = "both" | "organization" | "about_you";
 export type MemoryCandidate = {
   id: string; content: string; fact_key: string; evidence: string; evidence_source_id: string | null;
   existing_memory_id: string | null; action: "add" | "keep" | "update" | "retire";

@@ -136,7 +136,13 @@ def set_mode(db, owner, args: ModeChange):
     return public(db, owner, row)
 
 
+FINISHING = ("You're set. I'll keep learning as we talk. Update this any time from Settings → Organization or "
+             "Memory → About you.")
+
+
 def finish(db, owner, args: Finish):
+    """End the run. Completing it says Dani's closing line, marks setup complete once something was created or
+    saved (so Today's setup banner retires), and queues the About you rebuild."""
     personal(db, owner)
     row = db.get(SetupSession, owner, with_for_update=True)
     if not row:
@@ -144,12 +150,32 @@ def finish(db, owner, args: Finish):
     if row.status not in FINISHED:
         row.status, row.finished_at = args.status, now()
         row.revision += 1
+        if args.status == "completed":
+            if not args.delete_conversation:
+                db.add(Source(owner_id=owner, conversation_id=row.conversation_id, kind="transcript", role="assistant",
+                              native_id="setup:" + row.conversation_id + ":finished", content=FINISHING))
+            complete_onboarding(db, owner, row)
+            from .setup_memory import rebuild
+            rebuild(db, owner)
+        from .domain import emit
+        emit(db, owner, "setup.changed", owner, row.revision)
     if args.delete_conversation:
         from .domain import delete_source
         for source in db.scalars(select(Source).where(Source.owner_id == owner, Source.conversation_id == row.conversation_id,
                                                      Source.deleted_at.is_(None))):
             delete_source(db, source)
     return public(db, owner, row)
+
+
+def complete_onboarding(db, owner, row):
+    """The form path's status follows a run that created an organization or saved what to remember."""
+    from .onboarding import applied_tree, state, store
+
+    if not (applied_tree(db, owner) or row.confirmed_memory_ids):
+        return
+    current = state(db, owner)
+    if current.get("status") != "completed":
+        store(db, owner, {**current, "status": "completed", "step": "done", "revision": current["revision"] + 1})
 
 
 def retained(db, owner, conversation_id):

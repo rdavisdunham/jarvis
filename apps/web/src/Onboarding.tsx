@@ -4,7 +4,7 @@ import { useEditor } from "./editor-control";
 import { api } from "./api";
 import { useStructureActions } from "./structure-actions";
 import { SETUP_MODE_QUESTION, setupActive, setupLaunchLabel, setupTypeRows,
-  type SetupMode, type SetupProgress, type SetupSession } from "./setup-model";
+  type SetupFocus, type SetupMode, type SetupProgress, type SetupSession } from "./setup-model";
 import type { Proposal } from "./structure-types";
 import "./capture.css";
 
@@ -52,10 +52,12 @@ export function SetupProposalDetails({ proposal }: { proposal: Proposal }) {
   </div>;
 }
 
-export function Onboarding({ compact = false, established = false, onChanged, onTalk, setup = null, voiceAvailable = true }: {
+export function Onboarding({ compact = false, established = false, onChanged, onTalk, setup = null, voiceAvailable = true, rerunFocus = "both" }: {
   compact?: boolean; onChanged: () => void;
   /** Start or resume Set up with Dani in the chosen mode (voice and typing are either/or). */
-  onTalk: (mode: SetupMode) => Promise<void>;
+  onTalk: (mode: SetupMode, focus?: SetupFocus) => Promise<void>;
+  /** What an "Update with Dani" re-run focuses on (Settings → Organization: the organization). */
+  rerunFocus?: SetupFocus;
   /** The account already has structure: the compact banner stays away (Settings still offers setup). */
   established?: boolean;
   setup?: SetupSession | null;
@@ -129,7 +131,8 @@ export function Onboarding({ compact = false, established = false, onChanged, on
         await save("in_progress", progress.step === "done" ? "organization" : draft.step);
       // Publish the saved editor state before syncing screen context to the backend.
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-      await onTalk(mode); setOpen(false); setChoosing(false);
+      const rerun = progress.status === "completed" || setup?.status === "completed";
+      await onTalk(mode, rerun ? rerunFocus : "both"); setOpen(false); setChoosing(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start setup. Your saved answers are kept; retry when connected.");
     } finally {

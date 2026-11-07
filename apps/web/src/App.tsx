@@ -14,10 +14,11 @@ import { StructureWorkspace } from "./Structure";
 import {QuickCapture} from "./QuickLists";
 import {Onboarding} from "./Onboarding";
 import { FooterStatus, NotificationBell } from "./app-chrome";
-import { setupActive, setupEstablished, typesFieldsRequest, type OrganizationProposal, type SetupMode, type SetupSession } from "./setup-model";
+import { setupActive, setupEstablished, typesFieldsRequest, type OrganizationProposal, type SetupFocus, type SetupMode, type SetupSession } from "./setup-model";
 import { SetupConversation } from "./SetupConversation";
 import { SetupTreeReview } from "./SetupTreeReview";
 import { SetupMemoryReview } from "./SetupMemoryReview";
+import { SetupFinishDialog, SetupModeDialog } from "./SetupDialogs";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
@@ -434,6 +435,9 @@ export default function App() {
   const setupVoice = useRef(false);
   const [treeReview, setTreeReview] = useState<OrganizationProposal | null>(null);
   const [memoryReview, setMemoryReview] = useState(false);
+  const [finishingSetup, setFinishingSetup] = useState(false);
+  // "Update with Dani" from Memory → About you asks voice or typing first.
+  const [setupModeFor, setSetupModeFor] = useState<SetupFocus | null>(null);
   // Bumped by `setup.changed` events (and while a proposal is being built) to re-read the setup state.
   const [setupSignal, setSetupSignal] = useState(0);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
@@ -1816,7 +1820,7 @@ export default function App() {
       throw Error("Setup could not be confirmed. Your answers are saved; retry to check the same request.");
   }
   /** Set up with Dani: open (or resume) the setup conversation, then start the chosen mode. */
-  async function startSetup(mode: SetupMode) {
+  async function startSetup(mode: SetupMode, focus: SetupFocus = "both") {
     flushSync(() => setCompanion(true));
     if (voice.current || (voiceState && !voiceState.closed))
       throw Error("Voice is already active. End voice, then start setup with Dani.");
@@ -1824,7 +1828,7 @@ export default function App() {
       throw Error("Typing needs a configured task agent. Try voice mode, or fill out the form.");
     if (thinking || chatSubmitLock.current)
       throw Error("Your previous message is still being sent. Try setup again when it finishes.");
-    const session = await post<SetupSession>("/setup/start", { mode });
+    const session = await post<SetupSession>("/setup/start", { mode, focus });
     conversationEpoch.current += 1;
     const data = await api<{ id: string; private: boolean; messages: ChatMessage[] }>("/conversations/" + session.conversation_id);
     conversationRef.current = data.id; setActiveConversation(data.id);
@@ -1847,6 +1851,25 @@ export default function App() {
   }
   async function refreshSetup() {
     setSetupSession(await api<SetupSession>("/setup"));
+  }
+  async function finishSetup(deleteConversation = false) {
+    const session = await post<SetupSession>("/setup/finish", { status: "completed", delete_conversation: deleteConversation });
+    setFinishingSetup(false); setSetupSession(session);
+    const id = session.conversation_id;
+    if (id && conversationRef.current === id) {
+      if (deleteConversation) { conversationRef.current = null; setActiveConversation(null); setMessages([]);
+        sessionStorage.removeItem("jarvis-conversation"); }
+      else void api<{ id: string; messages: ChatMessage[] }>("/conversations/" + id).then(data => {
+        if (conversationRef.current === data.id) setMessages(data.messages);
+      }).catch(() => {});
+    }
+    void load().catch(() => {});
+    setToast("Setup finished. Update it any time from Settings or Memory.");
+  }
+  /** Finishing with history off first offers to delete the kept setup transcript (decision 7). */
+  function requestFinishSetup() {
+    if (setupSession?.history_off) setFinishingSetup(true);
+    else void finishSetup().catch(e => setError((e as Error).message));
   }
   async function proposeSetup() {
     try { setSetupSession(await post<SetupSession>("/setup/propose", {})); }
@@ -3007,6 +3030,7 @@ export default function App() {
                   }}
                 />
                 {aboutYou && !query && <AboutYouSummary about={aboutYou}
+                  onUpdate={!boot.workspace?.id && aboutYou.enabled ? () => setSetupModeFor("about_you") : undefined}
                   onUnpin={id => mutate("memory.unpin", {memory_id: id}, "Unpinned from About you")}/>}
                 {memoryReviews.map((review) => (
                   <MemoryReviewCard
@@ -3071,7 +3095,7 @@ export default function App() {
                 <SettingsLayout section={settingsSection} onChange={setSettingsSection}>
                 <Suspense fallback={<p className="subtle" role="status">Loading…</p>}>
                 {settingsSection === "sharing" && <SharingSettings />}
-                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding onChanged={()=>void load()} onTalk={startSetup} setup={setupSession} voiceAvailable={!!boot.capabilities.voice}/><SchedulingPreferences/><RoutingReviewPanel/></>}
+                {settingsSection === "organization"&&!boot.workspace?.id&&<><Onboarding rerunFocus="organization" onChanged={()=>void load()} onTalk={startSetup} setup={setupSession} voiceAvailable={!!boot.capabilities.voice}/><SchedulingPreferences/><RoutingReviewPanel/></>}
                 {settingsSection === "organization" && <TaskArchivePreferences enabled={boot.preferences.auto_archive_finished_tasks!==false} canEdit={!boot.workspace?.id||boot.workspace.role==="owner"} shared={!!boot.workspace?.id} onChanged={()=>void load()}/>}
                 {settingsSection === "notifications"&&!boot.workspace?.id&&<NotificationPreferences/>}
                 {boot.workspace?.id &&
@@ -3285,7 +3309,8 @@ export default function App() {
               onReview={setupSession.status === "reviewing" && setupSession.tree_proposal_id
                 ? () => void openTreeReview(setupSession.tree_proposal_id!) : undefined}
               onReviewMemories={setupSession.status === "reviewing" && setupSession.memory_candidates?.length
-                ? () => setMemoryReview(true) : undefined}/>}
+                ? () => setMemoryReview(true) : undefined}
+              onFinish={setupSession.status === "reviewing" ? requestFinishSetup : undefined}/>}
             <div
               className="messages"
               onScroll={(event) => {
@@ -3437,13 +3462,14 @@ export default function App() {
         </div>
       </div>
       {mobile && companion && <button className="chat-scrim" aria-label="Close conversation backdrop" onClick={() => setCompanion(false)}/>}
-      {treeReview && <SetupTreeReview key={treeReview.id} proposal={treeReview} onClose={() => setTreeReview(null)}
+      {treeReview && <SetupTreeReview key={treeReview.id} proposal={treeReview} rerun={!!setupSession?.notes?.rerun} onClose={() => setTreeReview(null)}
         onKeepTalking={() => { setTreeReview(null); setCompanion(true); focusChat(); }}
         onByHand={() => { setTreeReview(null); setCompanion(false); setView("organize"); }}
         onApplied={result => {
           setTreeReview(null); void load().catch(() => {}); void refreshSetup().catch(() => {});
-          // Step 3: what Dani keeps in mind, when the proposal suggested any.
+          // Step 3: what Dani keeps in mind, when the proposal suggested any; otherwise setup is done.
           if (setupSession?.memory_candidates?.length) setMemoryReview(true);
+          else requestFinishSetup();
           setToast(result.created_count === 1 ? "Created 1 record." : "Created " + result.created_count + " records.");
         }}/>}
       {memoryReview && setupSession?.memory_candidates?.length ? <SetupMemoryReview candidates={setupSession.memory_candidates}
@@ -3453,7 +3479,12 @@ export default function App() {
           setMemoryReview(false); setSetupSession(result); setMemoryRevision(v => v + 1);
           const count = result.saved_ids.length;
           setToast(count === 1 ? "Dani will keep 1 thing in mind." : "Dani will keep " + count + " things in mind.");
+          requestFinishSetup();
         }}/> : null}
+      {finishingSetup && <SetupFinishDialog onClose={() => setFinishingSetup(false)} onFinish={finishSetup}/>}
+      {setupModeFor && boot && <SetupModeDialog title={setupModeFor === "about_you" ? "Update About you with Dani" : "Update with Dani"}
+        voiceAvailable={!!boot.capabilities.voice} onClose={() => setSetupModeFor(null)}
+        onStart={async mode => { await startSetup(mode, setupModeFor); setSetupModeFor(null); }}/>}
       {remotea.start &&<Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
         onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}
         onSetup={() => { remoteaActions.closeStart(); setView("settings"); setSettingsSection("integrations"); setConnectionTab("remotea"); revealSetup(); }}/></Suspense>}

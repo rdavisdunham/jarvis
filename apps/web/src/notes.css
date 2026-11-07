@@ -955,6 +955,10 @@ button.note-chip-link:disabled {
   border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere;
 }
+.memory-about-actions {
+  margin-top: 12px;
+}
+.memory-about-actions .btn,
 .memory-about-core .btn {
   min-height: 44px;
   flex: none;
