@@ -327,3 +327,76 @@ def test_task_archive_migration_preserves_outcomes_and_legacy_unknown_age(test_d
         with admin.connect() as c:
             c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+def test_in_review_migration_adds_status_to_work_types_and_downgrades(test_database):
+    import copy
+    import json
+    from sqlalchemy import text
+    from jarvis.structure import default_definition
+    name = 'jarvis_in_review_' + uuid4().hex
+    supplied = make_url(test_database)
+    admin = create_engine(supplied.set(database='postgres'), isolation_level='AUTOCOMMIT')
+    target = supplied.set(database=name)
+    trial = None
+    with admin.connect() as c:
+        c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env = {**os.environ, 'JARVIS_DATABASE_URL': target.render_as_string(hide_password=False), 'JARVIS_ENV_FILE': ''}
+        def migrate(*args):
+            result = subprocess.run([sys.executable, '-m', 'alembic', *args], cwd=ROOT, env=env, capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+        migrate('upgrade', '0054_person_bucket_links')
+        trial = create_engine(target)
+        old = copy.deepcopy(default_definition())
+        for t in old['types']:
+            t['statuses'] = [s for s in t['statuses'] if s['meaning'] != 'in_review']
+        old['types'].append({**copy.deepcopy(next(t for t in old['types'] if t['id'] == 'task')), 'id': 'notes_only',
+                             'capabilities': ['contents'],
+                             'statuses': [{'id': 'open', 'name': 'Open', 'meaning': 'open'}]})
+        has = copy.deepcopy(default_definition())
+        with trial.begin() as c:
+            for owner, definition in (('old-owner', old), ('has-owner', has)):
+                c.execute(text("INSERT INTO structure_schemas (owner_id, revision, definition, updated_at) "
+                               "VALUES (:o, 3, CAST(:d AS jsonb), now())"), {'o': owner, 'd': json.dumps(definition)})
+            c.exec_driver_sql("INSERT INTO structure_records (id,owner_id,type_id,title,body,sort_order,local_notes,values,archived,revision,schema_revision,provenance,created_at,updated_at,status_id) VALUES ('00000000-0000-0000-0000-000000000001','old-owner','task','Review me','',0,'','{}',false,1,1,'{}',now(),now(),'in_progress')")
+
+        def schemas():
+            with trial.connect() as c:
+                return {r.owner_id: (r.revision, r.definition) for r in c.execute(text('SELECT owner_id, revision, definition FROM structure_schemas'))}
+
+        migrate('upgrade', 'head')
+        migrate('check')
+        after = schemas()
+        revision, definition = after['old-owner']
+        assert revision == 4
+        types = {t['id']: t for t in definition['types']}
+        ids = [s['id'] for s in types['task']['statuses']]
+        assert ids[ids.index('in_progress') + 1] == 'in_review'
+        assert types['task']['statuses'][ids.index('in_review')] == {'id': 'in_review', 'name': 'In review', 'meaning': 'in_review'}
+        assert types['notes_only']['statuses'] == [{'id': 'open', 'name': 'Open', 'meaning': 'open'}]
+        assert after['has-owner'] == (3, has)
+
+        with trial.begin() as c:
+            c.exec_driver_sql("UPDATE structure_records SET status_id='in_review' WHERE owner_id='old-owner'")
+            tasks = Table('tasks', MetaData(), autoload_with=c)
+            values = {'id': 'review-task', 'owner_id': 'old-owner', 'title': 'Review', 'status': 'in_review'}
+            for col in Task.__table__.columns:
+                if col.name in tasks.c and col.name not in values and col.default is not None:
+                    values[col.name] = col.default.arg(None) if col.default.is_callable else col.default.arg
+            c.execute(tasks.insert().values(**values))
+        migrate('downgrade', '0054_person_bucket_links')
+        restored = schemas()
+        assert restored['old-owner'][0] == 5
+        assert all(s['meaning'] != 'in_review' for t in restored['old-owner'][1]['types'] for s in t['statuses'])
+        assert [s['id'] for s in restored['old-owner'][1]['types'][0]['statuses']] == [s['id'] for s in old['types'][0]['statuses']]
+        with trial.connect() as c:
+            assert c.scalar(text("SELECT status_id FROM structure_records WHERE owner_id='old-owner'")) == 'in_progress'
+            assert c.scalar(text("SELECT status FROM tasks WHERE id='review-task'")) == 'in_progress'
+        migrate('upgrade', 'head')
+    finally:
+        if trial:
+            trial.dispose()
+        with admin.connect() as c:
+            c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()

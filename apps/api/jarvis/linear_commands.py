@@ -160,16 +160,9 @@ def mutate(db, owner, tool, args):
             if getattr(args, key):
                 patch[remote_key] = getattr(args, key)
         if not patch.get("stateId"):
-            from .linear_sync import STATE_TYPES
+            from .linear_sync import pick_state
 
-            candidate = next(
-                (
-                    s
-                    for s in conn.directory.get("states", [])
-                    if s["team"]["id"] == args.team_id and s["type"] == STATE_TYPES[task.status]
-                ),
-                None,
-            )
+            candidate = pick_state(conn.directory.get("states", []), args.team_id, task.status)
             if candidate:
                 patch["stateId"] = candidate["id"]
             elif task.status not in {"open", None}:

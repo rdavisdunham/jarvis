@@ -479,6 +479,7 @@ export default function App() {
     | "backlog"
     | "open"
     | "in_progress"
+    | "in_review"
     | "waiting"
     | "deferred"
     | "completed"
@@ -2306,6 +2307,7 @@ export default function App() {
                       <option value="backlog">Backlog</option>
                       <option value="open">Open</option>
                       <option value="in_progress">In progress</option>
+                      <option value="in_review">In review</option>
                       <option value="waiting">Waiting</option>
                       <option value="deferred">Deferred</option>
                       <option value="cancelled">Cancelled</option>

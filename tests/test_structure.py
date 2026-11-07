@@ -488,3 +488,47 @@ def test_custom_field_patch_tool_contract_is_bounded():
     )
     with pytest.raises(ValidationError):
         validate({"operation": "patch", "changes": {"values": {"nested": {"too": "deep"}}}}, schema)
+
+
+def read_record(row):
+    with session_scope() as db:
+        return structure.data(db, db.get(StructureRecord, row["id"]))
+
+
+def test_default_work_types_have_in_review_after_in_progress():
+    for t in structure.default_definition()["types"]:
+        if "work" not in t["capabilities"]:
+            continue
+        ids = [s["id"] for s in t["statuses"]]
+        assert ids[ids.index("in_progress") + 1] == "in_review"
+        assert next(s for s in t["statuses"] if s["id"] == "in_review") == {
+            "id": "in_review", "name": "In review", "meaning": "in_review"}
+
+
+def test_task_update_to_in_review_sets_record_meaning():
+    row = create("task", "Ship the fix")
+    with session_scope() as db:
+        task = db.get(Task, row["task_id"])
+        revision = task.revision
+    run("task.update", {"task_id": row["task_id"], "expected_revision": revision, "status": "in_review"})
+    saved = read_record(row)
+    assert saved["status_id"] == "in_review" and saved["status_meaning"] == "in_review"
+
+
+def test_custom_type_without_in_review_falls_back_to_in_progress():
+    d = definition()
+    t = copy.deepcopy(next(t for t in d["types"] if t["id"] == "task"))
+    t.update(id="chore", name="Chore", plural="Chores", description="Small recurring upkeep.")
+    t["statuses"] = [
+        {"id": "todo", "name": "To do", "meaning": "open"},
+        {"id": "doing", "name": "Doing", "meaning": "in_progress"},
+        {"id": "done", "name": "Done", "meaning": "completed"},
+    ]
+    d["types"].append(t)
+    apply(propose(d))
+    row = create("chore", "Water plants")
+    with session_scope() as db:
+        revision = db.get(Task, row["task_id"]).revision
+    run("task.update", {"task_id": row["task_id"], "expected_revision": revision, "status": "in_review"})
+    saved = read_record(row)
+    assert saved["status_id"] == "doing" and saved["status_meaning"] == "in_review"

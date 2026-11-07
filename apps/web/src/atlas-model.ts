@@ -120,7 +120,7 @@ export function markKind(r: AtlasRecord, type?: AtlasType): MarkKind {
   if (caps.includes("content")) return "note";
   return "other";
 }
-export type ItemState = "done" | "overdue" | "in_progress" | "open" | "waiting" | "cancelled";
+export type ItemState = "done" | "overdue" | "in_progress" | "in_review" | "open" | "waiting" | "cancelled";
 export function itemState(r: AtlasRecord, today: string): ItemState | null {
   const m = r.status_meaning;
   if (!m) return null;
@@ -128,6 +128,7 @@ export function itemState(r: AtlasRecord, today: string): ItemState | null {
   if (m === "cancelled") return "cancelled";
   if (r.due_date && r.due_date < today) return "overdue";
   if (m === "in_progress") return "in_progress";
+  if (m === "in_review") return "in_review";
   if (m === "open") return "open";
   return "waiting";
 }
@@ -135,7 +136,7 @@ export function dueState(r: AtlasRecord, today: string): "overdue" | "today" | "
   if (!r.due_date || ["completed", "cancelled"].includes(r.status_meaning ?? "")) return "none";
   return r.due_date < today ? "overdue" : r.due_date === today ? "today" : "upcoming";
 }
-export const stateLabel: Record<ItemState, string> = { done: "done", overdue: "overdue", in_progress: "in progress", open: "open", waiting: "waiting", cancelled: "cancelled" };
+export const stateLabel: Record<ItemState, string> = { done: "done", overdue: "overdue", in_progress: "in progress", in_review: "in review", open: "open", waiting: "waiting", cancelled: "cancelled" };
 
 // ---- Layout --------------------------------------------------------------------------------
 export type PackedNode = { id: string; record: AtlasRecord | null; x: number; y: number; r: number; depth: number; parent: PackedNode | null; children: PackedNode[]; region: boolean; moons: AtlasRecord[] };

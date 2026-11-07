@@ -37,6 +37,7 @@ export const taskStates = [
   "backlog",
   "open",
   "in_progress",
+  "in_review",
   "waiting",
   "deferred",
   "completed",

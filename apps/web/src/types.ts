@@ -341,6 +341,7 @@ export interface UIContext {
     | "backlog"
     | "open"
     | "in_progress"
+    | "in_review"
     | "waiting"
     | "deferred"
     | "completed"

@@ -178,7 +178,7 @@ export type Run = {
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */
   base?: RunBase | null;
-  linear?: Partial<Record<"in_progress" | "done" | "comment", LinearOutcome>>;
+  linear?: Partial<Record<"in_progress" | "in_review" | "done" | "comment", LinearOutcome>>;
   /** One plain-language line on what the agent is doing now, written by a small model (run_summaries.py); "" until
    * the first one. summary_stale: something newer landed (a turn, a question, a verdict) and a fresh line is due. */
   summary?: string; summary_at?: string | null; summary_stale?: boolean;
@@ -286,7 +286,7 @@ export function baseLine(base: RunBase | null | undefined, now = Date.now()): st
 
 export type LinearOutcome = { status: string; code?: string | null; message?: string | null; url?: string | null; reconciled?: boolean | null };
 
-const LINEAR_WHAT = { in_progress: "In Progress", done: "Done", comment: "Completion comment" } as const;
+const LINEAR_WHAT = { in_progress: "In Progress", in_review: "In Review", done: "Done", comment: "Completion comment" } as const;
 const LINEAR_STATUS: Record<string, string> = {
   queued: "queued", retrying: "retrying", posted: "posted", deferred: "waits for the start write", skipped: "not linked",
   blocked: "not sent", failed: "failed", unconfirmed: "unconfirmed: check Linear",

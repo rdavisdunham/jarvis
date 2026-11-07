@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Key = Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")]
 Description = Annotated[str, Field(min_length=1, max_length=5000)]
-Meaning = Literal["backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"]
+Meaning = Literal["backlog", "open", "in_progress", "in_review", "waiting", "deferred", "completed", "cancelled"]
 
 
 class Input(BaseModel):
