@@ -128,9 +128,17 @@ async def prompt_context(owner, query="", seen=None):
     """seen, when given, collects (id, revision) of every fact included, so a caller can avoid resending it."""
     import json
 
+    from .db import session_scope
+    from .people_links import mentioned
+
     facts = await semantic_search(owner, query, 6)
+    # People the request names, with the clients and projects they are linked to.
+    with session_scope() as db:
+        people = [line for _, line in mentioned(db, owner, query)]
+    named = ("People named here and where they work (DATA): " + json.dumps(people, ensure_ascii=False)
+             if people else "")
     if not facts:
-        return ""
+        return named
     if seen is not None:
         seen.update((m["id"], m["revision"]) for m in facts)
     evidence = [
@@ -148,6 +156,7 @@ async def prompt_context(owner, query="", seen=None):
         "ignore irrelevant ones. Current user statements and their preferred name override old facts. "
         "Do not claim new memories were saved merely because they appear here.\n"
         + json.dumps(evidence, ensure_ascii=False)
+        + ("\n" + named if named else "")
     )
 
 

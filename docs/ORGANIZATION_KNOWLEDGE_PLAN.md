@@ -164,6 +164,8 @@ meaning (Eridani)").
   - the description and the latest overview;
   - linked people and up to 20 supported meeting facts;
   - the latest brief claims, child clients and projects, and open task counts with recent open tasks.
+- **Named in conversation.** When the owner names a linked person in voice or typed chat, the memory context
+  adds that person's clients and projects (`people_links.mentioned`). The About you summary leaves people out.
 
 ## Asking for descriptions
 

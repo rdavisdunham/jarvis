@@ -18,7 +18,7 @@ from test_live_voice import controller as controller  # noqa: F401 - fixture
 
 OWNER = "davin"
 EXAMPLE = ("Davis is a product engineer who builds Eridani, his personal planner and voice assistant, and runs AI "
-           "call-grading work for ABC Home & Commercial, where Janiece leads customer service. He lives in Chicago "
+           "call-grading work for ABC Home & Commercial, a home services company. He lives in Chicago "
            "with his cat Hayes and prefers tea over coffee. He wants short, direct answers, likes plans written as "
            "plain steps, and asks before anything is sent to other people. His priorities this season are shipping "
            "Dani's voice features and keeping Mondays free for deep work.")
@@ -123,7 +123,9 @@ def test_generation_reads_only_live_memories_and_is_skipped_when_unchanged(on):
     material = model.calls[0]
     assert material["saved_facts_newest_first"] == ["The user has a cat named Hayes.",
                                                     "The user prefers tea over coffee."]
-    assert material["people"] == ["Janiece"] and material["profile"]["preferred_name"]
+    # About you is only about the owner: other people never go in.
+    assert "people" not in material and material["profile"]["preferred_name"]
+    assert "Describe only the owner" in about_you.SYSTEM
     row = stored()
     assert row["summary"] == EXAMPLE and set(row["ids"]) == {live, merged_into}
     assert 400 <= len(row["summary"]) <= 700 and "{" not in row["summary"]

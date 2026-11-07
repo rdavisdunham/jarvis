@@ -404,8 +404,8 @@ saved fact can still arrive mid-session. The summary is never generated during a
 exists yet, nothing is sent. [about_you.py](../apps/api/jarvis/about_you.py) maintains it in the
 background: a worker sweep looks at each owner with live memories at most once a day and queues one
 `about_you` job only when its material changed (a digest of the profile name and aliases, the live
-saved memories, the names and descriptions of spaces, areas, clients, projects and goals, the people,
-and recurring reminders; no tasks or calendar) or the summary is over 7 days old. The job calls Luna
+saved memories, the names and descriptions of spaces, areas, clients, projects and goals, and
+recurring reminders; no tasks or calendar; no other people: it describes the owner only) or the summary is over 7 days old. The job calls Luna
 once (cost feature "About you summary") and rewrites the owner's single `about_you_summaries` row
 (plain text, like the memories it is distilled from). A summary built on a fact that has since been
 forgotten, corrected, merged or had its source deleted is withheld at once and rebuilt on the next
@@ -418,7 +418,11 @@ While the owner talks, Eridani retrieves facts (1.5 s after the last transcript 
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,
 at most six facts, 1,200 characters and a conservative 450-token estimate per update (Live's append
 limit is 500 tokens), never a fact already sent in this session, and only after rechecking that each fact is current (same revision, not forgotten, corrected,
-merged or superseded, and its source not deleted). Closing the session cancels a pending lookup.
+merged or superseded, and its source not deleted). When the owner names a person (a full name, or a first
+name nobody else shares), the same update carries one line per person, for at most three people, with up to
+four clients and projects they are linked to (`people_links.mentioned`; rejected links are left out), once
+per session. Typed chat gets the same people lines with its saved-memory context. Closing the session
+cancels a pending lookup.
 The provider's `session.thinking.appended` acknowledgement only means the context was delivered; it
 does not mean the next spoken words use it. A query embedding, when stored vectors exist, is billed
 under the existing "Memory retrieval" cost feature; the session logs only counts (retrievals, facts
