@@ -367,7 +367,10 @@ Delegation policy lists the backend's capabilities and says when to "Generate <|
 when not to, the wording the guide gives for gpt-live-1. While work runs, Dani acknowledges briefly and
 gives a short update as each verified result arrives. The screen, focused record IDs, scheduling
 windows and the closing controller's timers stay with the backend, which receives them on every
-delegated request.
+delegated request. The prompt tells Dani the backend sees the screen, so referential requests such as
+"this one" or "what am I looking at" go through as said instead of prompting a "which one?". The
+"anything else?" closing rule sits with how Dani sounds, and Dani offers one only when commentary
+approves it. The rendered prompt is about 4.0 kB.
 
 Progress while work runs. The server checks the session's requests every second and speaks each
 result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. A request still running after

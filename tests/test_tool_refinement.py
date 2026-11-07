@@ -73,8 +73,9 @@ def test_global_prompts_are_small_and_live_has_no_schema_mechanics():
     backend = backend_instructions(prefs)
     live = live_instructions(prefs)
     # +200 on 2026-10-29 for the agent-run capability sentence (remotea runs through Dani and Live).
-    # Live cut from ~6.7 kB to ~4.9 kB on 2026-11-07 (OpenAI's live-prompting template; backend-only rules dropped).
-    assert len(backend.encode()) < 7700 and len(live.encode()) < 5300
+    # Live cut from ~6.7 kB to ~4.9 kB on 2026-11-07 (OpenAI's live-prompting template; backend-only rules dropped),
+    # then trimmed to ~4.0 kB the same day (reviewer-approved cuts; screen-reference line added).
+    assert len(backend.encode()) < 7700 and len(live.encode()) < 4300
     assert "expected_revision" not in live and "tools_load" not in live
     assert "Delegation policy:" in live and "untrusted" in live
     assert "untrusted" in backend and "tools_load" in backend
@@ -383,3 +384,8 @@ def test_live_prompt_follows_the_gpt_live_template():
         assert backend_only not in live
     # Brief verified updates while work runs; the charming personality is shared with text.
     assert "a short update whenever a verified result arrives" in live and "charming" in live
+    # Referential requests go as said: the backend resolves "this one" from the screen, so no "which one?".
+    assert 'The backend sees the user\'s screen, so "this one" or "what am I looking at" can go as said.' in live
+    # The closing-question rule lives with delivery, once.
+    assert 'do not offer "anything else?"-style closings unless commentary\napproves one.' in live
+    assert live.count("anything else?") == 1
