@@ -1379,33 +1379,45 @@ local verify entry is a quick pre-push check (`scripts/verify-quick.sh`, [above]
 and a green GitHub CI run on the pull request head is what completes a run. Code:
 [`run_ci.py`](../apps/api/jarvis/run_ci.py).
 
-**The ruleset (Davis, 2026-11-05).** Per plan, under completion policy `code_ready` or `pr_open`:
+**The ruleset (Davis, 2026-11-05; revised 2026-11-07: CI is preferred wherever it exists).** Per plan, under
+completion policy `code_ready` or `pr_open`:
 
-| The target has | The pull request has | What finishes the run |
+| The plan's verify entry | The pull request has | What finishes the run |
 |---|---|---|
-| a quick check (`quick`) | CI checks | the quick check after every turn, then green CI |
-| no verify entry | CI checks | green CI; nothing runs locally |
-| a local check | no CI checks | the local pass; CI is not waited for |
-| no verify entry | no CI checks | nobody: `needs_you(verify_manual)`, **needs your verification** |
+| a quick check (`quick`) | CI checks | the quick check after every turn, then green CI (the best setup) |
+| none | CI checks | green CI; nothing runs locally |
+| a full local check (`full`, remotea's `server`) | CI checks | green CI; the local check is skipped and CI stands in for it |
+| any local check | no CI checks | the local pass; CI is not waited for |
+| none | no CI checks | nobody: `needs_you(verify_manual)`, **needs your verification** |
 
 Nothing is added automatically: Eridani never writes a quick check into a repository or a CI workflow. Small
 projects without either are meant to move fast; a project worth protecting has one or both. In the last row the card
 says "Needs your verification" and offers **Verified, approve** (completes the task; the completion record carries
-`policy_override.manual_verification: true`) and **Describe what's wrong** (the note goes back to the agent). A
-plan whose verify entry is a full local suite (`full`: `./scripts/verify.sh`) finishes on its local pass and never
-consults CI; `pr_merged` ends on the merge.
+`policy_override.manual_verification: true`) and **Describe what's wrong** (the note goes back to the agent).
+`pr_merged` ends on the merge.
 
-**When CI is consulted.** A plan whose verify entry id is in `JARVIS_AGENT_CI_QUICK_VERIFY_IDS` (default `quick`),
-or that names no verify entry, under completion policy `code_ready` or `pr_open` (`run_ci.required`). The loop is
-unchanged up to the verdict: the quick check (when there is one) runs after the turn and a failing check is still the
-judge's gap. When the judge finds the criteria met, `judged_met` checks integration first, then `run_ci.gate`: unless
-a green CI record exists for the run's current (generation, turn, plan revision), or this turn's pull request was
-already found to have no CI, the run moves to **`awaiting_ci`** (`ci_pending`). A host whose hello lacks `ci.status`
-parks a quick-check plan in `ci_unavailable` as before, and lets a plan with no verify entry finish on the judge's
-verdict (nothing to wait for; update remotea to apply the ruleset). A pull request whose checks are
-`absent` on `ABSENT_POLLS` (2) consecutive polls has no CI (`ci_absent` on the timeline): with a local check the
-run goes on to approval or auto_complete on that pass; without one it needs your verification. The same applies when
-the agent was asked twice to push and there is still no pull request and no local check.
+**Whether the repository has CI** is learned, not configured (`run_ci.target_ci`): the newest CI answers for any run
+on the same host target say so (checks reported: yes; none on `ABSENT_POLLS` polls: no; no answer yet: unknown).
+
+**When CI is consulted.** Every plan under completion policy `code_ready` or `pr_open` (`run_ci.required`).
+
+- **A full local entry on a repository known to have CI** (`run_ci.stands_in`): after each turn the run skips the local
+  check and waits in **`awaiting_ci`** (`ci_verify`). Green goes to the judge, which counts it as the verification
+  (`verify_by_ci`); red sends the agent the failed jobs; a pull request with no checks after all runs the local check
+  (`verifying`, `ci_absent_local`). Until the repository's CI is known, the full check runs locally and the run then
+  waits for CI once, which teaches Eridani the answer.
+- **Otherwise** the loop is unchanged up to the verdict: the quick check (when there is one) runs after the turn and a
+  failing check is still the judge's gap. When the judge finds the criteria met, `judged_met` checks integration
+  first, then `run_ci.gate`: unless a green CI record exists for the run's current (generation, turn, plan revision),
+  this turn's pull request was already found to have no CI, or the plan has a local check and the repository is known
+  to have no CI, the run moves to **`awaiting_ci`** (`ci_pending`).
+- **A host whose hello lacks `ci.status`** parks a quick-check plan in `ci_unavailable` as before, and lets a plan with
+  a full local entry or no verify entry finish on the judge's verdict (nothing to wait for; update remotea to apply
+  the ruleset).
+- **No CI.** A pull request whose checks are `absent` on `ABSENT_POLLS` (2) consecutive polls has no CI (`ci_absent`
+  on the timeline): with a local check the run goes on to approval or auto_complete on that pass; without one it
+  needs your verification. The same applies when the agent was asked twice to push and there is still no pull
+  request and no local check.
 
 **How CI status reaches Eridani.** Eridani holds no GitHub credential. It sends the run's host the read-only
 `ci.status` command, only to a host whose hello `caps` list `ci.status` (a host without it parks the run in
@@ -1414,9 +1426,9 @@ login, in the run's worktree:
 
 | | |
 |---|---|
-| Command | `{t: "ci.status", command_id, run_id, generation, plan_revision, branch, turn_seq, log_lines: 40, expires_at}` (2 min). Read-only like `worktrees.scan`: no surface fence, sent whoever has control, not journaled on the run timeline. |
-| Host steps | In the branch's worktree (`<worktreeRoot>/<branchDir>`, else a live session's folder for the run): `gh pr view <branch> --json number,url,headRefOid,state`; `gh pr checks <branch> --json name,state,bucket,link,workflow,startedAt,completedAt` (exit 1 or 8 still carries the JSON); for each failed check whose link is a GitHub Actions job (at most 3, read as soon as that job failed), `gh run view <run> --job <job> --log-failed`, last `log_lines` lines, redacted like other output; `git rev-parse HEAD` in the worktree. |
-| Outcome | `executed` with `result {pr: {number, url, head_sha, state} \| null, checks: [{name, state, bucket, link, workflow, startedAt?, completedAt?}], failed_logs: [{name, link, lines: [...]}], worktree_head}`; `failed` with the reason (`gh` missing or not logged in). |
+| Command | `{t: "ci.status", command_id, run_id, generation, plan_revision, branch, turn_seq, log_lines: 40, target, expires_at}` (2 min). Read-only like `worktrees.scan`: no surface fence, sent whoever has control and for a settled run too (the merge panel), not journaled on the run timeline. |
+| Host steps | In the branch's worktree (`<worktreeRoot>/<branchDir>`, else a live session's folder for the run, else the repository of execution target `target`): `gh pr view <branch> --json number,url,headRefOid,state,baseRefName,isDraft,mergeable,mergeStateStatus`; `gh pr checks <branch> --json name,state,bucket,link,workflow,startedAt,completedAt` (exit 1 or 8 still carries the JSON); for each failed check whose link is a GitHub Actions job (at most 3, read as soon as that job failed), `gh run view <run> --job <job> --log-failed`, last `log_lines` lines, redacted like other output; `git rev-parse HEAD` in the worktree. |
+| Outcome | `executed` with `result {pr: {number, url, head_sha, state, base, draft, mergeable, merge_state} \| null, checks: [{name, state, bucket, link, workflow, startedAt?, completedAt?}], failed_logs: [{name, link, lines: [...]}], worktree_head}`; `failed` with the reason (`gh` missing or not logged in). |
 
 `run_ci.parse` folds the checks into one state: `passed` (every check `pass` or `skipping`), `failed` (any check
 `fail`, **even while others still run: fail fast**), `pending` (any still running), `absent` (a PR without checks

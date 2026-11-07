@@ -25,9 +25,10 @@ import { WorktreeMaintenance } from "./WorktreeMaintenance";
 import { SwarmList } from "./Swarm";
 import { RunStopCard } from "./RunStopCard";
 import { RunCiCard } from "./RunCiCard";
+import { RunMergePanel } from "./RunMergePanel";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
-import { APPROVAL_FACTS, ciCard, freshnessFacts, type Fact } from "./remotea-model";
+import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 
 import "./remotea.css";
@@ -698,6 +699,19 @@ export function RunDrawer({ id, onClose, preloaded }: {
     });
   }, [id]);
   useEffect(() => { stuck.current = true; setEarlier(null); refresh(); return () => requests.current?.cancel(); }, [refresh]);
+  // The merge panel reads the host's newest CI answer: ask for a fresh one on open, and again while it can still change
+  // on its own (CI running, a merge or update with the host). The server asks at most every 30 s.
+  const mergeOpen = !!run && run.id === id && !!run.branch && !!run.merge && !["merged", "closed"].includes(run.merge.status);
+  const mergePoll = mergeOpen && !!mergePanel(run!.merge)?.poll;
+  useEffect(() => {
+    if (!mergeOpen) return;
+    void post(`/remotea/runs/${id}/ci/refresh`).then(refresh).catch(() => undefined);
+  }, [id, mergeOpen]);
+  useEffect(() => {
+    if (!mergePoll) return;
+    const timer = setInterval(() => { void post(`/remotea/runs/${id}/ci/refresh`).then(refresh).catch(() => undefined); }, 45_000);
+    return () => clearInterval(timer);
+  }, [id, mergePoll]);
   useAgentRefresh(refresh);
   // Chat behaviour: follow new entries only while the reader is already at the bottom.
   useLayoutEffect(() => { const el = log.current; if (el && stuck.current && run && (view.chat ?? chatByDefault(run))) el.scrollTop = el.scrollHeight; }, [run, view.chat]);
@@ -837,9 +851,22 @@ export function RunDrawer({ id, onClose, preloaded }: {
           onClick={() => { void respondDecision(d, action).then(refresh).catch(e => { if (isRevisionConflict(e)) changed(); else setError(message(e)); }); }}>{action === "confirm" ? "Approve once" : action === "decline" ? "Deny" : action}</button>)}</div>
       </DecisionCard>)}
   </> : null;
-  const acceptance = (withCriteria: boolean) => run && bound && run.state === "awaiting_approval" ? <DecisionCard title="Final acceptance" task={run.task?.title} reason="Review the results, then accept the completed task.">
+  // Merge from Eridani (run_merge.py): beside the CI card, inside Final acceptance while the run awaits it. It acts on
+  // GitHub, not the session, so the terminal having control does not gray it out.
+  const mergeAction = async (kind: "merge" | "update-branch", head: string) => {
+    if (!run || !bound) return;
+    setBusy(kind); setError(""); setNotice("");
+    try { await postAction(`/remotea/runs/${run.id}/${kind}`, { expected_head_sha: head }); }
+    catch (e) { setError(message(e)); }
+    finally { setBusy(""); refresh(); }
+  };
+  const mergeEl = run && bound ? <RunMergePanel run={run} disabled={!!busy} onMerge={head => void mergeAction("merge", head)}
+    onUpdate={head => void mergeAction("update-branch", head)} onSendBack={note => void act("message", { text: note, mode: "queue" })}/> : null;
+  const canMerge = !!run?.merge?.pr && !["merged", "closed"].includes(run.merge.status);
+  const acceptance = (withCriteria: boolean) => run && bound && run.state === "awaiting_approval" ? <DecisionCard title="Final acceptance" task={run.task?.title} reason={canMerge ? "Review the results, then merge the pull request, or accept them without merging." : "Review the results, then accept the completed task."}>
     {packet && <ReviewPacketCard packet={packet} criteria={withCriteria}/>}
-    <button className="btn btn-sm btn-primary" disabled={off} onClick={() => void acceptResults()}>Accept results</button>
+    {mergeEl}
+    <button className={"btn btn-sm" + (canMerge ? "" : " btn-primary")} disabled={off} onClick={() => void acceptResults()}>{canMerge ? "Accept without merging" : "Accept results"}</button>
     {packet && <p className="review-beside-approve" role="note"><strong>{packet.text}.</strong> {packet.decision?.text}</p>}
   </DecisionCard> : null;
   // What a parked run needs from you (run_attention) and GitHub CI (run_ci.py): the stop card sits in the current stage's
@@ -866,7 +893,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
         : "Message saved on this device. The automation hold is pending server confirmation."}</p>}
       {!run ? error ? <div><p role="alert" className="work-error">{error}</p><button className="btn btn-sm" onClick={refresh}>Retry loading run</button></div> : <p role="status">Loading run…</p> : <>
         {chatOpen ? <>
-          {stopEl}{ciEl}
+          {stopEl}{ciEl}{run.state !== "awaiting_approval" && mergeEl}
           {stage === "plan" && planCard}
           {bound && decisionsHere(<>{recoveryCard}{planReviewCard}{liveCards}{interviewCards}{acceptance(true)}</>)}
           <section className="run-conversation" aria-label="Conversation">
@@ -893,6 +920,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
           <StageSection name="verify" summary={verifySummary(run)} open={sections.verify} attention={attention.verify} onToggle={() => toggleSection("verify")}>
             {stage === "verify" && <>{stopEl}{ciCardHere && ciEl}{bound && decisionsHere(liveCards)}</>}
             {!ciCardHere && ciEl}
+            {run.state !== "awaiting_approval" && mergeEl}
             {run.plan ? <VerifyCriteria run={run}/> : <p className="footnote">Success criteria arrive with the plan.</p>}
             {acceptance(false)}
           </StageSection>

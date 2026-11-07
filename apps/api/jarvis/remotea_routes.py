@@ -16,7 +16,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from . import agent_control as control
-from . import agent_link, agent_plan, bot_access, swarm
+from . import agent_link, agent_plan, bot_access, run_merge, swarm
 from . import agent_receipts as receipts
 from . import agent_retention as retention
 from . import agent_sessions as sessions
@@ -442,6 +442,29 @@ def approve(identity: UUID, body: control.ApproveInput, user: User):
         writable(db, user)
         return receipts.once(db, user.owner_id, str(identity), "approve", body, lambda: control.approve(
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/merge")
+def merge(identity: UUID, body: control.MergeInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "merge", body, lambda: run_merge.merge(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/update-branch")
+def update_branch(identity: UUID, body: control.MergeInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "update_branch", body, lambda: run_merge.update_branch(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/ci/refresh")
+def ci_refresh(identity: UUID, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return run_merge.refresh(db, user.owner_id, str(identity))
 
 
 @router.post("/runs/{identity}/replan")

@@ -64,14 +64,17 @@ def test_parse_keeps_the_failed_jobs_their_run_and_at_most_40_log_lines():
         [{"name": "x", "link": None}]
 
 
-def test_a_quick_entry_or_no_entry_under_code_ready_or_pr_open_consults_ci(monkeypatch):
+def test_every_plan_under_code_ready_or_pr_open_consults_ci(monkeypatch):
     from types import SimpleNamespace as Plan
 
     monkeypatch.setattr(run_ci, "quick_ids", lambda: {"quick"})
     assert run_ci.required(Plan(verify={"verify_id": "quick"}, completion_policy="code_ready"))
     assert run_ci.required(Plan(verify={"verify_id": "quick"}, completion_policy="pr_open"))
     assert not run_ci.required(Plan(verify={"verify_id": "quick"}, completion_policy="pr_merged"))
-    assert not run_ci.required(Plan(verify={"verify_id": "full"}, completion_policy="code_ready"))  # A full pass is enough.
+    # CI is preferred wherever it exists (2026-11-07): a full entry waits for it too (or CI stands in for it).
+    assert run_ci.required(Plan(verify={"verify_id": "full"}, completion_policy="code_ready"))
+    assert run_ci.quick(Plan(verify={"verify_id": "quick"})) and run_ci.quick(Plan(verify=None))
+    assert not run_ci.quick(Plan(verify={"verify_id": "full"}))
     # The ruleset: a plan with no verify entry relies on CI (and needs you when the pull request has none).
     assert run_ci.required(Plan(verify=None, completion_policy="code_ready"))
     assert run_ci.required(Plan(verify={}, completion_policy="pr_open"))
@@ -236,11 +239,80 @@ def test_a_host_without_ci_status_parks_the_run(verifying_host, monkeypatch):  #
     assert ci_commands(run_id) == []
 
 
-def test_a_full_entry_pass_still_counts_on_its_own(ci_host, monkeypatch):
+def resumed(run_id, text="Next part"):
+    with session_scope() as db:
+        control.send_message(db, OWNER, run_id, control.MessageInput(text=text), actor=HUMAN)
+    return state(run_id)
+
+
+def test_a_full_entry_waits_for_ci_once_then_ci_stands_in_for_it(ci_host, monkeypatch):
+    monkeypatch.setattr(run_ci, "quick_ids", lambda: {"quick"})  # `tests` is now a full local entry.
+    run_id = planned(ci_host)
+    # Nothing known about the repository's CI yet: the full check runs, then the run waits for CI once.
+    assert met(ci_host, run_id) == ("awaiting_ci", "ci_pending")
+    assert report(run_id) == ("awaiting_approval", "judge_met")
+    with session_scope() as db:
+        assert run_ci.target_ci(db, db.get(AgentRun, run_id)) is True
+    # The repository has CI: the next turn skips the full check and waits for CI on the pull request instead.
+    assert resumed(run_id)[0] == "executing"
+    turn(run_id, 4)
+    assert state(run_id) == ("awaiting_ci", "ci_verify")
+    assert len(attempts(run_id)) == 1  # No local check ran for turn 4.
+    assert report(run_id) == ("judging", "ci_passed")  # Green CI is this turn's verification: the judge reads it.
+    assert judged(run_id, stub(verdict())) == ("awaiting_approval", "judge_met")
+    assert "verify_by_ci" in attempts(run_id, "judge")[-1].result["rules"]
+
+
+def test_red_ci_standing_in_sends_the_gap_and_no_ci_after_all_runs_the_local_check(ci_host, monkeypatch):
     monkeypatch.setattr(run_ci, "quick_ids", lambda: {"quick"})
     run_id = planned(ci_host)
-    assert met(ci_host, run_id) == ("awaiting_approval", "judge_met")
+    met(ci_host, run_id)
+    report(run_id)
+    resumed(run_id)
+    turn(run_id, 4)
+    assert report(run_id, checks=checks("pass", "fail")) == ("executing", "ci_failed")
+    turn(run_id, 5)
+    assert state(run_id) == ("awaiting_ci", "ci_verify")
+    assert report(run_id, checks=[]) == ("awaiting_ci", "ci_verify")
+    assert report(run_id, checks=[]) == ("verifying", "ci_absent_local")
+    assert [a.turn_seq for a in attempts(run_id)] == [3, 5]  # The full check runs for turn 5 after all.
+
+
+def test_a_full_entry_on_a_repository_without_ci_finishes_on_its_own_pass(ci_host, monkeypatch):
+    monkeypatch.setattr(run_ci, "quick_ids", lambda: {"quick"})
+    run_id = planned(ci_host)
+    met(ci_host, run_id)
+    report(run_id, checks=[])
+    assert report(run_id, checks=[]) == ("awaiting_approval", "judge_met")  # No CI on the pull request.
+    with session_scope() as db:
+        assert run_ci.target_ci(db, db.get(AgentRun, run_id)) is False
+    polls = len(ci_commands(run_id))
+    resumed(run_id)
+    assert met(ci_host, run_id, seq=4) == ("awaiting_approval", "judge_met")  # Known: no CI, no wait.
+    assert len(ci_commands(run_id)) == polls
+
+
+def test_a_full_entry_pass_stands_when_the_host_cannot_read_ci(verifying_host, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(run_ci, "quick_ids", lambda: {"quick"})
+    run_id = planned(verifying_host)
+    assert met(verifying_host, run_id) == ("awaiting_approval", "judge_met")
     assert ci_commands(run_id) == []
+
+
+def test_ci_status_and_merge_commands_reach_a_host_that_takes_them(ci_host):
+    from jarvis import agent_link
+
+    run_id = planned(ci_host)
+    met(ci_host, run_id)
+    with session_scope() as db:
+        row = db.get(AgentHost, ci_host.id)
+        sent = [f for f in agent_link.drain(db, row, row.conn_epoch) if f["t"] == "ci.status"]
+        assert len(sent) == 1 and sent[0]["target"] == "jarvis" and sent[0]["log_lines"] == 40
+        # A settled run's CI is still read (the drawer's merge panel): not cancelled as stale.
+        run = db.get(AgentRun, run_id)
+        command = run_ci.request(db, run)
+        run.state = "completed"
+        assert coordinator.stale(db, command, run) is None
 
 
 def test_a_message_resumes_the_run_and_a_stale_answer_never_moves_it(ci_host):

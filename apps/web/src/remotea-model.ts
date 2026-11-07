@@ -167,6 +167,8 @@ export type Run = {
   /** GitHub CI on the pull request head, the final verification after a quick local check (run_ci.py; older
    * Eridani: absent). Null when the run has no CI record and is not awaiting CI. */
   ci?: RunCi | null;
+  /** Merge from Eridani (run_merge.py; older Eridani: absent): whether the pull request can be merged or updated now. */
+  merge?: RunMerge | null;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
   freestyle?: boolean;
@@ -225,6 +227,16 @@ export type RunCi = {
   current: boolean; attempt_id: string | null; source: "github_ci"; head_sha: string | null; pr_url: string | null;
   run_url: string | null; checks: CiCheck[]; failed: { name: string; link: string | null }[]; log: string[];
   checked_at: string | null; since: string | null; wait_until: string | null; error: string | null;
+};
+/** The merge panel's facts (run_merge.public): the server decides; the panel only shows it. */
+export type RunMerge = {
+  status: "merged" | "closed" | "merging" | "updating" | "unknown" | "no_pr" | "working" | "host" | "waiting_ci"
+    | "ci_failed" | "draft" | "conflicts" | "behind" | "blocked" | "ready";
+  detail: string; can_merge: boolean; can_update: boolean;
+  pr: { number: number; url: string | null; base: string; head_sha: string; state: string } | null;
+  ci: string | null; checked_at: string | null;
+  op: { kind?: string; state?: string; reason?: string; message?: string; at?: string; head_sha?: string;
+    new_head_sha?: string; number?: number; base?: string; merge_commit?: string; worktree_synced?: boolean } | null;
 };
 /** A command whose effect is not known yet: `pending` (the host has not taken it) or `uncertain` (it could not tell). */
 export type PendingCommand = { kind: string; status: "pending" | "uncertain"; mode?: string | null; at: string };
@@ -321,7 +333,9 @@ export type HistoryEntry = { at: string; from?: string; to?: string; reason?: st
   /** Hyperplan events: `review_blocked` (round), `handoff` (the worker's harness and model). */
   round?: number; harness?: string; model?: string;
   /** `approve_override`: the approver's note (the reason they accepted the work without the policy's evidence). */
-  note?: string };
+  note?: string;
+  /** Merge from Eridani: `merged_pr` (number, base), `branch_updated` (new_head_sha), `merge_refused`/`update_refused`. */
+  number?: number; base?: string; new_head_sha?: string | null };
 export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
   multi: boolean; free_text: boolean };
 export type Interview = { id: string; run_id: string; generation: number; questions: InterviewQuestion[];
@@ -1036,6 +1050,15 @@ export function timeline(run: RunDetail): TimelineEntry[] {
       blocked.add(key);
       continue;
     }
+    if (h.event === "merged_pr" || h.event === "branch_updated" || h.event === "merge_refused" || h.event === "update_refused") {
+      // Merge from Eridani (run_merge.py): the merge, an update of the branch with its base, or GitHub's refusal.
+      const title = h.event === "merged_pr" ? `Merged PR${h.number ? " #" + h.number : ""} into ${h.base || "main"}`
+        : h.event === "branch_updated" ? "Branch updated with its base; CI runs again"
+        : `GitHub refused the ${h.event === "merge_refused" ? "merge" : "update"}`;
+      entries.push({ id, at: h.at, kind: "state", title, tone: h.event === "merged_pr" ? "good" : h.event === "branch_updated" ? "plain" : "warn",
+        detail: h.event === "branch_updated" ? (h.new_head_sha ? "New head " + h.new_head_sha.slice(0, 7) : "") : h.reason ?? "", who: "eridani" });
+      continue;
+    }
     if (h.event === "approve_override") {
       entries.push({ id, at: h.at, kind: "state", title: "Approved by you without the completion policy's evidence",
         detail: [h.reason ? (REASON_WORDS[h.reason] ?? h.reason) : "", h.note ?? ""].filter(Boolean).join(" · "), tone: "attention", who: "you" });
@@ -1725,6 +1748,29 @@ export function ciChip(ci: RunCi | null | undefined): { label: string; tone: "ok
   const title = ci.state === "failed" ? `Failed${head}: ${ci.failed.map(f => f.name).join(", ") || "a check"}`
     : ci.state === "pending" && running.length ? `Running${head}: ${running.join(", ")}` : CI_WORDS[ci.state] + head;
   return { label: CI_WORDS[ci.state], tone, href: ci.run_url || ci.pr_url, title };
+}
+
+const MERGE_SEND_BACK: Partial<Record<RunMerge["status"], string>> = {
+  conflicts: "The pull request has merge conflicts with {base}. Merge {base} into the branch, resolve the conflicts, run the checks and push.",
+  ci_failed: "GitHub CI is failing on the pull request. Fix the failing checks and push.",
+};
+
+/** The drawer's merge panel (run_merge.py): its main button, its line, and what Send back says. Null when the
+ * run has no merge facts (older Eridani). */
+export function mergePanel(merge: RunMerge | null | undefined) {
+  if (!merge) return null;
+  const base = merge.pr?.base || "main";
+  const action: "merge" | "update" | "none" = merge.status === "behind" ? "update"
+    : ["merged", "closed"].includes(merge.status) ? "none" : "merge";
+  const label = action === "update" ? "Update branch" : merge.status === "merging" ? "Merging…" : `Merge into ${base}`;
+  const enabled = action === "update" ? merge.can_update : merge.can_merge;
+  const sendBack = MERGE_SEND_BACK[merge.status]?.replaceAll("{base}", base) ?? null;
+  const refused = merge.op?.state === "refused" ? `GitHub refused the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}`
+    : merge.op?.state === "failed" || merge.op?.state === "uncertain" ? `The host could not finish the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}` : null;
+  const tone = merge.status === "merged" ? "ok" as const : ["ci_failed", "conflicts", "closed"].includes(merge.status) ? "warn" as const : "plain" as const;
+  return { action, label, enabled, line: merge.detail, sendBack, refused: ["merged", "merging", "updating"].includes(merge.status) ? null : refused, tone,
+    // The drawer asks the host again while the answer can still change on its own.
+    poll: ["unknown", "waiting_ci", "merging", "updating"].includes(merge.status) };
 }
 
 /** The drawer's CI card: while awaiting CI, how long it has waited and when it gives up; when CI failed, the jobs
