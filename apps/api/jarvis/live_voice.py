@@ -131,7 +131,7 @@ class LiveController(Controller):
             "store": False,
             "audio": {"output": {"voice": self.voice}},
             "delegation": {"type": "client"},
-            "instructions": live_instructions(self.preferences)
+            "instructions": live_instructions(self.preferences, self.voice)
             + "\n"
             + self.memory_context,
             "input": [

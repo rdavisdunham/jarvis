@@ -360,7 +360,9 @@ Instructions. Live's prompt (`live_instructions` in
 [GPT-Live prompting guide](https://developers.openai.com/api/docs/guides/live-prompting) and holds only
 what the voice model acts on: Dani's identity and shared personality
 ([personality.py](../apps/api/jarvis/personality.py)), how Dani sounds, the Backchannel, Interruption
-and Delegation policies, and a small Profile DATA line (preferred name, timezone, current time). The
+and Delegation policies, and a small Profile DATA line (preferred name, timezone, current time). Dani's pronouns follow the chosen voice
+(she/her or he/him, from OpenAI's published presentation for each voice; Marin when none is chosen),
+in voice and in typed chat, which reads the device's voice from the screen context. The
 Delegation policy lists the backend's capabilities and says when to "Generate <|SpawnThinking|>" and
 when not to, the wording the guide gives for gpt-live-1. While work runs, Dani acknowledges briefly and
 gives a short update as each verified result arrives. The screen, focused record IDs, scheduling
