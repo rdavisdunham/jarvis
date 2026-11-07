@@ -18,6 +18,8 @@ export type WorkItem = {
   actor?: { type: "bot"; id: string; name: string } | null;
   id: string; parent_id: string | null; conversation_id: string; request: string;
   status: string; revision: number; message: string; actions: ActionChange[];
+  /** The backend's latest step while the request runs, e.g. "looking that up"; null once it settles. */
+  progress?: { seq: number; stage: string; note: string; ok?: boolean } | null;
   cancel_requested: boolean; seen: boolean; waiting?: boolean; related_request_id?: string | null; created_at: string; updated_at: string; can_continue: boolean; can_revise?: boolean;
 };
 export const workActive = (item: WorkItem) => ["queued", "dispatched", "running", "waiting_sync"].includes(item.status);
@@ -126,9 +128,11 @@ export function WorkCard({ item, onRefresh, onOpen, compact = false }: Props) {
     </span><time dateTime={item.created_at}>{new Date(item.created_at).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</time></header>
     {details && item.actor && <p className="work-actor">{item.actor.name} <span className="chip">connected agent</span></p>}
     {details && item.related_request_id && <p className="work-related">Follow-up to earlier work</p>}
-    {!item.actions.length && <p className="work-result">{
-      item.message || (workActive(item) ? "Working on your request…" : "No changes were saved.")
-    }</p>}
+    {workActive(item) && item.progress?.note
+      ? <p className="work-result work-progress">{sentenceCase(item.progress.note)}…</p>
+      : !item.actions.length && <p className="work-result">{
+        item.message || (workActive(item) ? "Working on your request…" : "No changes were saved.")
+      }</p>}
     {!!item.actions.length && workAttention(item) && !!item.message && <p className="work-result">{item.message}</p>}
     {item.actions.map(action => <div className="work-change" key={action.id}>
       <div><strong>{action.summary ?? `${action.operation.charAt(0).toUpperCase() + action.operation.slice(1)}: ${action.title}`}</strong>
