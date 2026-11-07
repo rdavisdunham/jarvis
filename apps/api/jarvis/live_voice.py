@@ -10,7 +10,7 @@ from urllib.parse import quote
 import websockets
 from sqlalchemy import or_, select
 
-from . import budget
+from . import budget, llm_trace
 from .agent_instructions import live_instructions
 from .config import get_settings
 from .db import session_scope
@@ -335,6 +335,16 @@ class LiveController(Controller):
     def save_group(self, group):
         if group["saved"] or not group["content"].strip():
             return
+        # Live voice bills by the second (record_seconds), so its trace carries the words: each reply with the
+        # user turn it answers, one trace per exchange in the voice session.
+        if group["role"] == "user":
+            self.heard = group
+        else:
+            heard = getattr(self, "heard", None)
+            with llm_trace.unit("voice", seed=f"live:{self.id}:{(heard or group)['id']}", surface="voice",
+                                owner=self.owner, session=self.id):
+                llm_trace.record("live_voice.reply", model=self.model, feature="voice",
+                                 input=heard["content"] if heard else None, output=group["content"])
         with session_scope() as db:
             conv = owned(db, Conversation, self.conversation_id, self.owner)
             source = capture_source(

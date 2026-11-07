@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Body
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from . import budget
+from . import budget, llm_trace
 from .auth import Identity, authenticate
 from .config import get_settings
 from .db import session_scope
@@ -46,6 +46,19 @@ from an older question or a quoted/example conversation.
 RESPOND: a genuine request, question or conversational statement inviting a reply.
 Do not execute tools, answer the question, or add punctuation. 'I wonder what is on tomorrow'
 can be a genuine request. Do not suppress requests just because they are indirect."""
+
+
+def spoken(response):
+    """What a realtime response said or called, for its Langfuse trace: transcripts, text and tool calls."""
+    out = []
+    for item in response.get("output") or []:
+        if item.get("type") == "function_call":
+            out.append({"tool": item.get("name"), "arguments": llm_trace.readable(item.get("arguments") or "")})
+        for part in item.get("content") or []:
+            text = part.get("transcript") or part.get("text")
+            if text:
+                out.append(text)
+    return out
 
 
 class VoiceInput(BaseModel):
@@ -277,6 +290,9 @@ class Controller:
                         cost,
                         feature="transcription",
                     )
+                llm_trace.record("voice.transcription", model="gpt-live-transcribe", feature="transcription",
+                                 output=event.get("transcript", ""), usage=usage, cost=cost, owner=self.owner,
+                                 session=self.id, surface="voice", metadata={"item_id": event["item_id"]})
                 self.pending_transcription.discard(event["item_id"])
             with session_scope() as db:
                 conv = owned(db, Conversation, self.conversation_id, self.owner)
@@ -322,6 +338,13 @@ class Controller:
                         budget.realtime_cost(usage, self.model),
                         feature="voice",
                     )
+                with llm_trace.unit("voice", seed=f"voice:{self.id}:{self.current_item or response['id']}",
+                                    surface="voice", owner=self.owner, session=self.id):
+                    llm_trace.record(
+                        "voice." + ((request or {}).get("phase") or "response"), model=self.model, feature="voice",
+                        input=self.transcripts.get(self.current_item) if self.current_item else None,
+                        output=spoken(response), usage=usage, cost=budget.realtime_cost(usage, self.model),
+                        metadata={"status": response.get("status"), "response_id": response["id"]})
             if not usage:
                 self.unreported.add(response["id"])
             else:

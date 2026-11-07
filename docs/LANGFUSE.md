@@ -140,3 +140,31 @@ Browser timing covers same-tab typed results observed in the foreground.
 It cannot prove a requested Calendar/task page was painted, or that a Live response
 was spoken. Those checks remain part of the device baseline.
 See [SPEED1/2 validation](SPEED_1_2_VALIDATION.md).
+
+## Production tracing
+
+Every model call the app makes is traced to Langfuse (`apps/api/jarvis/llm_trace.py`) when both keys are set:
+LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY, plus LANGFUSE_BASE_URL (default `https://us.cloud.langfuse.com`).
+Set them on both Railway services (Eridani_Web and Eridani_Worker); locally the repository's `.env` is read.
+JARVIS_LANGFUSE_TRACING=false turns tracing off while keeping the keys. With external services off (tests,
+restored staging databases) nothing is sent.
+
+One project holds everything, labeled so it sorts:
+
+| Langfuse field | Value |
+| -- | -- |
+| Environment | `JARVIS_DEPLOYMENT_ENVIRONMENT`: `local`, `staging` or `production` |
+| Trace | One unit of work: a background job (named by its kind, e.g. `place_by_meaning`, `record_overview`, `context_extract`), one assistant request (`assistant`), one voice exchange (`voice`). A call outside any unit (a search query embedding) is its own trace, named by its feature. |
+| Observation | One model call, named by its cost feature (the same lines as the Costs page), typed `generation` or `embedding`, with the model, request settings, input, output, token usage and the cost the app recorded. Assistant tool calls are `tool` observations in the request's trace. |
+| Tags | The cost feature and the surface: `background`, `assistant`, `voice` or `request` |
+| User / session | The workspace owner; the conversation or voice session when there is one |
+| Release | The deployed commit (`RAILWAY_GIT_COMMIT_SHA`) |
+
+What is covered: the background model calls (`memory_learning.provider_request` for OpenAI Responses and
+embeddings, `anthropic_request` for Claude), the assistant (`work_runner.request_model` and its tool calls),
+realtime voice responses and transcription (`voice.py`) and live voice exchanges (`live_voice.py`, which bills by
+the second, so those carry words but no tokens).
+
+Tracing never changes a call: every Langfuse step is guarded, the SDK sends in the background, and its
+OpenTelemetry provider is private to it, so no other library's spans are exported. Inputs and outputs are sent
+as they are (the owner chose Langfuse Cloud knowingly; there is no masking).

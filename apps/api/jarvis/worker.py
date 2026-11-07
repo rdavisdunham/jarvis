@@ -49,6 +49,17 @@ def valid_push_endpoint(endpoint):
 
 @DBOS.step(retries_allowed=True, interval_seconds=2, max_attempts=10, backoff_rate=2)
 def perform_job(job_id):
+    """Run one job. Its model calls, if any, form one Langfuse trace named by the job kind (llm_trace.py)."""
+    from . import llm_trace
+
+    with session_scope() as db:
+        job = db.get(Job, job_id)
+        kind, owner = (job.kind, job.owner_id) if job else (None, None)
+    with llm_trace.unit(kind or "job", seed="job:" + str(job_id), owner=owner, metadata={"job_id": job_id}):
+        return _perform_job(job_id)
+
+
+def _perform_job(job_id):
     with session_scope() as db:
         job = db.get(Job, job_id)
         kind = job.kind if job else None

@@ -107,6 +107,17 @@ class Settings(BaseSettings):
     # browser app reads JARVIS_SENTRY_WEB_DSN from /bootstrap, and the CSP allows its ingest host only when set.
     sentry_dsn: str = ""
     sentry_web_dsn: str = ""
+    # Langfuse tracing of every model call (llm_trace.py). Off unless both keys are set; the standard LANGFUSE_*
+    # names work (the same keys the eval exporter reads), and so do JARVIS_LANGFUSE_*. JARVIS_LANGFUSE_TRACING=false
+    # turns it off while keeping the keys.
+    langfuse_public_key: str = Field(
+        default="", validation_alias=AliasChoices("JARVIS_LANGFUSE_PUBLIC_KEY", "LANGFUSE_PUBLIC_KEY"))
+    langfuse_secret_key: str = Field(
+        default="", validation_alias=AliasChoices("JARVIS_LANGFUSE_SECRET_KEY", "LANGFUSE_SECRET_KEY"))
+    langfuse_base_url: str = Field(
+        default="https://us.cloud.langfuse.com",
+        validation_alias=AliasChoices("JARVIS_LANGFUSE_BASE_URL", "LANGFUSE_BASE_URL"))
+    langfuse_tracing: bool = True
 
     @property
     def secure_cookie(self):
