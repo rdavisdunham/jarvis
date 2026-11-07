@@ -319,7 +319,10 @@ Stable question identity, one continued work item, late answers and concurrent r
 
 ### 29. Action cards, history and revert
 
-Actual saved changes, compact anchored cards, field-level reversion and history cleanup.
+Actual saved changes, compact anchored cards, field-level reversion and history cleanup. While a request
+runs, its card shows the backend's latest step, such as "Looking that up…" or "Saving Call Alex…", in
+place of "Working on your request…"; the note goes away when the request settles. A clarification
+continuation shares its original card; there are no nested child cards.
 
 - Acceptance set: [25 cases](../evals/app/features/receipts.json).
 - Implementation: [action_history.py](../apps/api/jarvis/action_history.py), [agent_work.py](../apps/api/jarvis/agent_work.py).
@@ -373,8 +376,18 @@ delegated request. The prompt tells Dani the backend sees the screen, so referen
 approves it. The rendered prompt is about 4.0 kB.
 
 Progress while work runs. The server checks the session's requests every second and speaks each
-result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. A request still running after
-12 seconds gets one "still working" note that names the request and never guesses the outcome.
+result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. While a
+request runs, the backend records its latest step from a fixed template (no model call):
+"looking that up" for searches and reads, "saving {title}" for creations, "updating {title}" for edits,
+completions and batch changes, "checking the earlier request" for a follow-up, "trying another way after a
+step didn't work" when the model continues after a failed step, and "waiting on an earlier request" while
+it waits for related work. Discovery, screen controls, questions and ending voice have no note, and a note
+never says done, added or saved. Voice relays a new note as "Progress, not a result" commentary once the
+request has been busy for 4 seconds, at most one note every 8 seconds per session and 3 per request,
+never while the owner talks or a backend question is open, and never in the same second as a result.
+A failed step is not relayed; the retry note follows it. When two requests run, the one heard from least
+recently goes first. A request still running after 12 seconds with nothing new to say gets one "still
+working" note that names the request; a step note replaces it, and it counts toward the same limits.
 
 Saved memory during a session. The session starts with up to six relevant saved facts in its
 instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,

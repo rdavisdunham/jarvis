@@ -192,7 +192,8 @@ def finish(db, row, status, message, **result):
     from .quick_sort import finished as finish_sort
     finish_sort(db, row, status, message, result)
     job.status, job.finished_at = status, now()
-    row.result = {**row.result, **result, "message": message}
+    # A settled card never shows a stale progress note.
+    row.result = {**{k: v for k, v in row.result.items() if k != "progress"}, **result, "message": message}
     row.updated_at = now()
     row.seen_at = None
     # Checkpoints contain retrieved data/native provider signatures; never retain after completion.
@@ -242,6 +243,10 @@ def checkpoint(request_id, state):
     with session_scope() as db:
         row = db.get(AgentWork, request_id)
         row.checkpoint_ciphertext = seal(state)
+        progress = state.get("progress")
+        if row.result.get("progress") != progress:
+            row.result = {**{k: v for k, v in row.result.items() if k != "progress"},
+                          **({"progress": progress} if progress else {})}
         row.updated_at = now()
         from .work_continuation import touch_root
         touch_root(db, row)
@@ -316,6 +321,7 @@ def revise(db, row, message, *, continue_work=False):
         saved_state["round"] = 0
         saved_state["errors"] = []
         saved_state.pop("question_checked", None)
+        saved_state.pop("progress", None)  # A corrected request starts without the old run's note.
         row.checkpoint_ciphertext = seal(saved_state)
     row.cancel_requested = False
     row.expires_at = now() + timedelta(hours=24)
@@ -399,6 +405,8 @@ def public(db, row):
         "clarification": clarification,
         "clarification_history": history,
         "actions": actions,
+        # The latest mid-run step of the attempt now running, e.g. "looking that up"; None once settled.
+        "progress": active.result.get("progress") if status in ACTIVE else None,
         "cancel_requested": active.cancel_requested,
         "seen": bool(row.seen_at),
         "created_at": job.created_at.isoformat(),

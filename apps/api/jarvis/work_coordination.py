@@ -228,7 +228,8 @@ def park(db, row, state, dependencies):
     advisory(db, "work-order:" + row.owner_id)
     row.dependencies = list(dict.fromkeys([*row.dependencies, *dependencies]))
     row.checkpoint_ciphertext = seal(state)
-    row.result = {**row.result, "waiting_for": dependencies, "message": "Waiting for earlier related work."}
+    row.result = {**row.result, "waiting_for": dependencies, "message": "Waiting for earlier related work.",
+                  **({"progress": state["progress"]} if state.get("progress") else {})}
     row.updated_at = now()
     # A fresh DBOS invocation is required after this invocation returns.
     reschedule(db, row)
