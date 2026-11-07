@@ -24,6 +24,9 @@ from .voice_end_policy import EndPolicy, candidate_valid
 from .work_crypto import seal, unseal
 from .domain import advisory
 
+SLOW_WORK_SECONDS = 12  # A request still running after this gets one spoken "still working" note.
+
+
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
 LIVE_PRICE_PER_SECOND = 0.05 / 60
 # Mid-session memory updates (owner preference live_memory_updates). Retrieval waits for this much quiet
@@ -74,6 +77,7 @@ class LiveController(Controller):
         self.context_retrieved_at = None
         self.context_stats = {"retrievals": 0, "facts_sent": 0, "facts_acknowledged": 0, "facts_dropped": 0}
         self.announced_work = set()
+        self.busy_since, self.slow_noted = {}, set()  # Root request -> first seen running; "still working" sent.
         self.review_delivery = None
         self.review_event = None
         self.review_offered = False
@@ -538,9 +542,14 @@ class LiveController(Controller):
             )
             if (now() - inbox.last_input_at).total_seconds() < 2.5:
                 return
-            notices, stamps, asking = [], [], None
+            notices, stamps, asking, slow = [], [], None, None
             for root, children, leaves, snapshots in entries:
                 if any(snapshot["status"] in busy_statuses for snapshot in snapshots):
+                    # A request still running after SLOW_WORK_SECONDS gets one "still working" note.
+                    started = self.busy_since.setdefault(root.id, time.monotonic())
+                    if (slow is None and root.id not in self.slow_noted
+                            and time.monotonic() - started >= SLOW_WORK_SECONDS):
+                        slow = (root.id, (unseal(root.input_ciphertext) or {}).get("message", "") if root.input_ciphertext else "")
                     continue
                 # Content, not root.revision: touch_root/continuation bumps must not re-announce.
                 stamp = (root.id, tuple((snapshot["id"], snapshot["status"], snapshot.get("message", ""),
@@ -584,6 +593,9 @@ class LiveController(Controller):
                 if notices:
                     break
             if not notices:
+                # Results always win; progress waits while the owner talks or answers a backend question.
+                if slow is not None and not self.pending_question and not self.input_speaking:
+                    await self.still_working(*slow)
                 return
         # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
         content = ("Verified background results: " + " ".join(notices)).encode()[:420].decode("utf-8", errors="ignore")
@@ -600,6 +612,14 @@ class LiveController(Controller):
             self.pending_question = True
             with session_scope() as db:
                 mark_asked(db, self.id, asking["id"])
+
+    async def still_working(self, identity, request):
+        """One spoken progress note for a request that is taking a while; never a result."""
+        self.slow_noted.add(identity)
+        about = (" (" + json.dumps(request[:80], ensure_ascii=False) + ")") if request else ""
+        await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
+            "content": "Progress, not a result: the backend is still working on an earlier request" + about
+                       + ". Say so in a few words, once, without guessing the outcome."})
 
     def superseded(self, db, root, question):
         asked = db.get(Job, question["request_id"])

@@ -372,6 +372,10 @@ delegated request. The prompt tells Dani the backend sees the screen, so referen
 "anything else?" closing rule sits with how Dani sounds, and Dani offers one only when commentary
 approves it. The rendered prompt is about 4.0 kB.
 
+Progress while work runs. The server checks the session's requests every second and speaks each
+result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. A request still running after
+12 seconds gets one "still working" note that names the request and never guesses the outcome.
+
 Saved memory during a session. The session starts with up to six relevant saved facts in its
 instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,
