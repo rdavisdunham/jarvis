@@ -369,6 +369,10 @@ gives a short update as each verified result arrives. The screen, focused record
 windows and the closing controller's timers stay with the backend, which receives them on every
 delegated request.
 
+Progress while work runs. The server checks the session's requests every second and speaks each
+result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. A request still running after
+12 seconds gets one "still working" note that names the request and never guesses the outcome.
+
 Saved memory during a session. The session starts with up to six relevant saved facts in its
 instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,

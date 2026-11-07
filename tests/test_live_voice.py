@@ -703,3 +703,54 @@ async def test_gratitude_during_work_keeps_both_accounts_open_with_delayed_polli
     await c.close()
     with session_scope() as db:
         assert all(not w.cancel_requested for w in db.scalars(select(AgentWork).where(AgentWork.voice_session_id==c.id)))
+
+
+def quiet_since_last_input(c, seconds=5):
+    from datetime import timedelta
+    from jarvis.models import now
+    with session_scope() as db:
+        db.get(VoiceInbox, c.id).last_input_at = now() - timedelta(seconds=seconds)
+
+
+def spoken(c):
+    return [call.args[0]["content"] for call in c.send.await_args_list
+            if call.args[0]["type"] == "session.commentary.append"]
+
+
+async def test_long_request_gets_one_still_working_note(controller):
+    import time
+    from jarvis.agent_work import finish
+    c = controller
+    c.state = "listening"
+    work = queued_voice_work(c)
+    quiet_since_last_input(c)
+    await c.report_work()
+    assert spoken(c) == []  # Not long yet.
+    c.busy_since[work] = time.monotonic() - live_voice.SLOW_WORK_SECONDS - 1
+    await c.report_work()
+    [note] = spoken(c)
+    assert note.startswith("Progress, not a result") and '"Synthetic task"' in note
+    await c.report_work()
+    assert len(spoken(c)) == 1  # Once per request.
+    with session_scope() as db:
+        finish(db, db.get(AgentWork, work), "succeeded", "All done.")
+    await c.report_work()
+    assert "All done." in spoken(c)[-1]
+
+
+async def test_still_working_waits_while_the_user_talks(controller):
+    import time
+    c = controller
+    work = queued_voice_work(c)
+    quiet_since_last_input(c)
+    c.busy_since[work] = time.monotonic() - live_voice.SLOW_WORK_SECONDS - 1
+    c.input_speaking = True
+    await c.report_work()
+    assert spoken(c) == []
+    c.input_speaking = False
+    quiet_since_last_input(c, 1)
+    await c.report_work()
+    assert spoken(c) == []  # Spoke within 2.5 s: wait.
+    quiet_since_last_input(c)
+    await c.report_work()
+    assert len(spoken(c)) == 1
