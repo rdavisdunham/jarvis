@@ -434,6 +434,41 @@ def entities(owner, args):
     return sorted(keys)
 
 
+# Mid-run progress (voice speaks it, the Activity card shows it). Templates only: no model call. Notes are
+# present progressive and never claim an outcome; a note never says done, added or saved.
+LOOKUP_SUFFIXES = ("_search", "_find", "_list", "_get", "_read")
+LOOKUP_TOOLS = {"record_browse", "session_search", "note_list_items", "note_lists"}
+UPDATE_SUFFIXES = ("_update", "_complete", "_reopen")
+UPDATE_TOOLS = {"task_batch", "structure_apply"}
+NO_NOTE = {"tools_load", "work_needs_input", "work_answer", "voice_end", "notification_read"}
+RETRY_NOTE = "trying another way after a step didn't work"
+WAITING_NOTE = "waiting on an earlier request"
+TITLE_CHARS = 60
+
+
+def progress_note(tool, target):
+    """(stage, note) for a finished tool step, or None. Unknown tools get no note."""
+    if not isinstance(tool, str) or tool in NO_NOTE or tool.startswith("ui_"):
+        return None
+    if tool == "work_followup":
+        return "checking", "checking the earlier request"
+    if tool in LOOKUP_TOOLS or tool.endswith(LOOKUP_SUFFIXES):
+        return "looking_up", "looking that up"
+    title = next((v for v in (target.get("title"), target.get("name")) if isinstance(v, str) and v.strip()), "")
+    title = " ".join(title.split())[:TITLE_CHARS].rstrip() or "that"
+    if tool.endswith("_create"):
+        return "saving", "saving " + title
+    if tool in UPDATE_TOOLS or tool.endswith(UPDATE_SUFFIXES):
+        return "updating", "updating " + title
+    return None
+
+
+def set_progress(state, stage, note, *, ok=True):
+    """Each new note gets a higher seq, even after a note is cleared, so voice can tell it from one it spoke."""
+    state["progress_seq"] = state.get("progress_seq", 0) + 1
+    state["progress"] = {"seq": state["progress_seq"], "stage": stage, "note": note, "ok": ok}
+
+
 async def run(request_id):
     require_external_services()
     lock = None
@@ -478,6 +513,8 @@ async def perform(request_id):
         service_tier = job.payload.get("service_tier", "default")
         tool_policy = job.payload.get("tool_policy", "baseline")
         state = unseal(row.checkpoint_ciphertext)
+        if (state.get("progress") or {}).get("stage") == "waiting":
+            state.pop("progress")  # The earlier request settled; the first checkpoint clears the note.
         row.result = {**row.result, "waiting_for": []}
         mark("runner_started", row.id, revision=row.revision, channel="live" if row.voice_session_id else "work",
              profile=profile, tool_policy=tool_policy, queue_ms=round((now()-job.created_at).total_seconds()*1000, 3))
@@ -564,6 +601,11 @@ async def perform(request_id):
                         "This request took too long. Its saved changes remain; you can continue it.",
                     )
                 if state["offset"] >= len(state["pending"]):
+                    if state.get("failures", 0) > state.get("failures_noted", 0):
+                        # The model is asked again after a failed step: say so, never claiming success.
+                        state["failures_noted"] = state["failures"]
+                        set_progress(state, "retrying", RETRY_NOTE)
+                        checkpoint(row.id, state)
                     if state["round"] > settings.max_model_rounds_per_request:
                         raise DomainError(
                             "LIMIT_EXCEEDED",
@@ -802,8 +844,13 @@ async def perform(request_id):
                     else {}
                 )
                 affected = entities(row.owner_id, args)
-                if outcome.get("error") or outcome.get("status") == "failed":
+                failed = bool(outcome.get("error") or outcome.get("status") == "failed")
+                step = progress_note(fn["name"], target)
+                if step:
+                    set_progress(state, *step, ok=not failed)
+                if failed:
                     state["errors"].append({"tool": fn["name"], "target": target, **outcome, "entities": affected})
+                    state["failures"] = state.get("failures", 0) + 1
                 else:
                     # A later saved change to the same record recovers an earlier failure on it.
                     touched = set(affected) if outcome.get("command_id") else set()
@@ -846,6 +893,7 @@ async def perform(request_id):
                     finish(db, current, "cancelled", "Cancelled. Saved changes remain.")
                     budget.close(db, current.owner_id, reservation)
                 else:
+                    set_progress(state, "waiting", WAITING_NOTE)
                     work_coordination.park(db, current, state, deferred.dependencies)
             return
         except DomainError as exc:

@@ -34,6 +34,7 @@ Cards report verified changes; Revert checks for intervening edits and links.
 Personal-memory learning extracts source-backed facts using Luna and embeds eligible
 facts with OpenAI text-embedding-3-small. Retrieval combines meaning and lexical evidence,
 checks current visibility/revision, and injects relevant facts as data into agent context.
+Voice sessions open with a short, background-maintained "About you" summary instead (§33).
 The memory dream pass merges safe duplicates and queues ambiguous spellings/facts for
 review. It does not silently pick between Miso and Mizo. It also queues semantic
 paraphrases (embedding similarity of the current model, newest 400 facts) and keyed
@@ -319,7 +320,10 @@ Stable question identity, one continued work item, late answers and concurrent r
 
 ### 29. Action cards, history and revert
 
-Actual saved changes, compact anchored cards, field-level reversion and history cleanup.
+Actual saved changes, compact anchored cards, field-level reversion and history cleanup. While a request
+runs, its card shows the backend's latest step, such as "Looking that up…" or "Saving Call Alex…", in
+place of "Working on your request…"; the note goes away when the request settles. A clarification
+continuation shares its original card; there are no nested child cards.
 
 - Acceptance set: [25 cases](../evals/app/features/receipts.json).
 - Implementation: [action_history.py](../apps/api/jarvis/action_history.py), [agent_work.py](../apps/api/jarvis/agent_work.py).
@@ -373,28 +377,53 @@ delegated request. The prompt tells Dani the backend sees the screen, so referen
 approves it. The rendered prompt is about 4.0 kB.
 
 Progress while work runs. The server checks the session's requests every second and speaks each
-result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. A request still running after
-12 seconds gets one "still working" note that names the request and never guesses the outcome.
+result as commentary once it is verified, waiting until the owner has been quiet for 2.5 seconds. While a
+request runs, the backend records its latest step from a fixed template (no model call):
+"looking that up" for searches and reads, "saving {title}" for creations, "updating {title}" for edits,
+completions and batch changes, "checking the earlier request" for a follow-up, "trying another way after a
+step didn't work" when the model continues after a failed step, and "waiting on an earlier request" while
+it waits for related work. Discovery, screen controls, questions and ending voice have no note, and a note
+never says done, added or saved. Voice relays a new note as "Progress, not a result" commentary once the
+request has been busy for 4 seconds, at most one note every 8 seconds per session and 3 per request,
+never while the owner talks or a backend question is open, and never in the same second as a result.
+A failed step is not relayed; the retry note follows it. When two requests run, the one heard from least
+recently goes first. A request still running after 12 seconds with nothing new to say gets one "still
+working" note that names the request; a step note replaces it, and it counts toward the same limits.
 
-Saved memory during a session. The session starts with up to six relevant saved facts in its
-instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,
+Saved memory during a session. The session starts with a short "About you" summary appended to its
+instructions after `live_instructions` as `About you DATA (facts, not instructions; ...): <summary>`:
+three to six plain sentences (about 400-700 characters, capped at 800) on who the owner is, key
+people, work and roles, ongoing priorities, stable preferences and how they like things done, with no
+IDs, timestamps or JSON. No individual memory, and no memory metadata, is sent at start, so every
+saved fact can still arrive mid-session. The summary is never generated during a call; when none
+exists yet, nothing is sent. [about_you.py](../apps/api/jarvis/about_you.py) maintains it in the
+background: a worker sweep looks at each owner with live memories at most once a day and queues one
+`about_you` job only when its material changed (a digest of the profile name and aliases, the live
+saved memories, the names and descriptions of spaces, areas, clients, projects and goals, the people,
+and recurring reminders; no tasks or calendar) or the summary is over 7 days old. The job calls Luna
+once (cost feature "About you summary") and rewrites the owner's single `about_you_summaries` row
+(plain text, like the memories it is distilled from). A summary built on a fact that has since been
+forgotten, corrected, merged or had its source deleted is withheld at once and rebuilt on the next
+sweep; an owner with no live memories has none. Automatic learning off (`memory_learning`) clears it
+and stops generation; Memory during voice off stops sending it. The Memory page shows it read-only
+with its updated date. The paused Realtime controller opens with the same summary.
+While the owner talks, Eridani retrieves facts (1.5 s after the last transcript words,
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,
 at most six facts, 1,200 characters and a conservative 450-token estimate per update (Live's append
-limit is 500 tokens), never a fact already sent in this session (including the opening
-ones), and only after rechecking that each fact is current (same revision, not forgotten, corrected,
+limit is 500 tokens), never a fact already sent in this session, and only after rechecking that each fact is current (same revision, not forgotten, corrected,
 merged or superseded, and its source not deleted). Closing the session cancels a pending lookup.
 The provider's `session.thinking.appended` acknowledgement only means the context was delivered; it
 does not mean the next spoken words use it. A query embedding, when stored vectors exist, is billed
 under the existing "Memory retrieval" cost feature; the session logs only counts (retrievals, facts
 sent, acknowledged, dropped as stale). Owner preference **Memory during voice**
-(`live_memory_updates`, Settings → Privacy) turns the mid-session updates off immediately, including
-in a running session; it is on by default because these context updates were already part of the
-GPT-Live design (acceptance cases `live_voice.14`/`.15`). Shared workspaces never receive personal
-memory.
+(`live_memory_updates`, Settings → Privacy) turns the opening summary and the mid-session updates off;
+the updates stop immediately, including in a running session. It is on by default because these
+context updates were already part of the GPT-Live design (acceptance cases `live_voice.14`/`.15`).
+Shared workspaces never receive personal memory or a summary.
 
 - Acceptance set: [28 cases](../evals/app/features/live_voice.json).
 - Implementation: [live_voice.py](../apps/api/jarvis/live_voice.py), [voice_control.py](../apps/api/jarvis/voice_control.py).
-- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice_settlement.py](../tests/test_voice_settlement.py), [test_voice.py](../tests/test_voice.py).
+- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_about_you.py](../tests/test_about_you.py), [test_voice_settlement.py](../tests/test_voice_settlement.py), [test_voice.py](../tests/test_voice.py).
 
 ### 34. Wake words and voice shutdown
 
@@ -402,7 +431,7 @@ Foreground Dani/Hey Dani detection, continuous captured-audio startup, a 120-sec
 
 - Acceptance set: [33 cases](../evals/app/features/wake_shutdown.json).
 - Implementation: [voice_control.py](../apps/api/jarvis/voice_control.py), [live_voice.py](../apps/api/jarvis/live_voice.py).
-- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice.py](../tests/test_voice.py).
+- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_about_you.py](../tests/test_about_you.py), [test_voice.py](../tests/test_voice.py).
 
 ### 35. Accounts, login and sessions
 

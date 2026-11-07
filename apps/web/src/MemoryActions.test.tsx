@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { MemoryRow } from "./MemoryActions";
+import { AboutYouSummary, MemoryRow } from "./MemoryActions";
 import type { Memory } from "./types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -56,4 +56,25 @@ it("rejects a fact in one click, with no confirmation dialog", async () => {
   expect(document.querySelector("[role=dialog]")).toBeNull();
   await act(async () => finish());
   expect(button("This is wrong").disabled).toBe(false);
+});
+
+it("shows the About you summary read-only with its updated date", () => {
+  const summary = "Davis builds Eridani and prefers short, direct answers.";
+  act(() => root.render(<AboutYouSummary about={{enabled: true, in_voice: true, summary, updated_at: "2026-11-06T09:00:00Z"}}/>));
+  expect(host.querySelector("h2")?.textContent).toBe("About you");
+  expect(host.textContent).toContain(summary);
+  expect(host.querySelector("time")?.getAttribute("dateTime")).toBe("2026-11-06T09:00:00Z");
+  expect(host.textContent).toContain("Updated Nov");
+  expect(host.textContent).toContain("at the start of each voice call");
+  expect(host.querySelectorAll("button, input, textarea").length).toBe(0);
+});
+
+it("explains a missing, off or voice-off summary", () => {
+  act(() => root.render(<AboutYouSummary about={{enabled: true, in_voice: true, summary: "", updated_at: null}}/>));
+  expect(host.textContent).toContain("No summary yet");
+  expect(host.querySelector("time")).toBeNull();
+  act(() => root.render(<AboutYouSummary about={{enabled: false, in_voice: false, summary: "", updated_at: null}}/>));
+  expect(host.textContent).toContain("Off while automatic learning is off.");
+  act(() => root.render(<AboutYouSummary about={{enabled: true, in_voice: false, summary: "Davis likes tea.", updated_at: "2026-11-06T09:00:00Z"}}/>));
+  expect(host.textContent).toContain("Not sent to voice while Memory during voice is off.");
 });

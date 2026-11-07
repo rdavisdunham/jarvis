@@ -192,7 +192,7 @@ Move on after two or three concrete details, or after two short answers. Aim for
 
 ## Build log and deviations
 
-- **PR 1** (setup session backend): `apps/api/jarvis/setup.py`, `setup_models.py`, migration `0055_setup_sessions`.
+- **PR 1** (setup session backend): `apps/api/jarvis/setup.py`, `setup_models.py`, migration `0056_setup_sessions`.
   - The `organization_proposals` table is created here, not in PR 4, so the tree review and apply (PR 5) can ship before the Terra synthesis (PR 4) and `onboarding.save(completed)` can already accept an applied tree.
   - Routes: `GET /api/v1/setup`, `POST /api/v1/setup/start` (`mode`, `focus`, `restart`), `POST /api/v1/setup/mode` and `POST /api/v1/setup/finish` (`status`, `delete_conversation`). `propose` arrives with the synthesis in PR 4.
   - Resuming on another device moves the setup conversation to that device, since it is the owner's own transcript.

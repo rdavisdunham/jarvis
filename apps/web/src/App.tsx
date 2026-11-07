@@ -19,7 +19,7 @@ import { SetupConversation } from "./SetupConversation";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
-import { MemoryRow, MemoryStatus } from "./MemoryActions";
+import { AboutYouSummary, MemoryRow, MemoryStatus } from "./MemoryActions";
 import { BrandMark, humanLabel, PlannerGuide, Popover, useBodyLock, useMaxWidth, matchesMaxWidth, COMPACT_MAX_WIDTH, PHONE_MAX_WIDTH, NARROW_MAX_WIDTH } from "./ux";
 import { PublicFooter } from "./PublicPages";
 import { chatTimeline, mergeWorkReplies } from "./chat-timeline";
@@ -139,6 +139,7 @@ import type {
   Memory,
   MemoryReview,
   MemoryMaintenance,
+  AboutYou,
   Notice,
   Schedule,
   Task,
@@ -378,6 +379,7 @@ export default function App() {
   const [maintenance, setMaintenance] = useState<MemoryMaintenance | null>(
     null,
   );
+  const [aboutYou, setAboutYou] = useState<AboutYou | null>(null);
   const [query, setQuery] = useState(initialSavedView?.query ?? ""),
     [quick, setQuick] = useState(""),
     [pair, setPair] = useState("");
@@ -829,6 +831,7 @@ export default function App() {
         items: Memory[];
         reviews: MemoryReview[];
         maintenance: MemoryMaintenance;
+        about?: AboutYou;
         learning: typeof memoryStatus;
       }>("/memory?q=" + encodeURIComponent(query))
         .then((data) => {
@@ -836,6 +839,7 @@ export default function App() {
             setMemories(data.items);
             setMemoryReviews(data.reviews ?? []);
             setMaintenance(data.maintenance);
+            setAboutYou(data.about ?? null);
             if (data.learning) setMemoryStatus(data.learning);
           }
         })
@@ -2962,6 +2966,7 @@ export default function App() {
                     }
                   }}
                 />
+                {aboutYou && !query && <AboutYouSummary about={aboutYou}/>}
                 {memoryReviews.map((review) => (
                   <MemoryReviewCard
                     key={review.id}

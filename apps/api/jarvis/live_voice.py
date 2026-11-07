@@ -15,7 +15,7 @@ from .agent_instructions import live_instructions
 from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, capture_source, enqueue_job, owned
-from .memory_service import current_facts, prompt_context, semantic_search
+from .memory_service import current_facts, semantic_search
 from .models import AgentWork, Conversation, Job, Source, VoiceInbox, now, uid
 from .voice import Controller, controllers
 from .latency import mark, span
@@ -25,6 +25,14 @@ from .work_crypto import seal, unseal
 from .domain import advisory
 
 SLOW_WORK_SECONDS = 12  # A request still running after this gets one spoken "still working" note.
+# Mid-run progress notes from the backend ("looking that up"): a request must be busy this long before its
+# first note, notes in a session are this far apart, and one request gets at most this many (the generic
+# "still working" note counts as one).
+PROGRESS_MIN_BUSY_SECONDS = 4
+PROGRESS_SPACING_SECONDS = 8
+PROGRESS_MAX_NOTES = 3
+PROGRESS_PREFIX = "Progress, not a result: the backend is "
+PROGRESS_SUFFIX = ". Say so in a few words, once, without guessing the outcome."
 
 
 # https://developers.openai.com/api/docs/pricing — checked 2026-09-11.
@@ -78,6 +86,8 @@ class LiveController(Controller):
         self.context_stats = {"retrievals": 0, "facts_sent": 0, "facts_acknowledged": 0, "facts_dropped": 0}
         self.announced_work = set()
         self.busy_since, self.slow_noted = {}, set()  # Root request -> first seen running; "still working" sent.
+        self.progress_heard = {}  # Root request -> {"seq", "said", "count", "at"} of the notes spoken for it.
+        self.last_progress_at = float("-inf")
         self.review_delivery = None
         self.review_event = None
         self.review_offered = False
@@ -126,8 +136,10 @@ class LiveController(Controller):
                     }
                     for s in reversed(rows)
                 ]
-        self.memory_context = "" if self.preferences.get("shared_workspace") else await prompt_context(
-            self.owner, seen=self.context_sent)
+        # A short stored "About you" summary (about_you.py), never generated here. Specific facts arrive later,
+        # by what the owner says (refresh_memory_context); none are sent at start, so context_sent stays empty.
+        from .about_you import for_voice
+        self.memory_context = for_voice(self.owner, self.preferences)
         from .access import assert_current
         assert_current(self.owner,self.device)
         session = {
@@ -536,14 +548,10 @@ class LiveController(Controller):
             )
             if (now() - inbox.last_input_at).total_seconds() < 2.5:
                 return
-            notices, stamps, asking, slow = [], [], None, None
+            notices, stamps, asking, busy = [], [], None, []
             for root, snapshot in entries:
                 if snapshot["status"] in busy_statuses:
-                    # A request still running after SLOW_WORK_SECONDS gets one "still working" note.
-                    started = self.busy_since.setdefault(root.id, time.monotonic())
-                    if (slow is None and root.id not in self.slow_noted
-                            and time.monotonic() - started >= SLOW_WORK_SECONDS):
-                        slow = (root.id, (unseal(root.input_ciphertext) or {}).get("message", "") if root.input_ciphertext else "")
+                    busy.append((root, snapshot, self.busy_since.setdefault(root.id, time.monotonic())))
                     continue
                 # Content, not root.revision: touch_root/continuation bumps must not re-announce.
                 stamp = (root.id, snapshot["status"], snapshot.get("message", ""),
@@ -584,8 +592,8 @@ class LiveController(Controller):
                     break
             if not notices:
                 # Results always win; progress waits while the owner talks or answers a backend question.
-                if slow is not None and not self.pending_question and not self.input_speaking:
-                    await self.still_working(*slow)
+                if not self.pending_question and not self.input_speaking:
+                    await self.report_progress(busy)
                 return
         # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
         content = ("Verified background results: " + " ".join(notices)).encode()[:420].decode("utf-8", errors="ignore")
@@ -603,13 +611,54 @@ class LiveController(Controller):
             with session_scope() as db:
                 mark_asked(db, self.id, asking["id"])
 
+    async def report_progress(self, busy):
+        """At most one spoken progress note per tick, for (root, public snapshot, busy since) of running work.
+
+        A backend step note ("saving Call Alex") goes out when it is new for that request; otherwise a request
+        busy for SLOW_WORK_SECONDS gets one generic "still working" note. Either counts toward the request's
+        limit and the session spacing. With two requests busy, the one heard from least recently goes first."""
+        moment = time.monotonic()
+        if moment - self.last_progress_at < PROGRESS_SPACING_SECONDS:
+            return
+        choices = []
+        for root, snapshot, started in busy:
+            heard = self.progress_heard.get(root.id, {})
+            if heard.get("count", 0) >= PROGRESS_MAX_NOTES:
+                continue
+            step = snapshot.get("progress") or {}
+            note = step.get("note")
+            if (isinstance(note, str) and note and step.get("ok") is not False
+                    and int(step.get("seq", 0)) > heard.get("seq", 0)
+                    and [step.get("stage"), note] != heard.get("said")
+                    and moment - started >= PROGRESS_MIN_BUSY_SECONDS):
+                choices.append((heard.get("at", float("-inf")), 0, root, step))
+            elif root.id not in self.slow_noted and moment - started >= SLOW_WORK_SECONDS:
+                choices.append((heard.get("at", float("-inf")), 1, root, None))
+        if not choices:
+            return
+        _, _, root, step = min(choices, key=lambda choice: choice[:2])
+        heard = self.progress_heard.setdefault(root.id, {})
+        heard.update(count=heard.get("count", 0) + 1, at=moment)
+        self.last_progress_at = moment
+        self.slow_noted.add(root.id)  # A specific note stands in for the generic one.
+        if step is None:
+            await self.still_working(root.id, (unseal(root.input_ciphertext) or {}).get("message", "")
+                                     if root.input_ciphertext else "")
+            return
+        heard.update(seq=int(step["seq"]), said=[step.get("stage"), step["note"]])
+        # Live append is bounded to 500 tokens; UTF-8 bytes are a conservative bound.
+        room = 420 - len((PROGRESS_PREFIX + PROGRESS_SUFFIX).encode())
+        note = step["note"].encode()[:room].decode("utf-8", errors="ignore")
+        await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
+                         "content": PROGRESS_PREFIX + note + PROGRESS_SUFFIX})
+        mark("live_progress_sent", root.id, progress_stage=step.get("stage"), progress_seq=step["seq"])
+
     async def still_working(self, identity, request):
         """One spoken progress note for a request that is taking a while; never a result."""
         self.slow_noted.add(identity)
         about = (" (" + json.dumps(request[:80], ensure_ascii=False) + ")") if request else ""
         await self.send({"type": "session.commentary.append", "event_id": uid(), "delegation_id": None,
-            "content": "Progress, not a result: the backend is still working on an earlier request" + about
-                       + ". Say so in a few words, once, without guessing the outcome."})
+            "content": PROGRESS_PREFIX + "still working on an earlier request" + about + PROGRESS_SUFFIX})
 
     def superseded(self, db, root, question):
         asked = db.get(Job, question["request_id"])

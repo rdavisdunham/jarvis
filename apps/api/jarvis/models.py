@@ -6,6 +6,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     event,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -363,6 +364,23 @@ class MemoryReview(Base):
     deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AboutYou(Base):
+    """The owner's short "About you" summary for voice (about_you.py): one row per owner, rewritten in place.
+    Plain text like Memory.content, which it is distilled from; memory_ids are the facts it was built on."""
+    __tablename__ = "about_you_summaries"
+    owner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    digest: Mapped[str] = mapped_column(String(64), default="")
+    memory_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    model: Mapped[str | None] = mapped_column(String(80))
+    prompt_version: Mapped[str | None] = mapped_column(String(40))
+    cost: Mapped[float | None] = mapped_column(Float)
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    last_error: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class BudgetReservation(Base):
