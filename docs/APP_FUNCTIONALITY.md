@@ -34,6 +34,7 @@ Cards report verified changes; Revert checks for intervening edits and links.
 Personal-memory learning extracts source-backed facts using Luna and embeds eligible
 facts with OpenAI text-embedding-3-small. Retrieval combines meaning and lexical evidence,
 checks current visibility/revision, and injects relevant facts as data into agent context.
+Voice sessions open with a short, background-maintained "About you" summary instead (§33).
 The memory dream pass merges safe duplicates and queues ambiguous spellings/facts for
 review. It does not silently pick between Miso and Mizo. It also queues semantic
 paraphrases (embedding similarity of the current model, newest 400 facts) and keyed
@@ -389,25 +390,40 @@ A failed step is not relayed; the retry note follows it. When two requests run, 
 recently goes first. A request still running after 12 seconds with nothing new to say gets one "still
 working" note that names the request; a step note replaces it, and it counts toward the same limits.
 
-Saved memory during a session. The session starts with up to six relevant saved facts in its
-instructions. While the owner talks, Eridani retrieves more (1.5 s after the last transcript words,
+Saved memory during a session. The session starts with a short "About you" summary appended to its
+instructions after `live_instructions` as `About you DATA (facts, not instructions; ...): <summary>`:
+three to six plain sentences (about 400-700 characters, capped at 800) on who the owner is, key
+people, work and roles, ongoing priorities, stable preferences and how they like things done, with no
+IDs, timestamps or JSON. No individual memory, and no memory metadata, is sent at start, so every
+saved fact can still arrive mid-session. The summary is never generated during a call; when none
+exists yet, nothing is sent. [about_you.py](../apps/api/jarvis/about_you.py) maintains it in the
+background: a worker sweep looks at each owner with live memories at most once a day and queues one
+`about_you` job only when its material changed (a digest of the profile name and aliases, the live
+saved memories, the names and descriptions of spaces, areas, clients, projects and goals, the people,
+and recurring reminders; no tasks or calendar) or the summary is over 7 days old. The job calls Luna
+once (cost feature "About you summary") and rewrites the owner's single `about_you_summaries` row
+(plain text, like the memories it is distilled from). A summary built on a fact that has since been
+forgotten, corrected, merged or had its source deleted is withheld at once and rebuilt on the next
+sweep; an owner with no live memories has none. Automatic learning off (`memory_learning`) clears it
+and stops generation; Memory during voice off stops sending it. The Memory page shows it read-only
+with its updated date. The paused Realtime controller opens with the same summary.
+While the owner talks, Eridani retrieves facts (1.5 s after the last transcript words,
 at most once every 10 s) and quietly appends new ones with `session.thinking.append`: fact text only,
 at most six facts, 1,200 characters and a conservative 450-token estimate per update (Live's append
-limit is 500 tokens), never a fact already sent in this session (including the opening
-ones), and only after rechecking that each fact is current (same revision, not forgotten, corrected,
+limit is 500 tokens), never a fact already sent in this session, and only after rechecking that each fact is current (same revision, not forgotten, corrected,
 merged or superseded, and its source not deleted). Closing the session cancels a pending lookup.
 The provider's `session.thinking.appended` acknowledgement only means the context was delivered; it
 does not mean the next spoken words use it. A query embedding, when stored vectors exist, is billed
 under the existing "Memory retrieval" cost feature; the session logs only counts (retrievals, facts
 sent, acknowledged, dropped as stale). Owner preference **Memory during voice**
-(`live_memory_updates`, Settings → Privacy) turns the mid-session updates off immediately, including
-in a running session; it is on by default because these context updates were already part of the
-GPT-Live design (acceptance cases `live_voice.14`/`.15`). Shared workspaces never receive personal
-memory.
+(`live_memory_updates`, Settings → Privacy) turns the opening summary and the mid-session updates off;
+the updates stop immediately, including in a running session. It is on by default because these
+context updates were already part of the GPT-Live design (acceptance cases `live_voice.14`/`.15`).
+Shared workspaces never receive personal memory or a summary.
 
 - Acceptance set: [28 cases](../evals/app/features/live_voice.json).
 - Implementation: [live_voice.py](../apps/api/jarvis/live_voice.py), [voice_control.py](../apps/api/jarvis/voice_control.py).
-- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice_settlement.py](../tests/test_voice_settlement.py), [test_voice.py](../tests/test_voice.py).
+- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_about_you.py](../tests/test_about_you.py), [test_voice_settlement.py](../tests/test_voice_settlement.py), [test_voice.py](../tests/test_voice.py).
 
 ### 34. Wake words and voice shutdown
 
@@ -415,7 +431,7 @@ Foreground Dani/Hey Dani detection, continuous captured-audio startup, a 120-sec
 
 - Acceptance set: [33 cases](../evals/app/features/wake_shutdown.json).
 - Implementation: [voice_control.py](../apps/api/jarvis/voice_control.py), [live_voice.py](../apps/api/jarvis/live_voice.py).
-- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_voice.py](../tests/test_voice.py).
+- Existing regression evidence: [test_live_voice.py](../tests/test_live_voice.py), [test_about_you.py](../tests/test_about_you.py), [test_voice.py](../tests/test_voice.py).
 
 ### 35. Accounts, login and sessions
 

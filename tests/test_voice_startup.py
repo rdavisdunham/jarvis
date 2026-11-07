@@ -37,7 +37,7 @@ async def test_late_created_provider_is_closed_without_reviving_cancelled_contro
             entered.set();await release.wait()
             return httpx.Response(200,json={"session":{"id":"late-created"},"transport":{"sdp":"answer"}})
     monkeypatch.setattr(live_http,"client",lambda:Client())
-    monkeypatch.setattr("jarvis.live_voice.prompt_context",AsyncMock(return_value=""))
+    monkeypatch.setattr("jarvis.about_you.for_voice",lambda *args:"")
     monkeypatch.setattr("jarvis.access.assert_current",lambda *args:None)
     c.close_late_creation=AsyncMock()
     task=asyncio.create_task(c.connect("synthetic"));await entered.wait()

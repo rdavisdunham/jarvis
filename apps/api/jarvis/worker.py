@@ -126,6 +126,10 @@ def _perform_job(job_id):
         from .memory_review import process
 
         return process(job_id)
+    if kind == "about_you":
+        from .about_you import process
+
+        return process(job_id)
     if kind in {"assess_field", "review_routing"}:
         from .routing import perform
         return perform(job_id,kind)
@@ -188,7 +192,7 @@ def dispatch_outbox(client, after=None):
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview", "place_by_meaning"}
+                    in {"extract_memory", "embed_memory", "review_memory", "about_you", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview", "place_by_meaning"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -459,6 +463,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     from .linear_sync import queue_sync as linear_queue_sync
     from .memory_learning import queue_backfill
     from .memory_review import queue_due_reviews
+    from .about_you import queue_due as queue_due_about_you
     from .models import GoogleIdentity, LinearConnection
     from .notices import scan
     from .record_reviews import queue_due_record_reviews
@@ -477,7 +482,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     for name, scan_fn in (
         ("flush_voice", flush_voice), ("device_cleanup", cleanup), ("schedules", scan_schedules),
         ("notices", scan), ("search_backfill", search_backfill), ("memory_backfill", queue_backfill),
-        ("memory_reviews", queue_due_reviews), ("routing", queue_due),
+        ("memory_reviews", queue_due_reviews), ("about_you", queue_due_about_you), ("routing", queue_due),
         ("record_reviews", queue_due_record_reviews), ("agent_runs", sweep_runs), ("agent_swarms", sweep_swarms),
         ("task_archive", sweep_task_archive),
         ("agent_autolink", queue_autolink), ("agent_summaries", queue_due_summaries),

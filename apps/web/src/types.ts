@@ -165,6 +165,14 @@ export interface MemoryReview {
   question: string;
   candidates: Memory[];
 }
+/** The short "About you" summary Dani is told at the start of each voice call (GET /memory `about`). */
+export interface AboutYou {
+  enabled: boolean;
+  in_voice: boolean;
+  summary: string;
+  updated_at: string | null;
+}
+
 export interface MemoryMaintenance {
   status: string;
   last_error: string | null;

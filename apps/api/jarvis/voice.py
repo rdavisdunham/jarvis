@@ -97,6 +97,7 @@ class Controller:
         self.answered_items = set()
         self.transcripts = {}
         self.memory_context = ""
+        self.about_you = ""
         self.ui_context = {}
         self.unreported = set()
         self.pending_transcription = set()
@@ -157,7 +158,11 @@ class Controller:
 
     async def run(self):
         settings = get_settings()
-        self.memory_context = await prompt_context(self.owner)
+        from .about_you import for_voice
+
+        # The stored "About you" summary opens the session; each turn adds facts found by what was said.
+        self.about_you = for_voice(self.owner, self.preferences)
+        self.memory_context = self.about_you
         tools = await asyncio.to_thread(remotea_tools, registry(), self.owner)
         try:
             async with websockets.connect(
@@ -398,7 +403,8 @@ class Controller:
                         if item in self.transcripts or self.epoch != epoch:
                             break
                         await asyncio.sleep(0.1)
-                    self.memory_context = await prompt_context(self.owner, self.transcripts.get(item, ""))
+                    turn_context = await prompt_context(self.owner, self.transcripts.get(item, ""))
+                    self.memory_context = "\n".join(part for part in (self.about_you, turn_context) if part)
                     if self.epoch != epoch or self.closed or self.closing:
                         return
                     await self.send(

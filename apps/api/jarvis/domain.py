@@ -408,7 +408,7 @@ def preferences(db, owner):
         "name_aliases": [],
         "history_enabled": True,
         "memory_learning": True,
-        # Mid-session saved-memory updates in GPT-Live (docs/APP_FUNCTIONALITY.md §33); on, like start-of-session memory.
+        # Saved memory in GPT-Live (docs/APP_FUNCTIONALITY.md §33): the opening About you summary and mid-session updates.
         "live_memory_updates": True,
         "deep_sleep_enabled": True,
         "routing_mode": "automatic", "routing_learning": True, "routing_review_enabled": True,
