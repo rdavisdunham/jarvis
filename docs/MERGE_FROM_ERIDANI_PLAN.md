@@ -91,7 +91,8 @@ A merge panel sits beside the CI card, inside Final acceptance:
 | CI running | **Merge into main**, disabled, "Waiting on CI", with the CI chip |
 | CI failing | disabled, "CI failing", plus Send back |
 | CI green on the current head, or no CI | **Merge into main**, enabled |
-| Behind its base | **Update branch** ("main has moved; update, then CI runs again") |
+| Behind its base | **Update branch** ("main has moved; update, then CI runs again"). Checked before "Waiting on CI": checks on a head that is behind are moot, and updating reruns them. With failing CI as well, the line says so and Update branch stays on offer beside Send back |
+| The worktree is on a different commit than the PR head (not a head Eridani updated) | unsettled run: "unpushed", disabled, with the reason. Settled run: ignored, the PR's own checks decide (the branch was updated on GitHub or by hand) |
 | Conflicts | **Send back to fix conflicts** |
 | No pull request | "No pull request yet". Approve only |
 | Host offline, or no `pr.merge` capability | disabled, with the reason |
