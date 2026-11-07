@@ -696,6 +696,9 @@ def mutate(db, owner, tool, args, command_id):
     if tool.startswith("setup.tree_"):
         from .setup_tree import mutate as tree_mutate
         return tree_mutate(db, owner, tool, args, command_id)
+    if tool in {"setup.memories_save", "memory.pin", "memory.unpin"}:
+        from .setup_memory import mutate as memory_setup_mutate
+        return memory_setup_mutate(db, owner, tool, args, command_id)
     if tool == "setup.propose":
         from .setup_synthesis import mutate as propose_mutate
         return propose_mutate(db, owner, tool, args, command_id)
@@ -1045,6 +1048,7 @@ def mutate(db, owner, tool, args, command_id):
                 supersedes_id=old.id,
                 fact_key=old.fact_key,
                 revision=old.revision + 1,
+                core=old.core,  # A corrected About you fact stays one.
             )
             db.add(row)
             db.flush()
@@ -1293,6 +1297,10 @@ COMMANDS.update(SETUP_TREE_COMMANDS)
 
 from .setup_synthesis import COMMANDS as SETUP_PROPOSE_COMMANDS
 COMMANDS.update(SETUP_PROPOSE_COMMANDS)
+
+from .setup_memory import COMMANDS as SETUP_MEMORY_COMMANDS, MEMORY_COMMANDS as CORE_MEMORY_COMMANDS
+COMMANDS.update(SETUP_MEMORY_COMMANDS)
+COMMANDS.update(CORE_MEMORY_COMMANDS)
 
 from .quick_sort_schema import COMMANDS as SORT_COMMANDS
 COMMANDS.update(SORT_COMMANDS)

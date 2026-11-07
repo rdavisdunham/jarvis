@@ -517,7 +517,7 @@ READ_TOOLS["setup_state"] = {
     "description": "Read the Set up with Dani run: status, topics covered, and the open proposal's ID, preview hash and impact.",
     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
 }
-VOICE_MUTATIONS.update({"setup.propose", "setup.tree_apply"})
+VOICE_MUTATIONS.update({"setup.propose", "setup.tree_apply", "setup.memories_save", "memory.pin", "memory.unpin"})
 # Agent-run control; tool_policy.remotea_tools drops these (and control_status) while remotea is off.
 VOICE_MUTATIONS.update(name for name in COMMANDS if name.startswith("control."))
 

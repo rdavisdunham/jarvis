@@ -151,6 +151,8 @@ export interface Memory {
   attribution: string;
   created_at: string;
   revision: number;
+  /** Pinned: Dani always keeps it in mind (About you). */
+  core?: boolean;
   /** Where the fact came from (GET /memory only): origin and conversation, never the source text. */
   source?: MemorySourceInfo | null;
 }
@@ -171,6 +173,8 @@ export interface AboutYou {
   in_voice: boolean;
   summary: string;
   updated_at: string | null;
+  /** Pinned facts the summary always reflects. */
+  core?: { id: string; content: string }[];
 }
 
 export interface MemoryMaintenance {

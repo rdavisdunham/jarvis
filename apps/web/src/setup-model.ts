@@ -18,10 +18,18 @@ export type SetupSession = {
   focus: "both" | "organization" | "about_you";
   notes: { covered?: string[]; missing?: string[]; rerun?: boolean; propose_error?: string | null };
   tree_proposal_id: string | null; history_off: boolean;
+  /** Suggested core facts from the last proposal, waiting for the owner (SetupMemoryReview). */
+  memory_candidates?: MemoryCandidate[]; confirmed_memory_ids?: string[];
+  /** Saved facts that are not suggestions; they stay as they are. */
+  known_memory_count?: number;
   /** The backend can build a proposal from the interview. */
   can_propose?: boolean;
 };
 export type SetupMode = "voice" | "typed";
+export type MemoryCandidate = {
+  id: string; content: string; fact_key: string; evidence: string; evidence_source_id: string | null;
+  existing_memory_id: string | null; action: "add" | "keep" | "update" | "retire";
+};
 
 export const setupActive = (session?: SetupSession | null) =>
   !!session && ["interviewing", "proposing", "reviewing"].includes(session.status);

@@ -341,6 +341,8 @@ class Memory(Base):
     embedding_model: Mapped[str | None] = mapped_column(String(100))
     revision: Mapped[int] = mapped_column(Integer, default=1)
     suppressed: Mapped[bool] = mapped_column(Boolean, default=False)
+    # The owner confirmed Dani should always keep this in mind (Set up with Dani; pin on the Memory page).
+    core: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", index=True)
     supersedes_id: Mapped[str | None] = mapped_column(ForeignKey("memory_assertions.id"))
     merged_into_id: Mapped[str | None] = mapped_column(ForeignKey("memory_assertions.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

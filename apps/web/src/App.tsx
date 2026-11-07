@@ -17,6 +17,7 @@ import { FooterStatus, NotificationBell } from "./app-chrome";
 import { setupActive, setupEstablished, typesFieldsRequest, type OrganizationProposal, type SetupMode, type SetupSession } from "./setup-model";
 import { SetupConversation } from "./SetupConversation";
 import { SetupTreeReview } from "./SetupTreeReview";
+import { SetupMemoryReview } from "./SetupMemoryReview";
 import { ProfileMenu } from "./ProfileMenu";
 import { RecordNavigator, readRecordLink, type LinkedRecord } from "./record-links";
 import { TaskCardHostContext } from "./TaskCardSections";
@@ -432,6 +433,7 @@ export default function App() {
   const inSetup = setupActive(setupSession) && !!activeConversation && setupSession?.conversation_id === activeConversation;
   const setupVoice = useRef(false);
   const [treeReview, setTreeReview] = useState<OrganizationProposal | null>(null);
+  const [memoryReview, setMemoryReview] = useState(false);
   // Bumped by `setup.changed` events (and while a proposal is being built) to re-read the setup state.
   const [setupSignal, setSetupSignal] = useState(0);
   const work = useWork(!!boot, (boot?.account_id ?? "") + ":" + (boot?.workspace?.id ?? "personal"), activeConversation);
@@ -1985,6 +1987,7 @@ export default function App() {
       }).catch(() => {});
     if (setupSession.status === "reviewing" && setupSession.tree_proposal_id)
       void openTreeReview(setupSession.tree_proposal_id);
+    else if (setupSession.status === "reviewing" && setupSession.memory_candidates?.length) setMemoryReview(true);
   }, [setupProposing, setupSession, inSetup, thinking]);
   const voiceLive = !!voiceState && !voiceState.closed;
   const voiceWasLive = useRef(false);
@@ -3003,7 +3006,8 @@ export default function App() {
                     }
                   }}
                 />
-                {aboutYou && !query && <AboutYouSummary about={aboutYou}/>}
+                {aboutYou && !query && <AboutYouSummary about={aboutYou}
+                  onUnpin={id => mutate("memory.unpin", {memory_id: id}, "Unpinned from About you")}/>}
                 {memoryReviews.map((review) => (
                   <MemoryReviewCard
                     key={review.id}
@@ -3046,7 +3050,7 @@ export default function App() {
                   {memories.length > 0 && (
                     <div className="row-list memory-list">
                       {memories.map((m) => (
-                        <MemoryRow key={m.id} memory={m} onCorrect={() => setEditingMemory(m)} onForget={delete_source => mutate("memory.forget", {memory_id:m.id, delete_source}, delete_source ? "Memory and its stored source deleted" : "Memory forgotten")} onWrong={() => mutate("memory.forget", {memory_id:m.id, wrong:true}, "Removed. Dani won't learn this again")} onOpenConversation={id => void openNoteConversation(id)}/>
+                        <MemoryRow key={m.id} memory={m} onCorrect={() => setEditingMemory(m)} onForget={delete_source => mutate("memory.forget", {memory_id:m.id, delete_source}, delete_source ? "Memory and its stored source deleted" : "Memory forgotten")} onWrong={() => mutate("memory.forget", {memory_id:m.id, wrong:true}, "Removed. Dani won't learn this again")} onOpenConversation={id => void openNoteConversation(id)} onPin={core => mutate(core ? "memory.pin" : "memory.unpin", {memory_id:m.id}, core ? "Pinned to About you" : "Unpinned from About you")}/>
                       ))}
                     </div>
                   )}
@@ -3279,7 +3283,9 @@ export default function App() {
               onSwitchToVoice={() => void switchSetupToVoice()}
               onPropose={setupSession.can_propose ? () => void proposeSetup() : undefined}
               onReview={setupSession.status === "reviewing" && setupSession.tree_proposal_id
-                ? () => void openTreeReview(setupSession.tree_proposal_id!) : undefined}/>}
+                ? () => void openTreeReview(setupSession.tree_proposal_id!) : undefined}
+              onReviewMemories={setupSession.status === "reviewing" && setupSession.memory_candidates?.length
+                ? () => setMemoryReview(true) : undefined}/>}
             <div
               className="messages"
               onScroll={(event) => {
@@ -3436,8 +3442,18 @@ export default function App() {
         onByHand={() => { setTreeReview(null); setCompanion(false); setView("organize"); }}
         onApplied={result => {
           setTreeReview(null); void load().catch(() => {}); void refreshSetup().catch(() => {});
+          // Step 3: what Dani keeps in mind, when the proposal suggested any.
+          if (setupSession?.memory_candidates?.length) setMemoryReview(true);
           setToast(result.created_count === 1 ? "Created 1 record." : "Created " + result.created_count + " records.");
         }}/>}
+      {memoryReview && setupSession?.memory_candidates?.length ? <SetupMemoryReview candidates={setupSession.memory_candidates}
+        knownCount={setupSession.known_memory_count ?? 0} onClose={() => setMemoryReview(false)}
+        onKeepTalking={() => { setMemoryReview(false); setCompanion(true); focusChat(); }}
+        onSaved={result => {
+          setMemoryReview(false); setSetupSession(result); setMemoryRevision(v => v + 1);
+          const count = result.saved_ids.length;
+          setToast(count === 1 ? "Dani will keep 1 thing in mind." : "Dani will keep " + count + " things in mind.");
+        }}/> : null}
       {remotea.start &&<Suspense fallback={null}><RunTaskDialog taskId={remotea.start} onClose={remoteaActions.closeStart}
         onStarted={id => { remoteaActions.closeStart(); remoteaActions.openRun(id); }}
         onSetup={() => { remoteaActions.closeStart(); setView("settings"); setSettingsSection("integrations"); setConnectionTab("remotea"); revealSetup(); }}/></Suspense>}

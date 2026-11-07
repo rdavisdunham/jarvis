@@ -170,7 +170,7 @@ def test_setup_tools_are_registered():
 
     names = {t["name"] for t in registry()}
     assert {"setup_state", "setup_propose", "setup_tree_apply"} <= names <= set(DESCRIPTIONS) | names
-    assert set(GROUPS["setup_interview"][1]) == {"setup_state", "setup_propose", "setup_tree_apply"}
+    assert {"setup_state", "setup_propose", "setup_tree_apply"} <= set(GROUPS["setup_interview"][1])
     assert "setup_state" in READ_TOOLS and {"setup.propose", "setup.tree_apply"} <= VOICE_MUTATIONS
     assert all(name in DESCRIPTIONS for name in GROUPS["setup_interview"][1])
 

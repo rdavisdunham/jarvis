@@ -335,7 +335,7 @@ async def test_voice_session_without_a_summary_sends_no_memory(live, monkeypatch
 def test_memory_page_shows_the_summary_and_when_it_was_written(client, on):
     fact("The user prefers tea over coffee.")
     assert client.get("/api/v1/memory").json()["about"] == {"enabled": True, "in_voice": True, "summary": "",
-                                                            "updated_at": None}
+                                                            "updated_at": None, "core": []}
     build(Model())
     about = client.get("/api/v1/memory").json()["about"]
     assert about["summary"] == EXAMPLE and about["updated_at"] and about["in_voice"] is True
