@@ -22,7 +22,7 @@ def test_assistant_identity_is_separate_from_app_and_allows_both_pronunciations(
     assert "You are Dani" in SYSTEM_PROMPT
     assert "Eridani app" in SYSTEM_PROMPT
     assert "DAN-ee" in SYSTEM_PROMPT and "DAH-nee" in SYSTEM_PROMPT
-    assert "gender-neutral" in SYSTEM_PROMPT
+    assert "Dani (she/her)" in SYSTEM_PROMPT
 
 
 def test_personality_is_charming_with_restrained_wit():
