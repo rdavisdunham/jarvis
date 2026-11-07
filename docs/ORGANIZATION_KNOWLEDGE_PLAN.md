@@ -164,3 +164,16 @@ meaning (Eridani)").
   - the description and the latest overview;
   - linked people and up to 20 supported meeting facts;
   - the latest brief claims, child clients and projects, and open task counts with recent open tasks.
+
+## Asking for descriptions
+
+The owner's description of a client or project is the strongest input to overviews, placement by meaning and
+Dani's `record_overview` answers, so the app asks for it in four places:
+- **The card.** An undescribed client or project shows a short prompt above its content box (what it is, what
+  the work covers, who is involved, the words that come up), with a matching placeholder. Viewers don't see it.
+- **Right after creating one.** A new client or project made in Organize opens its card straight away.
+- **Organization learning.** Planner preferences shows "N of M have a description" and lists the undescribed ones
+  (`record_overviews.coverage`, returned as `descriptions` in the routing state); each opens its card.
+- **Dani.** `record_overview` returns `description_missing` when there is none, so Dani can suggest adding one.
+
+"Described" means the record content or the legacy project description has text, the same test the overview uses.

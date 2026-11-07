@@ -57,6 +57,7 @@ ALLOWANCE = 0.08
 
 # Material bounds (characters and counts), so one call stays a few thousand tokens.
 SEED_CHARS = 3_000
+COVERAGE_LIST = 12  # Undescribed clients and projects listed in Organization learning.
 TASK_SCAN = 2_000
 TASKS_REBUILD = 80
 TASKS_UPDATE = 60
@@ -164,6 +165,22 @@ def seed_text(db, record) -> str:
         if described and not (parts and described in parts[0]):
             parts.append(described)
     return clip("\n\n".join(parts), SEED_CHARS) if parts else ""
+
+
+def coverage(db, owner, *, limit=COVERAGE_LIST) -> dict:
+    """How many active clients and projects carry the owner's description, and which ones do not yet.
+
+    The description is what overviews, placement by meaning and Dani build on, so the app asks for the missing ones."""
+    rows = db.execute(select(StructureRecord.id, StructureRecord.title, StructureRecord.type_id, StructureRecord.body,
+                             Project.description).outerjoin(Project, (Project.id == StructureRecord.id)
+                                                            & (Project.owner_id == owner))
+                      .where(StructureRecord.owner_id == owner, StructureRecord.type_id.in_(BUCKET_TYPES),
+                             StructureRecord.archived.is_(False))
+                      .order_by(StructureRecord.updated_at.desc(), StructureRecord.id)).all()
+    missing = [{"id": rid, "title": title, "type_id": type_id} for rid, title, type_id, body, legacy in rows
+               if not (body or "").strip() and not (legacy or "").strip()]
+    return {"total": len(rows), "described": len(rows) - len(missing), "missing": missing[:limit],
+            "more_missing": max(0, len(missing) - limit)}
 
 
 # ---------------------------------------------------------------- material
@@ -599,9 +616,14 @@ def knowledge(db, owner, record_id) -> dict:
     facts, brief = _facts_and_brief(db, owner, record)
     tasks = _tasks(db, owner, record)
     open_tasks = [t for t in tasks if t["status"] not in ("completed", "cancelled")]
+    description = seed_text(db, record)
     return {
         "record_id": record.id, "title": record.title, "type_id": record.type_id, "archived": record.archived,
-        "description": seed_text(db, record),
+        "description": description,
+        **({} if description else {"description_missing": (
+            f"The owner has not described this {record.type_id} yet. When it fits the conversation, suggest they add "
+            "a few lines on its content (what it is, what their work covers, who is involved, the words that come "
+            "up): overviews, filing tasks by meaning and your answers all build on it.")}),
         "overview": {"version": row.version, "updated_at": row.created_at.isoformat(), **row.sections} if row else None,
         "people": _linked_people(db, owner, record_id),
         "meeting_facts": [{k: f[k] for k in ("kind", "statement", "date")} for f in facts[:KNOWLEDGE_FACTS]],

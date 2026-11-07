@@ -82,6 +82,8 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
     if(live)setChoices([...page.items,...linked.filter((r):r is CustomRecord=>r!==null)]);
   })().catch(e=>live&&setError(e.message));},200);return()=>{live=false;clearTimeout(timer);};},[row.id,row.revision,relatedQuery,schema,setError]);
   const t=schema.types.find(t=>t.id===row.type_id)!;
+  // Clients and projects ask for the owner's description: overviews, placement by meaning and Dani build on it.
+  const bucket=OVERVIEW_TYPES.includes(row.type_id),typeName=t.name,describe=bucket&&canEdit&&!row.archived&&!(row.body??"").trim();
   const save=async(changes:Record<string,unknown>)=>{
     if(changes.status_id&&t.statuses.find(s=>s.id===changes.status_id)?.meaning==="completed"&&contents?.work_open){
       if(!window.confirm("Complete only this record? "+contents.work_open+" unfinished descendants will stay open."))return current.current;
@@ -129,7 +131,8 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
     <div className="detail-grid">
       <div className="detail-main">
         <textarea rows={1} className="detail-title" aria-label="Record title" value={title} disabled={locked} onChange={e=>setTitle(e.target.value)} onBlur={()=>{if(title.trim()&&title!==row.title)void save({title}).catch(()=>{});}}/>
-        <textarea aria-label="Record content" className="detail-body" value={body} disabled={locked} rows={4} placeholder="Add details" onChange={e=>setBody(e.target.value)} onBlur={()=>{if(body!==row.body)void save({body}).catch(()=>{});}}/>
+        {describe&&<p className="describe-nudge" role="note"><strong>Describe this {typeName.toLowerCase()}.</strong> A few lines on what it is, what your work on it covers, who is involved and the words that come up. Eridani uses them to file tasks here, write the overview and help Dani answer questions about it.</p>}
+        <textarea aria-label="Record content" className="detail-body" value={body} disabled={locked} rows={describe?5:4} placeholder={bucket?"What it is · what your work covers · who is involved · words that come up":"Add details"} onChange={e=>setBody(e.target.value)} onBlur={()=>{if(body!==row.body)void save({body}).catch(()=>{});}}/>
         {OVERVIEW_TYPES.includes(row.type_id)&&!row.archived&&<RecordOverview recordId={row.id} canEdit={canEdit} revision={row.revision}/>}
         <details className="detail-section" aria-label={TASK_CARD_SECTIONS.localNotes}><summary>Eridani-only notes</summary><p className="footnote">Visible in this workspace. Never sent to connected services.</p><textarea aria-label="Eridani-only notes" value={localNotes} disabled={locked} rows={3} onChange={e=>setLocalNotes(e.target.value)} onBlur={()=>{if(localNotes!==(row.local_notes??""))void save({local_notes:localNotes}).catch(()=>{});}}/></details>
         <SourceDetails source={row.source}/>

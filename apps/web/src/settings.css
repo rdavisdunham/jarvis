@@ -1576,3 +1576,7 @@
   overflow: hidden;
   white-space: normal;
 }
+/* Organization learning: clients and projects still waiting for a description. */
+.describe-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+.describe-list button.chip { cursor: pointer; font: inherit; border: 1px solid var(--line, transparent); background: var(--surface); }
+.describe-list button.chip:hover { color: var(--ink); }

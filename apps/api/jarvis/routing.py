@@ -740,6 +740,12 @@ def process(job_id):
         emit(db, owner, "routing.changed", review.id)
 
 
+def _descriptions(db, owner):
+    from .record_overviews import coverage
+
+    return coverage(db, owner)
+
+
 def state(db, owner):
     ensure(db, owner)
     reviews = list(
@@ -784,6 +790,7 @@ def state(db, owner):
         "split": split_counts(latest_evidence(db, owner)),
         # Linear-mapping placements teach overviews (and later placement by meaning), never phrase rules.
         "linear_examples": linear_examples(db, owner),
+        "descriptions": _descriptions(db, owner),
         "quality_gate": f"Dani proposes a learned rule only after {MIN_RULE_SUPPORT} independent examples. Learned automatic rules also require 100 held-out human-reviewed matches and at least 95% precision. Explicitly confirmed rules can start immediately.",
     }
 
