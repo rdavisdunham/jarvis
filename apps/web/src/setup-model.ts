@@ -11,7 +11,39 @@ export type SetupProgress = {
 export const setupEstablished = (organization: Pick<Organization, "spaces" | "projects">) =>
   organization.spaces.some(space => !space.archived) && organization.projects.some(project => !project.archived);
 
-export const SETUP_REQUEST = "Help me design or refine my organization in Eridani. Resume my saved setup, ask me one useful question at a time, and preview the types, fields and homes before applying changes. Treat examples as examples unless I ask you to create real items.";
+/** Set up with Dani: one interview session per owner (docs/SETUP_WITH_DANI_PLAN.md). */
+export type SetupSession = {
+  status: "not_started" | "interviewing" | "proposing" | "reviewing" | "completed" | "abandoned";
+  revision: number; conversation_id: string | null; mode: "voice" | "typed" | null;
+  focus: "both" | "organization" | "about_you"; notes: { covered?: string[]; rerun?: boolean };
+  tree_proposal_id: string | null; history_off: boolean;
+  /** The backend can build a proposal from the interview. */
+  can_propose?: boolean;
+};
+export type SetupMode = "voice" | "typed";
+
+export const setupActive = (session?: SetupSession | null) =>
+  !!session && ["interviewing", "proposing", "reviewing"].includes(session.status);
+
+export const SETUP_MODE_QUESTION = "Want to do this by voice? We recommend a conversation for this. If you can’t talk right now, feel free to type.";
+
+/** Topics the interview covers. The synthesizer's notes tick them, not the live model. */
+export const SETUP_TOPICS = [
+  { id: "you", label: "Getting to know you" },
+  { id: "week", label: "Your week" },
+  { id: "areas_goals", label: "Areas and goals" },
+  { id: "in_flight", label: "What’s in flight" },
+  { id: "help", label: "How to help" },
+] as const;
+
+/** The launcher's primary action for the saved setup state. */
+export function setupLaunchLabel(onboardingStatus: string, session?: SetupSession | null) {
+  if (setupActive(session)) return "Resume with Dani";
+  if (onboardingStatus === "completed" || session?.status === "completed") return "Update with Dani";
+  return "Set up with Dani";
+}
+
+export const SETUP_REQUEST ="Help me design or refine my organization in Eridani. Resume my saved setup, ask me one useful question at a time, and preview the types, fields and homes before applying changes. Treat examples as examples unless I ask you to create real items.";
 
 /** Types & fields enters the same guided setup, narrowed to type and field changes. */
 export function typesFieldsRequest(typeName?: string) {

@@ -198,3 +198,10 @@ Move on after two or three concrete details, or after two short answers. Aim for
   - Resuming on another device moves the setup conversation to that device, since it is the owner's own transcript.
   - The interview block is skipped for voice-delegated turns until PR 3 gives them their own block.
   - The `/api/v1/setup` routes are counted under the existing `onboarding` eval feature in the surface inventory.
+- **PR 2** (companion setup mode): `Onboarding.tsx` launcher with the mode choice, `SetupConversation.tsx`, `startSetup` in `App.tsx`.
+  - The launcher's primary label follows the saved state: "Set up with Dani", "Resume with Dani" (an active run) or "Update with Dani" (after completion). Resuming a typed run skips the mode question; resuming a voice run asks again, so the mic never starts by surprise.
+  - The form's "Talk to Dani" button opens the same mode choice, after saving the form's answers as before.
+  - Starting Dani from a completed setup no longer resets the onboarding status to in progress.
+  - In the setup conversation, the composer's "Talk to Dani" voice button behaves like "Switch to voice".
+  - "Propose my organization" appears only when the setup state reports `can_propose` (PR 4).
+  - `batch-c.mjs` now walks the new launcher: mode choice, the fixed opening, a typed answer sent with `purpose: "setup"`, and resume.

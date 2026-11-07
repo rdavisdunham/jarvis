@@ -691,6 +691,40 @@ body:has(.modal-backdrop) .bug-report-launcher {
   white-space: nowrap;
   padding: 0 6px;
 }
+/* Set up with Dani: topic chips and actions above the setup conversation. */
+.setup-conversation {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.setup-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.setup-topics .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.setup-conversation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.setup-conversation-actions .btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.setup-conversation .footnote {
+  margin: 0;
+}
 .history-note {
   display: flex;
   align-items: center;
