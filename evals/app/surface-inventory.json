@@ -1984,6 +1984,13 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/remotea/other-chats",
+      "handler": "other_chats",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/remotea/parity",
       "handler": "parity",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -2117,6 +2124,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/dismiss",
+      "handler": "dismiss",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/focus",
       "handler": "focus",
       "source": "apps/api/jarvis/remotea_routes.py",
@@ -2231,6 +2245,13 @@
       "method": "GET",
       "path": "/api/v1/remotea/sessions",
       "handler": "live_sessions",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/sessions/new",
+      "handler": "new_session",
       "source": "apps/api/jarvis/remotea_routes.py",
       "feature": "agent_control"
     },
