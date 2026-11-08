@@ -26,7 +26,7 @@ from .config import get_settings
 from .db import session_scope
 from .domain import DomainError, advisory, emit, encode, owned
 from .models import BotCredential, OwnerSettings, now
-from .session_models import AgentHost, AgentSession, AgentTurn
+from .session_models import AgentHost, AgentRun, AgentSession, AgentTurn
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/remotea")
@@ -302,15 +302,62 @@ def live_sessions(user: User, limit: int = Query(50, ge=1, le=100)):
         hosts = {h.id: h for h in db.scalars(select(AgentHost).where(AgentHost.owner_id == user.owner_id))}
         turns = last_turns(db, [r.id for r in rows])
         titles = sessions.record_titles(db, user.owner_id, {r.record_id for r in rows})
+        runs = session_runs(db, rows)
         items = []
         for row in rows:
             host = hosts.get(row.host_id)
+            run = runs.get(row.id)
             items.append({
                 **sessions.public(db, row, titles=titles),
                 "host": {"id": host.id, "name": host.name, "connected": agent_link.connected(host)} if host else None,
                 "last_turn": public_turn(turns[row.id], 2000) if row.id in turns else None,
+                **session_origin(row, run),
             })
         return encode({"items": items, "server_time": now()})
+
+
+def session_runs(db, rows):
+    """{session pk: the run that owns it}: the session's own run_id, else a run attached to it (session_pk)."""
+    ids = [r.id for r in rows]
+    if not ids:
+        return {}
+    run_ids = {r.run_id for r in rows if r.run_id}
+    found = list(db.scalars(select(AgentRun).where(or_(AgentRun.id.in_(run_ids or {""}), AgentRun.session_pk.in_(ids)))))
+    by_id = {r.id: r for r in found}
+    out = {r.session_pk: r for r in found if r.session_pk}
+    for row in rows:
+        if row.run_id in by_id:
+            out[row.id] = by_id[row.run_id]
+    return out
+
+
+def session_origin(row, run):
+    """Where a session came from: "run" (an Eridani run started it), "remotea" (opened in remotea by hand) or "other"
+    (another harness's chat the collector found, never in a remotea tab)."""
+    if run is not None:
+        task = run.task_id
+        return {"origin": "run", "run": {"id": run.id, "state": run.state, "origin": run.origin or "task",
+                                         "task_id": task, "dismissed": run.dismissed_at is not None}}
+    return {"origin": "remotea" if row.surf or row.state else "other", "run": None}
+
+
+@router.get("/other-chats")
+def other_chats(user: User, days: int = Query(14, ge=1, le=90), limit: int = Query(30, ge=1, le=100)):
+    """Chats from other harnesses (never in a remotea tab), most recently active first, within `days`."""
+    from datetime import timedelta
+
+    with session_scope() as db:
+        gated(db, user)
+        rows = list(db.scalars(
+            select(AgentSession)
+            .where(AgentSession.owner_id == user.owner_id, AgentSession.archived.is_(False),
+                   AgentSession.surf == "", AgentSession.state == "", AgentSession.run_id.is_(None),
+                   AgentSession.last_active_at >= now() - timedelta(days=days))
+            .order_by(AgentSession.last_active_at.desc().nulls_last())
+            .limit(limit)
+        ))
+        titles = sessions.record_titles(db, user.owner_id, {r.record_id for r in rows})
+        return encode({"items": [{**sessions.public(db, r, titles=titles), "origin": "other"} for r in rows]})
 
 
 @router.get("/sessions/{identity}/turns")
@@ -344,12 +391,30 @@ def writable(db, user):
 
 
 @router.get("/runs")
-def runs(user: User, task_id: UUID | None = None, active: bool = False, limit: int = Query(50, ge=1, le=100)):
+def runs(user: User, task_id: UUID | None = None, active: bool = False, limit: int = Query(50, ge=1, le=100),
+         dismissed: bool = True):
     # Inspection and stop stay available after remotea is turned off, for runs that have not settled.
+    # dismissed=false (the remotea page) leaves out runs the owner dismissed there.
     with session_scope() as db:
         owner_only(db, user)
         return {"items": control.list_runs(db, user.owner_id, task_id=str(task_id) if task_id else None,
-                                           active=active, limit=limit)}
+                                           active=active, limit=limit, dismissed=dismissed)}
+
+
+@router.post("/sessions/new")
+def new_session(body: control.SessionInput, user: User):
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, body.execution_target_id, "session", body, lambda: control.start_session(
+            db, user.owner_id, user.account_id, body, actor=actor_for(user)))
+
+
+@router.post("/runs/{identity}/dismiss")
+def dismiss(identity: UUID, body: control.DismissInput, user: User):
+    with session_scope() as db:
+        owner_only(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "dismiss", body, lambda: control.dismiss_run(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
 @router.post("/runs")

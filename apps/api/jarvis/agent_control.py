@@ -86,6 +86,20 @@ class StartInput(Input):
     approve_final: bool = True
 
 
+class SessionInput(Input):
+    """New session (the remotea page): talk to an agent directly on a saved target, without a plan or judge."""
+    action_id: UUID | None = None
+    prompt: str = Field(min_length=1, max_length=PROMPT_CHARS)
+    execution_target_id: str = Field(max_length=36)
+    harness: str = Field(default="claude", max_length=20)
+    model: str | None = Field(default=None, pattern=MODEL)
+    effort: str | None = Field(default=None, max_length=40)
+
+
+class DismissInput(Input):
+    action_id: UUID | None = None
+
+
 class FreestyleInput(Input):
     enabled: bool
     expected_revision: int | None = Field(default=None, ge=1)
@@ -612,8 +626,9 @@ def run_roles(body):
             "approve_final": bool(body.approve_final)}
 
 
-def start_run(db, owner, account_id, body, *, actor, brief=""):
-    """Start one run. `brief` (swarm.py only, never from a request body) is appended to the spawn prompt."""
+def start_run(db, owner, account_id, body, *, actor, brief="", opening=""):
+    """Start one run. `brief` (swarm.py only, never from a request body) is appended to the spawn prompt. `opening`
+    (start_session only) replaces the spawn prompt of a freestyle run and marks it a session."""
     body = body.model_copy(deep=True)
     agent_link.gate(db, owner)
     if body.harness in DISABLED_HARNESSES:
@@ -687,6 +702,7 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
                    sync_state={"execution_mode": "managed" if managed_start else "legacy",
                                **({"start_phase": "planning"} if planning_start else {})},
                    freestyle=bool(body.freestyle), roles=roles, plan_round=0,
+                   origin="session" if opening and body.freestyle else "task",
                    history=[{"at": now().isoformat(), "from": "queued", "to": "spawning", "reason": "start",
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
@@ -718,6 +734,8 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         prompt, verify = spawn_prompt(db, run, plan), coordinator.verify_config(plan)
         # A reused worktree behind its base: the host tells the agent to re-point this migration (optional on the wire).
         migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
+    if opening and body.freestyle:
+        prompt = session_prompt(opening)
     if brief:
         prompt = prompt[:PROMPT_CHARS - len(brief) - 2] + "\n\n" + brief
     token = coordinator.mint_token(run, fresh=True)
@@ -736,6 +754,48 @@ def start_run(db, owner, account_id, body, *, actor, brief=""):
         **({"permission_profile": body.permission_profile} if body.permission_profile else {}),
         **({"execution": "managed"} if managed_start else {}),
     })
+    emit(db, owner, "agent.changed", run.id, run.state_revision)
+    return public_run(db, run)
+
+
+SESSION_NOTE = ("(Started from Eridani's New session. Work with the owner directly; nothing is judged. If the owner "
+                "asks for a plan, submit one with Eridani's submit_plan tool and stop; they can then turn on the "
+                "judge and automation from Eridani.)")
+
+
+def session_prompt(text):
+    return (text.strip()[:PROMPT_CHARS - len(SESSION_NOTE) - 2] + "\n\n" + SESSION_NOTE)
+
+
+def session_title(text):
+    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "New session")
+    return line if len(line) <= 120 else line[:119].rstrip() + "…"
+
+
+def start_session(db, owner, account_id, body, *, actor):
+    """New session: a task named after the first line of the prompt and a freestyle run on the chosen target whose
+    first prompt is the owner's own text. Re-plan and the Freestyle switch in the run drawer turn it into a planned,
+    judged run when the owner asks."""
+    from .task_alerts import new_task
+
+    agent_link.gate(db, owner)
+    target = owned(db, ExecutionTarget, body.execution_target_id, owner)
+    task = new_task(db, owner, session_title(body.prompt))
+    task.notes, task.execution_target_id = body.prompt, target.id
+    start = StartInput(task_id=task.id, harness=body.harness, model=body.model, effort=body.effort,
+                       execution_target_id=target.id, freestyle=True, interview=False)
+    return start_run(db, owner, account_id, start, actor=actor, opening=body.prompt)
+
+
+def dismiss_run(db, owner, run_id, body, *, actor):
+    """Hide a run from the remotea page. An active run is stopped first (the same stop as Cancel run); the task keeps
+    its run history."""
+    run = coordinator.load(db, owner, run_id)
+    if run.state not in TERMINAL_RUN_STATES and run.state != "stopping":
+        coordinator.request_stop(db, run, actor=actor, mode="interrupt", reason="stopped_by_user")
+    if run.dismissed_at is None:
+        run.dismissed_at = now()
+        coordinator.note(run, "dismissed", actor=actor.record())
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return public_run(db, run)
 
@@ -1291,6 +1351,7 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "permission_profile": run.permission_profile, "started_at": run.started_at, "finished_at": run.finished_at,
         "stop_requested_at": run.stop_requested_at, "stop_mode": run.stop_mode, "surf": run.surf,
         "turn_seq": run.turn_seq, "plan_pending": run.plan_pending, "freestyle": bool(run.freestyle),
+        "origin": run.origin or "task", "dismissed_at": run.dismissed_at,
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
         # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): null roles is a classic run. `actor` is who acts
@@ -1408,10 +1469,13 @@ def agent_plan_public(row):
     return public_interview(row)
 
 
-def list_runs(db, owner, *, task_id=None, active=False, limit=50):
+def list_runs(db, owner, *, task_id=None, active=False, limit=50, dismissed=True):
+    """dismissed=False leaves out runs the owner dismissed from the remotea page."""
     query = select(AgentRun).where(AgentRun.owner_id == owner)
     if task_id:
         query = query.where(AgentRun.task_id == task_id)
+    if not dismissed:
+        query = query.where(AgentRun.dismissed_at.is_(None))
     if active:
         query = query.where(AgentRun.state.not_in(TERMINAL_RUN_STATES))
     return [public_run(db, r) for r in db.scalars(query.order_by(AgentRun.created_at.desc()).limit(limit))]
