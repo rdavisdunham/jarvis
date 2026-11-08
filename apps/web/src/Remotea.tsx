@@ -117,7 +117,8 @@ export function Remotea() {
   const cutover = cutoverSummary(parity);
   const unmerged = useUnmerged();
   const runs = page.runs ?? [];
-  const shown = new Set(runs.map(r => r.id));
+  // The runs that get a box (RunList: every active run, then the five most recent settled ones).
+  const shown = new Set([...runs.filter(r => !isSettled(r)), ...runs.filter(isSettled).slice(0, 5)].map(r => r.id));
   const loose = items ? looseSessions(items, shown) : null;
   const dismissRun = async (run: Run) => {
     if (!window.confirm(dismissQuestion(run))) return;
