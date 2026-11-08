@@ -1763,13 +1763,16 @@ export function mergePanel(merge: RunMerge | null | undefined) {
   if (!merge) return null;
   const base = merge.pr?.base || "main";
   // Update branch whenever it is the only move (behind, or behind with failing CI).
-  const action: "merge" | "update" | "none" = merge.status === "behind" || (merge.can_update && !merge.can_merge) ? "update"
-    : ["merged", "closed"].includes(merge.status) ? "none" : "merge";
-  const label = action === "update" ? "Update branch" : merge.status === "merging" ? "Merging…" : `Merge into ${base}`;
+  const action: "merge" | "update" | "none" = merge.status === "behind" || merge.status === "updating"
+    || (merge.can_update && !merge.can_merge) ? "update" : ["merged", "closed"].includes(merge.status) ? "none" : "merge";
+  // While a click is with the host, the button names what is happening, not the next move.
+  const label = merge.status === "updating" ? "Updating…" : action === "update" ? "Update branch"
+    : merge.status === "merging" ? "Merging…" : `Merge into ${base}`;
   const enabled = action === "update" ? merge.can_update : merge.can_merge;
   const sendBack = MERGE_SEND_BACK[merge.status]?.replaceAll("{base}", base) ?? null;
   const refused = merge.op?.state === "refused" ? `GitHub refused the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}`
-    : merge.op?.state === "failed" || merge.op?.state === "uncertain" ? `The host could not finish the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}` : null;
+    : merge.op?.state === "failed" || merge.op?.state === "uncertain" ? `The host could not finish the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}`
+    : merge.op?.state === "unanswered" ? `The host did not answer the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}; check that remotea is running, then try again.` : null;
   const tone = merge.status === "merged" ? "ok" as const : ["ci_failed", "conflicts", "closed"].includes(merge.status) ? "warn" as const : "plain" as const;
   return { action, label, enabled, line: merge.detail, sendBack, refused: ["merged", "merging", "updating"].includes(merge.status) ? null : refused, tone,
     // The drawer asks the host again while the answer can still change on its own.

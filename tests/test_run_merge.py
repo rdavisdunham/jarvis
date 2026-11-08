@@ -360,3 +360,33 @@ def test_the_ci_chip_agrees_with_the_panel_on_a_settled_run(merge_host):
         assert run_ci.public(db, run)["state"] == "unpushed"
         run.state = "completed"
         assert run_ci.public(db, run)["state"] == "passed"
+
+
+def test_update_branch_is_not_offered_again_until_github_reports_the_new_commit(merge_host):
+    run_id = green_awaiting_approval(merge_host, merge_state="BEHIND")
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "completed"
+    click(run_id, "update")
+    assert panel(run_id)["status"] == "updating" and not panel(run_id)["can_update"]
+    outcome(run_id, "pr.update_branch", "executed", {"updated": True, "new_head_sha": NEW, "worktree_synced": False})
+    # The host is done, but the newest CI answer still shows the old, behind head: no second Update branch.
+    view = panel(run_id)
+    assert view["status"] == "updating" and not view["can_update"] and "new commit" in view["detail"]
+    with pytest.raises(DomainError):
+        click(run_id, "update")
+    # GitHub reports the new commit, CI running on it.
+    answer(run_id, pr(head_sha=NEW, merge_state="BLOCKED"), checks=checks("pass", "pending"))
+    assert panel(run_id)["status"] == "waiting_ci"
+
+
+def test_a_click_the_host_never_answers_says_so(merge_host):
+    run_id = green_awaiting_approval(merge_host, merge_state="BEHIND")
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "completed"
+    click(run_id, "update")
+    with session_scope() as db:
+        row = db.scalar(select(AgentCommand).where(AgentCommand.run_id == run_id,
+                                                   AgentCommand.kind == "pr.update_branch"))
+        row.expires_at = coordinator.now() - coordinator.timedelta(seconds=1)
+    view = panel(run_id)
+    assert view["status"] == "behind" and view["can_update"] and view["op"]["state"] == "unanswered"
