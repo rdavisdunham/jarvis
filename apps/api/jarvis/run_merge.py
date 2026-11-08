@@ -27,7 +27,7 @@ updated), head_sha, reason, message, at, actor, …}. A merge whose answer was l
 that shows the pull request MERGED (on_ci).
 """
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
@@ -95,6 +95,20 @@ def host_reason(db, run, kind=MERGE):
     return ""
 
 
+UNSEEN_FOR = timedelta(minutes=5)
+
+
+def updated_unseen(op, facts):
+    """The host updated the branch, but the newest CI answer is still about the old head: until GitHub reports the
+    new commit (or UNSEEN_FOR passes) the panel stays "updating", so Update branch is not offered twice."""
+    if op.get("kind") != UPDATE or op.get("state") != "updated" or not facts:
+        return False
+    old, new, seen = (op.get("head_sha") or "").lower(), (op.get("new_head_sha") or "").lower(), facts.get("head_sha")
+    answered = op.get("answered_at")
+    recent = bool(answered) and now() - datetime.fromisoformat(answered) < UNSEEN_FOR
+    return recent and bool(old) and seen == old and seen != new
+
+
 def in_flight(db, run, op):
     """The last click is still with the host: its command is queued or sent and not expired."""
     if op.get("state") != "sent" or not op.get("op_id"):
@@ -135,6 +149,11 @@ def public(db, run):
     if in_flight(db, run, op):
         return out("merging" if op.get("kind") == MERGE else "updating",
                    "Merging…" if op.get("kind") == MERGE else "Updating the branch…")
+    if updated_unseen(op, facts):
+        return out("updating", "Branch updated; waiting for GitHub to report the new commit…")
+    if op.get("state") == "sent" and op.get("op_id"):
+        # The click expired with no answer from the host: say so (the button comes back for another try).
+        view["op"] = {**(view["op"] or {}), "state": "unanswered"}
     if facts is None:
         # No answer yet. A host that answered with a failure says why, instead of "Checking…" forever.
         error = run_ci.ci_state(run).get("error")

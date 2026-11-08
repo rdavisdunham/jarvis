@@ -1771,7 +1771,8 @@ export function mergePanel(merge: RunMerge | null | undefined) {
   const enabled = action === "update" ? merge.can_update : merge.can_merge;
   const sendBack = MERGE_SEND_BACK[merge.status]?.replaceAll("{base}", base) ?? null;
   const refused = merge.op?.state === "refused" ? `GitHub refused the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}`
-    : merge.op?.state === "failed" || merge.op?.state === "uncertain" ? `The host could not finish the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}` : null;
+    : merge.op?.state === "failed" || merge.op?.state === "uncertain" ? `The host could not finish the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}${merge.op.message ? ": " + merge.op.message : "."}`
+    : merge.op?.state === "unanswered" ? `The host did not answer the last ${merge.op.kind === "pr.update_branch" ? "update" : "merge"}; check that remotea is running, then try again.` : null;
   const tone = merge.status === "merged" ? "ok" as const : ["ci_failed", "conflicts", "closed"].includes(merge.status) ? "warn" as const : "plain" as const;
   return { action, label, enabled, line: merge.detail, sendBack, refused: ["merged", "merging", "updating"].includes(merge.status) ? null : refused, tone,
     // The drawer asks the host again while the answer can still change on its own.
