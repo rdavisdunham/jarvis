@@ -1043,6 +1043,12 @@ The page shows runs grouped by the next human action (below), **Unmerged work**,
 timeline, the questions card, the review packet and Message / Steer / Stop (**Stopping…**, then **Force stop**) /
 Approve.
 
+**Unmerged work** lists only worktrees with work at risk, worst first, in groups: Uncommitted changes (`dirty`), Not
+pushed (`unpushed`: local commits, or no upstream), Pushed, not merged (`unmerged`) and Can't tell (`unknown`, an old
+host report) (`agent_control.unmerged_kind`). A merged or empty worktree kept only by ignored files (node_modules,
+.env) is left off and stays under **Worktree maintenance**. The host re-sends its report every 2 minutes, fetching each
+base at most every 5, so a merge on GitHub shows up within a few minutes.
+
 **Why it stopped (`attention_detail`).** A run in `needs_you` or `capped` carries `attention_detail: {reason,
 headline, action, detail, last_output}` on its read model (`run_attention.py`; null otherwise; the older `attention`
 string is unchanged). Every stop reason has a plain headline and action (`run_attention.ATTENTION`, guarded by
