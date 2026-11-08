@@ -126,7 +126,7 @@ class TaskChanges(Args):
     )
     due_timezone: str | None = Field(default=None, max_length=100)
     priority: int | None = Field(default=None, ge=0, le=3)
-    status: Literal["backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled"] | None = None
+    status: Literal["backlog", "open", "in_progress", "in_review", "waiting", "deferred", "completed", "cancelled"] | None = None
     archived: bool | None = None
     # Execution plan (task_plan.py normalizes these; plan_revision is server-managed).
     steps: list[PlanStep] | None = Field(default=None, max_length=100)
@@ -809,6 +809,7 @@ def mutate(db, owner, tool, args, command_id):
             "backlog",
             "open",
             "in_progress",
+            "in_review",
             "waiting",
             "deferred",
             "completed",

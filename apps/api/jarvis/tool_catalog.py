@@ -299,7 +299,7 @@ DESCRIPTIONS = {
     "planning_commit": "Save a planning_suggest proposal only when the owner requested scheduling. Rechecks current task revisions and fresh availability, then saves all local blocks atomically; conflicts save none. Copy the short plan_token reference exactly from planning_suggest. Reusing it cannot duplicate blocks, even with a new command ID. Does not publish to Google or change task deadlines/alerts. Expired/conflicting plans need a new proposal.",
     "task_list": "Find TASK records with structured filters; authored notes use note_search/note_read. "
     "due_from/due_through are inclusive. "
-    "tags_all requires every tag; tags_none excludes any listed tag; status is exact (open excludes in_progress). "
+    "tags_all requires every tag; tags_none excludes any listed tag; status is exact (open excludes in_progress); in_review means the work is done and awaits someone's review, e.g. an open PR. "
     "Results include match_count, compact records and an owner-scoped immutable selection_id. "
     "For the same edit on every match use task_selection_update, including unseen pages. "
     "For pagination retain selection_id and next_offset; detail=full on a fresh query retrieves full stored fields; saved selections are compact. "

@@ -7,7 +7,7 @@ export type CustomRecord = {context_only?:boolean;last_reviewed_at?:string|null;
 export type Proposal={applied_at?:string|null;id:string;schema_revision:number;definition:Pick<Schema,"types"|"relationships"|"field_library"|"type_layout">;impact:{review_changes?:{type_id:string;name:string;every:string|null;every_label:string|null;records:number}[];affected_count:number;affected_records:{id:string;title:string}[];issues:ProposalIssue[];blocking_count:number};expires_at:string};
 /** Placement issues name the record and its current home so the editor can list them. */
 export type ProposalIssue={message:string;record_id?:string;link_id?:string;kind?:"placement";type_id?:string;title?:string;archived?:boolean;home?:{id:string;title:string;type_id:string}};
-export const meanings=["backlog","open","in_progress","waiting","deferred","completed","cancelled"];
+export const meanings=["backlog","open","in_progress","in_review","waiting","deferred","completed","cancelled"];
 export const fieldKinds=["text","long_text","number","boolean","date","datetime","select","multiselect","relation"];
 export const describe=(value:string)=>value.replaceAll("_"," ");
 export const emptyField=():SchemaField=>({id:crypto.randomUUID(),name:"",description:"",kind:"text",options:[],target_types:[],multiple:false,inherit:false,visible:true,archived:false,binding:null});

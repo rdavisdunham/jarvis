@@ -86,6 +86,9 @@ describe("open-as decisions and marks", () => {
     expect(itemState(index.byId.get("swd")!, "2026-10-03")).toBe("overdue");
     expect(itemState(index.byId.get("fcd")!, "2026-10-03")).toBe("in_progress");
     expect(itemState(index.byId.get("ce")!, "2026-10-03")).toBe("done");
+    const review = { ...index.byId.get("fcd")!, status_meaning: "in_review", due_date: null };
+    expect(itemState(review, "2026-10-03")).toBe("in_review");
+    expect(itemState({ ...review, due_date: "2026-10-01" }, "2026-10-03")).toBe("overdue");
   });
   it("counts work in each subtree without the record's own status", () => {
     expect(index.progress.get("abc")).toEqual({ done: 2, open: 5, total: 7 });

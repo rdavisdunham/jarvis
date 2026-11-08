@@ -364,7 +364,7 @@ export default function AtlasView({ schema, canEdit, canDesign, focus, target, r
   const dueReviews = data.records.filter(r => r.review_due&&!r.context_only).length;
   const scale = mapSize.width ? scaleOf(view, mapSize.width, mapSize.height) : 1;
   const legend: Record<Lens, [string, string][]> = {
-    status: [["open", "Open"], ["in_progress", "In progress"], ["done", "Done"], ["overdue", "Overdue"]],
+    status: [["open", "Open"], ["in_progress", "In progress"], ["in_review", "In review"], ["done", "Done"], ["overdue", "Overdue"]],
     due: [["overdue", "Overdue"], ["today", "Due today"], ["upcoming", "Has a due date"]],
     review: [["review", "Review due"], ["review-inside", "Has reviews due inside"]],
     type: [["work", "Work"], ["note", "Note"], ["goal", "Goal"]],

@@ -1,10 +1,11 @@
-"""Linear outcomes of agent runs (decision 13, C13): In Progress at the observed start, Done and one
-completion comment when the run completes.
+"""Linear outcomes of agent runs (decision 13, C13): In Progress at the observed start, In Review once when
+the run's pull request opens (when the task's type has an In review status), Done and one completion comment
+when the run completes.
 
 Local run state and source sync are separate persisted outcomes: a refused or failed Linear write is
 recorded on `agent_runs.sync_state["linear"]` and never undoes the start or the completion.
 
-    in_progress | done: {status: queued|deferred|blocked|skipped, job_id?, after?, code?, message?}
+    in_progress | in_review | done: {status: queued|deferred|blocked|skipped, job_id?, after?, code?, message?}
     comment:            {status: queued|retrying|posted|failed|unconfirmed|skipped, job_id, marker,
                          attempted, comment_id?, url?, code?, message?}
 
@@ -37,7 +38,7 @@ def linear_state(run):
 
 
 def record_outcome(db, run_id, purpose, outcome):
-    """Save one Linear outcome on the run (in_progress, done or comment)."""
+    """Save one Linear outcome on the run (in_progress, in_review, done or comment)."""
     run = db.get(AgentRun, run_id, with_for_update=True) if run_id else None
     if run is None:
         return None

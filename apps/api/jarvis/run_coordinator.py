@@ -768,6 +768,49 @@ def mark_in_progress(db, run):
             note(run, "sync_failed", code=outcome.get("code"))
 
 
+def has_review_status(db, task):
+    """Whether the task's structure type has a status that behaves like In review."""
+    from . import structure
+    from .structure_models import StructureRecord
+
+    record = db.scalar(select(StructureRecord).where(StructureRecord.owner_id == task.owner_id,
+                                                     StructureRecord.task_id == task.id).limit(1))
+    if record is None:
+        return False
+    types = (structure.ensure(db, task.owner_id).definition or {}).get("types") or []
+    kind = next((t for t in types if t.get("id") == record.type_id), None)
+    return bool(kind) and any(s.get("meaning") == "in_review" for s in kind.get("statuses") or [])
+
+
+def mark_in_review(db, run):
+    """The run's pull request opened: move the task to In review through task.update, so Linear follows.
+
+    Once per run, so a person who moves the task back is respected; only when the task's type has an In review
+    status and the task is not already in review, finished or archived. A refused status never fails the run."""
+    from . import agent_sync
+    from .domain import execute
+    from .linear_sync import for_run
+
+    if (run.sync_state or {}).get("in_review_marked"):
+        return
+    task = db.get(Task, run.task_id)
+    if task is None or task.archived or task.status in {"in_review", "completed", "cancelled"}:
+        return
+    if not has_review_status(db, task):
+        return
+    try:
+        with db.begin_nested(), acting(COORDINATOR), for_run(run.id, "in_review") as outcome:
+            execute(db, run.owner_id, f"run-review:{run.id}", "task.update",
+                    {"task_id": task.id, "expected_revision": task.revision, "status": "in_review"})
+    except DomainError as exc:
+        outcome = {"status": "blocked", "code": exc.code, "message": exc.message[:300]}
+    run.sync_state = {**(run.sync_state or {}), "in_review_marked": now().isoformat()}
+    if outcome.get("status"):
+        agent_sync.save(run, "in_review", outcome)
+        if outcome["status"] == "blocked":
+            note(run, "sync_failed", code=outcome.get("code"))
+
+
 def attach(db, host_id, run_id, generation, tool, provider_session_id, *, surf="", incarnation=None, confirmed=True):
     """Bind the provider session the host confirmed; the run's observed start."""
     run = bound(db, host_id, run_id)
@@ -2313,6 +2356,8 @@ def session_reported(db, row):
     if run is None or run.state in TERMINAL or run.session_pk != row.id:
         return
     run.sync_state = {**(run.sync_state or {}), "session_report_at": now().isoformat()}
+    if sessions.pull_requests(row.pr_urls):
+        mark_in_review(db, run)
     if run.state == "judging":
         release_held(db, held_judges(db, [run.id]))
     elif run.state == "needs_you" and run.state_reason == "pr_unknown":
@@ -2590,7 +2635,7 @@ def candidates_text(db, owner, cwd, provider, session_id):
         tasks = list(db.scalars(
             select(Task).join(StructureRecord, StructureRecord.task_id == Task.id)
             .where(Task.owner_id == owner, StructureRecord.parent_id == rule.record_id, Task.archived.is_(False),
-                   Task.status.in_(("open", "in_progress", "waiting")))
+                   Task.status.in_(("open", "in_progress", "in_review", "waiting")))
             .order_by(Task.updated_at.desc()).limit(5)))
     from . import agent_prompts as prompts
 

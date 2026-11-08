@@ -10,6 +10,7 @@ export const viewStateSchema = z
         "backlog",
         "open",
         "in_progress",
+        "in_review",
         "waiting",
         "deferred",
         "completed",

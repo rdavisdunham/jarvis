@@ -851,3 +851,65 @@ def test_focus_is_gated_like_the_other_run_actions(host, client):
     assert client.post("/api/v1/remotea/disable").status_code == 200
     r = client.post(f"/api/v1/remotea/runs/{run_id}/focus")
     assert r.status_code == 403 and r.json()["error"]["code"] == "REMOTEA_DISABLED"
+
+
+# ---------------------------------------------------------------- pull request opened → In review
+
+PR_URL = "https://github.com/a/b/pull/1"
+
+
+def report_pr(run_id, urls=(PR_URL,)):
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id, with_for_update=True)
+        session = db.get(AgentSession, row.session_pk)
+        session.pr_urls = list(urls)
+        coordinator.session_reported(db, session)
+
+
+def set_status(task_id, status):
+    with session_scope() as db:
+        revision = db.get(Task, task_id).revision
+    run("task.update", task_id=task_id, expected_revision=revision, status=status)
+
+
+def task_status(task_id):
+    with session_scope() as db:
+        return db.get(Task, task_id).status
+
+
+def test_an_open_pull_request_moves_the_task_to_in_review_once(host):
+    tid = task()["id"]
+    row = attached(host, start(host, tid)["id"])
+    assert task_status(tid) == "in_progress"
+    report_pr(row.id, urls=())  # No pull request yet: nothing moves.
+    assert task_status(tid) == "in_progress"
+    report_pr(row.id)
+    assert task_status(tid) == "in_review"
+    with session_scope() as db:
+        assert db.get(AgentRun, row.id).sync_state["in_review_marked"]
+    set_status(tid, "in_progress")  # A person moves it back; a later report respects that.
+    report_pr(row.id)
+    assert task_status(tid) == "in_progress"
+
+
+def test_a_completed_task_is_not_moved_to_in_review(host):
+    tid = task()["id"]
+    row = attached(host, start(host, tid)["id"])
+    set_status(tid, "completed")
+    report_pr(row.id)
+    assert task_status(tid) == "completed"
+
+
+def test_a_type_without_an_in_review_status_is_not_moved(host):
+    from test_structure import apply as apply_schema
+    from test_structure import definition as schema_definition
+    from test_structure import propose
+
+    d = schema_definition()
+    t = next(t for t in d["types"] if t["id"] == "task")
+    t["statuses"] = [s for s in t["statuses"] if s["meaning"] != "in_review"]
+    apply_schema(propose(d))
+    tid = create("task", "No review step")["task_id"]
+    row = attached(host, start(host, tid)["id"])
+    report_pr(row.id)
+    assert task_status(tid) == "in_progress"
