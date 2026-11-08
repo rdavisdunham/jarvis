@@ -30,7 +30,7 @@ import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, 
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
-import { chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, unmergedWithRuns, type OtherChat } from "./remotea-model";
+import { chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type OtherChat, type SavedTarget, type SessionTarget } from "./remotea-model";
 import { Dialog } from "./ux";
 
 import "./remotea.css";
@@ -159,13 +159,14 @@ export function Remotea() {
       <WorktreeMaintenance/>
     </section>
     <OtherChats/>
-    <details className="remotea-parity">
+    {/* Once a host's own collector is the store's source (stage E cutover), the parity comparison is over. */}
+    {!(status?.hosts ?? []).some(h => h.connected && h.caps?.includes("collector.authoritative")) && <details className="remotea-parity">
       <summary>Collector parity{cutover?.ready ? " · ready for cutover" : ""}</summary>
       {cutover && <p className={"chip " + (cutover.ready ? "chip-done" : "chip-due-today")} role="status">{cutover.text}</p>}
       <p>{paritySummary(parity)}</p>
       {!!parity?.recent.length && <ul>{parity.recent.slice(0, 8).map(r =>
         <li key={r.tool + r.session_id}><code>{r.session_id.slice(0, 12)}</code> {r.missing ? "not reported by the current collector" : Object.keys(r.diff).join(", ")}</li>)}</ul>}
-    </details>
+    </details>}
     <section className="remotea-ledger" aria-label="Session ledger">
       <h2>Session ledger</h2>
       <SessionsLedger/>
@@ -207,28 +208,32 @@ function OtherChats() {
 /** New session: talk to an agent on a saved target straight away, with no plan or judge. Re-plan and the Freestyle
  * switch in the run drawer turn it into a planned, judged run when you ask. */
 function NewSessionDialog({ onClose, onStarted }: { onClose: () => void; onStarted: (runId: string) => void }) {
-  const [targets, setTargets] = useState<{ id: string; name: string; host_target: string; repo: string }[] | null>(null);
+  const [options, setOptions] = useState<SessionTarget[] | null>(null);
   const [target, setTarget] = useState(""), [harness, setHarness] = useState<"claude" | "codex">("claude");
   const [prompt, setPrompt] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const action = useRef(crypto.randomUUID());
   useEffect(() => {
-    api<{ items: { id: string; name: string; host_target: string; repo: string }[] }>("/remotea/targets")
-      .then(r => { setTargets(r.items); setTarget(t => t || r.items[0]?.id || ""); }).catch(e => setError(message(e)));
+    api<{ items: SavedTarget[]; advertised: AdvertisedTarget[] }>("/remotea/targets")
+      .then(r => { const o = sessionTargets(r.items, r.advertised ?? []); setOptions(o); setTarget(t => t || o[0]?.key || ""); })
+      .catch(e => setError(message(e)));
   }, []);
+  const chosen = options?.find(o => o.key === target);
   const start = async () => {
+    if (!chosen) return;
     setBusy(true); setError("");
+    const where = chosen.saved_id ? { execution_target_id: chosen.saved_id } : { host_id: chosen.host_id, host_target: chosen.host_target };
     try {
-      const run = await post<Run>("/remotea/sessions/new", { prompt, execution_target_id: target, harness, action_id: action.current });
+      const run = await post<Run>("/remotea/sessions/new", { prompt, ...where, harness, action_id: action.current });
       onStarted(run.id);
     } catch (e) { setError(message(e)); action.current = crypto.randomUUID(); } finally { setBusy(false); }
   };
   return <Dialog onBackdrop={onClose} onEscape={onClose} className="remotea-new-session" aria-label="New session">
     <header><h2>New session</h2><button className="btn-icon" aria-label="Close" onClick={onClose}><X size={18}/></button></header>
     <p className="footnote">Opens an agent in remotea and talks to it directly. Nothing is planned or judged unless you ask it for a plan.</p>
-    {targets && !targets.length && <p className="remotea-warning" role="note">No saved targets yet. Run a task once and choose where it runs; that target shows up here.</p>}
+    {options && !options.length && <p className="remotea-warning" role="note">Your remotea server lists no targets. Add one to its eridani.json, then try again.</p>}
     <label className="field"><span className="field-label-text">Where</span>
-      <select value={target} disabled={!targets?.length || busy} onChange={e => setTarget(e.target.value)}>
-        {targets?.map(t => <option key={t.id} value={t.id}>{t.name || t.host_target}{t.repo ? " · " + t.repo : ""}</option>)}
+      <select value={target} disabled={!options?.length || busy} onChange={e => setTarget(e.target.value)}>
+        {options?.map(o => <option key={o.key} value={o.key}>{o.label}{o.detail ? " · " + o.detail : ""}</option>)}
       </select></label>
     <label className="field"><span className="field-label-text">Agent</span>
       <select value={harness} disabled={busy} onChange={e => setHarness(e.target.value as "claude" | "codex")}>
@@ -237,11 +242,11 @@ function NewSessionDialog({ onClose, onStarted }: { onClose: () => void; onStart
     <label className="field"><span className="field-label-text">First message</span>
       <textarea rows={5} maxLength={20000} value={prompt} disabled={busy} placeholder="What should the agent do?"
         onChange={e => setPrompt(e.target.value)}
-        onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && prompt.trim() && target && !busy) void start(); }}/></label>
+        onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && prompt.trim() && chosen && !busy) void start(); }}/></label>
     {error && <p role="alert" className="work-error">{error}</p>}
     <div className="settings-form-actions">
       <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-      <button className="btn btn-primary btn-sm" disabled={!prompt.trim() || !target || busy} onClick={() => void start()}>{busy ? "Starting…" : "Start session"}</button>
+      <button className="btn btn-primary btn-sm" disabled={!prompt.trim() || !chosen || busy} onClick={() => void start()}>{busy ? "Starting…" : "Start session"}</button>
     </div>
   </Dialog>;
 }

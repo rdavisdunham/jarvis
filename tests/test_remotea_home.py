@@ -104,3 +104,19 @@ def test_a_run_bound_session_reports_its_run(host, client):
     assert live["run-sess"]["origin"] == "run"
     assert live["run-sess"]["run"] == {"id": body["id"], "state": live["run-sess"]["run"]["state"], "origin": "session",
                                        "task_id": body["task"]["id"], "dismissed": False}
+
+
+def test_new_session_saves_an_advertised_target_on_first_use(host, client):  # noqa: F811
+    from jarvis.session_models import ExecutionTarget
+    from sqlalchemy import func, select
+
+    r = client.post("/api/v1/remotea/sessions/new", json={"prompt": "Look around", "host_id": host.id, "host_target": "jarvis"})
+    assert r.status_code == 200, r.text
+    with session_scope() as db:
+        run = db.get(AgentRun, r.json()["id"])
+        target = db.get(ExecutionTarget, run.execution_target_id)
+        assert target.host_target == "jarvis" and target.record_id is None
+        # The fixture already saved jarvis (record_id None): reused, not copied.
+        assert db.scalar(select(func.count()).select_from(ExecutionTarget)) == 1
+    nowhere = client.post("/api/v1/remotea/sessions/new", json={"prompt": "Look around"})
+    assert nowhere.status_code == 400
