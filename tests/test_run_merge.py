@@ -349,3 +349,14 @@ def test_a_settled_runs_old_worktree_is_not_unpushed_work(merge_host):
         db.get(AgentRun, run_id).state = "completed"
     view = panel(run_id)
     assert view["status"] == "ready" and view["ci"] == "passed" and view["can_merge"]
+
+
+def test_the_ci_chip_agrees_with_the_panel_on_a_settled_run(merge_host):
+    run_id = green_awaiting_approval(merge_host)
+    answer(run_id, pr(head_sha=NEW), worktree_head="1" * 40)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        run.state = "awaiting_approval"
+        assert run_ci.public(db, run)["state"] == "unpushed"
+        run.state = "completed"
+        assert run_ci.public(db, run)["state"] == "passed"

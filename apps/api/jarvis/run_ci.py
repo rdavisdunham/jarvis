@@ -70,6 +70,7 @@ PARKED_POLL = timedelta(minutes=10)
 PARKED_FOR = timedelta(hours=24)
 # gh's own buckets (`gh pr checks --json bucket`); `state` is folded onto them when an older gh has no bucket.
 BUCKETS = ("pass", "fail", "pending", "skipping", "cancel")
+SETTLED = ("completed", "stopped", "capped", "failed")  # Runs whose agent is done (run_merge shares it).
 PASS_STATES = {"SUCCESS", "NEUTRAL"}
 SKIP_STATES = {"SKIPPED"}
 FAIL_STATES = {"FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
@@ -549,7 +550,10 @@ def public(db, run):
     current = bool(attempt) and (attempt.generation, attempt.turn_seq, attempt.plan_revision) == \
         (run.generation, run.turn_seq, run.plan_revision)
     since = run.state_since if waiting else None
-    return {"state": facts.get("state") or ("requested" if waiting else None), "current": current,
+    state = facts.get("state") or ("requested" if waiting else None)
+    if state == "unpushed" and run.state in SETTLED:
+        state = checks_state(facts.get("checks") or [])  # Same rule as the merge panel (run_merge.public).
+    return {"state": state, "current": current,
             "attempt_id": attempt.id if attempt else None, "source": SOURCE,
             "head_sha": facts.get("head_sha") or None, "pr_url": facts.get("pr_url"), "run_url": facts.get("run_url"),
             "checks": facts.get("checks") or [], "failed": facts.get("failed") or [], "log": facts.get("log") or [],
