@@ -34,6 +34,9 @@ describe("Merge from Eridani", () => {
     // Failing CI on a branch that is also behind: Update branch is the button, and Send back stays.
     const failedBehind = merge({ status: "ci_failed", detail: "CI failed on this pull request. It is also behind main.", can_merge: false, can_update: true });
     expect(mergePanel(failedBehind)).toMatchObject({ action: "update", enabled: true, tone: "warn", sendBack: expect.stringContaining("failing checks") });
+    // While the host updates the branch the button says so (disabled), never "Merge into main".
+    expect(mergePanel(merge({ status: "updating", detail: "Updating the branch…", can_merge: false, can_update: false })))
+      .toMatchObject({ action: "update", label: "Updating…", enabled: false, poll: true });
   });
 
   it("sends conflicts and failing CI back to the agent, unless the run settled", () => {
