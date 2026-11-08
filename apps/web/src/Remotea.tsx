@@ -10,7 +10,7 @@ import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
   executionModeLabel, ago, answerableInterviews, ATTENTION_STATES, attentionGroups, baseLine, criteriaBody, reviewPacket, type Host, type ReviewPacket, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
-  defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedSummary, verifyLine,
+  defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedGroups, unmergedSummary, verifyLine,
   isRevisionConflict, latestOnly, latestRun, RUN_CHANGED, runAction, type LatestOnly, type RunAction,
   type Interview, type NeedsTarget, type Parity, type PlanDecision, type RemoteaSession, type RemoteaStatus, type Run, type RunDetail,
   type RunQuestion, type TimelineEntry, type Turn, type UnmergedWork, versionLine, type MigrationTarget, type MigrationDraft, migrationBody, migrationDraft, migrationSummary,
@@ -296,9 +296,12 @@ function UnmergedList({ items }: { items: UnmergedWork[] }) {
   if (!items.length) return null;
   return <details className="remotea-unmerged">
     <summary>Unmerged work ({items.length})</summary>
-    <ul>{items.map(w => <li key={w.host_id + (w.path ?? w.branch ?? "")}>
-      <GitBranch size={14} aria-hidden="true"/> <code>{w.branch ?? w.path}</code> <small>{w.target ? w.target + " · " : ""}{unmergedSummary(w)}{w.active ? " · run active" : ""}</small>
-    </li>)}</ul>
+    {unmergedGroups(items).map(g => <section key={g.kind} aria-label={g.label}>
+      <h4>{g.label} ({g.items.length})</h4>
+      <ul>{g.items.map(w => <li key={w.host_id + (w.path ?? w.branch ?? "")}>
+        <GitBranch size={14} aria-hidden="true"/> <code>{w.branch ?? w.path}</code> <small>{w.target ? w.target + " · " : ""}{unmergedSummary(w)}{w.active ? " · run active" : ""}</small>
+      </li>)}</ul>
+    </section>)}
   </details>;
 }
 

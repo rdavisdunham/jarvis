@@ -1177,7 +1177,21 @@ export type NeedsTarget = { task_id: string; candidates: SavedTarget[]; advertis
   records: { id: string; title: string; type_id?: string }[] };
 export type UnmergedWork = { host_id: string; host_name: string; target: string | null; path: string | null; branch: string | null;
   base: string | null; ahead: number | null; behind: number | null; unpushed: number | null; uncommitted: number | null;
-  untracked: number | null; merged: boolean | null; active: boolean | null; reasons: string[] | null };
+  untracked: number | null; merged: boolean | null; active: boolean | null; reasons: string[] | null;
+  /** Why it is listed (agent_control.unmerged_kind); absent from an older Eridani. */
+  kind?: "dirty" | "unpushed" | "unmerged" | "unknown" };
+
+/** The top list's groups, worst first. Merged worktrees kept only by ignored files are not here (Worktrees). */
+export const UNMERGED_GROUPS: { kind: NonNullable<UnmergedWork["kind"]>; label: string }[] = [
+  { kind: "dirty", label: "Uncommitted changes" },
+  { kind: "unpushed", label: "Not pushed" },
+  { kind: "unmerged", label: "Pushed, not merged" },
+  { kind: "unknown", label: "Can't tell (update remotea)" },
+];
+
+export function unmergedGroups(items: UnmergedWork[]) {
+  return UNMERGED_GROUPS.map(g => ({ ...g, items: items.filter(w => (w.kind ?? "unknown") === g.kind) })).filter(g => g.items.length);
+}
 
 /** Picker options when a start needs a target: saved targets first, then advertised ones not yet saved. A target
  * saved for several records (one row per "Remember for") is offered once, preferring a row on a connected host that
