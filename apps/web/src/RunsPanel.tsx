@@ -43,6 +43,7 @@ function row(run: Run, onOpen: (id: string) => void, now: number, ci: ReactNode)
     <span className={"remotea-state run-state-" + run.state}>{workflowStage(run)}</span>
     {workflowAttention(run) && <span className="run-attention">· {workflowAttention(run)}</span>}
     {actorChip(run) && <span className="run-actor">{actorChip(run)}</span>}
+    {run.origin === "session" && <span className="run-origin">New session</span>}
     <span className="remotea-run-title">{run.task?.title ?? "Task"}</span>
     <small className={run.attention_detail ? "run-stop-line" : undefined}>{stopLine(run) || ago(run.state_since, now)}</small>
     {ci}
@@ -54,12 +55,20 @@ function row(run: Run, onOpen: (id: string) => void, now: number, ci: ReactNode)
 
 /** Runs grouped by the next human action (attentionGroups): a heading with the verb and count, then the rows. The
  * confirm group shows Dani's proposals (PendingControls) instead of rows. One clock re-renders every row's ages. */
-export function AttentionList({ groups, onOpen }: { groups: AttentionGroup[]; onOpen: (id: string) => void }) {
+export function AttentionList({ groups, onOpen, cards = false, onDismiss }: { groups: AttentionGroup[]; onOpen: (id: string) => void;
+  /** The remotea page: each run is a box (a grid of cards) with a Dismiss button when `onDismiss` is given. */
+  cards?: boolean; onDismiss?: (run: Run) => void }) {
   const now = useNow(30_000);
-  return <>{groups.map(g => <section key={g.key} className={"run-group group-" + g.key + (g.action ? " needs-action" : "")}
+  return <>{groups.map(g => <section key={g.key} className={"run-group group-" + g.key + (g.action ? " needs-action" : "") + (cards ? " run-group-cards" : "")}
     aria-label={`${g.verb}: ${g.count}`}>
     <h3>{g.verb} <span className="run-group-count">{g.count}</span></h3>
-    {g.key === "confirm" ? <PendingControls heading={false}/> : g.runs.map(run => <RunRow key={run.id} run={run} onOpen={onOpen} now={now}/>)}
+    {g.key === "confirm" ? <PendingControls heading={false}/> : cards
+      ? <div className="run-cards">{g.runs.map(run => <div key={run.id} className={"run-card state-" + run.state}>
+        <RunRow run={run} onOpen={onOpen} now={now}/>
+        {onDismiss && <button className="btn-icon run-card-dismiss" aria-label={"Dismiss " + (run.task?.title ?? "run")} title="Dismiss"
+          onClick={() => onDismiss(run)}><X size={14}/></button>}
+      </div>)}</div>
+      : g.runs.map(run => <RunRow key={run.id} run={run} onOpen={onOpen} now={now}/>)}
   </section>)}</>;
 }
 

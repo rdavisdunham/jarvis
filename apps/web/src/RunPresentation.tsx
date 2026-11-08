@@ -22,6 +22,8 @@ export function useRunView(id: string) {
   return [view.id === id ? view : { id, ...readView(id) }, update] as const;
 }
 export function chatByDefault(run: RunDetail): boolean {
+  // A New session is a conversation until the owner asks for a plan.
+  if (run.origin === "session" && run.freestyle) return true;
   return !run.plan || ["queued", "spawning", "interviewing", "planning", "replanning", "plan_reviewing"].includes(run.stage ?? run.state)
     || !!run.plan_pending || ["plan_review", "plan_approval"].includes(run.state_reason) && run.plan.approval_status !== "approved";
 }

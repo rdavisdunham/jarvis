@@ -1039,11 +1039,30 @@ so the same id may act later. Without `action_id` every request acts. Receipts a
 `postAction(path, body)` in `apps/web/src/api.ts` sets one `action_id` per call and resends the same body after
 a lost response (`NETWORK`, up to two retries); other errors are not retried.
 
-The page shows runs grouped by the next human action (below), **Unmerged work**, and a run drawer with the
-timeline, the questions card, the review packet and Message / Steer / Stop (**Stopping…**, then **Force stop**) /
-Approve.
+The page, top to bottom (task d6b29e9c): the host bar with **New session**; **Running**, the runs as boxes grouped by
+the next human action (below; the five most recent settled runs close it); **Sessions in remotea**, live sessions not
+already shown on a run card, each labelled with where it came from (`origin` on `/remotea/sessions`: `run` with its
+`run`, `remotea` for a tab opened by hand); swarms; **Unmerged work**; **Worktree maintenance**; **Other chats**, a fold
+of other harnesses' chats from the last 14 days that never ran in a remotea tab (`GET /remotea/other-chats`: harness,
+machine, repo and branch, summary or last prompt, PR links); collector parity; and the session ledger. Picking a run
+opens the run drawer with the timeline, the questions card, the review packet and Message / Steer / Stop
+(**Stopping…**, then **Force stop**) / Approve.
 
-**Unmerged work** lists only worktrees with work at risk, worst first, in groups: Uncommitted changes (`dirty`), Not
+**Dismiss.** Every run box and session box has a Dismiss button that asks first. Dismissing a run
+(`POST /remotea/runs/{id}/dismiss`) stops it if it is still working (the same stop as Cancel run) and sets
+`agent_runs.dismissed_at` (0059); the page asks for `/remotea/runs?dismissed=false`, the task's own history still lists
+it. Dismissing a session or another harness's chat archives it (`POST /sessions/{id}/archive`); the terminal stays
+open in remotea.
+
+**New session** (`POST /remotea/sessions/new {prompt, execution_target_id, harness, model?, effort?, action_id?}`):
+talk to an agent on a saved target straight away. Eridani makes a task named after the prompt's first line (the prompt
+is its notes, the target is saved on it) and starts a freestyle run with `origin: "session"` whose first prompt is the
+owner's own text plus one line saying a plan goes through `submit_plan` only when asked. The drawer opens in chat.
+Re-plan asks for a plan; turning Freestyle off puts the judge and automation back on.
+
+**Unmerged work** is the page's one list of it (settled runs with unmerged work show there, with an Open button,
+instead of a "Resolve unmerged work" group among the run boxes; the Runs panel keeps that group). A run whose pull
+request GitHub reports merged or closed (`merge.status`) leaves it whatever its worktree holds. It lists only worktrees with work at risk, worst first, in groups: Uncommitted changes (`dirty`), Not
 pushed (`unpushed`: local commits, or no upstream), Pushed, not merged (`unmerged`) and Can't tell (`unknown`, an old
 host report) (`agent_control.unmerged_kind`). A merged or empty worktree kept only by ignored files (node_modules,
 .env) is left off and stays under **Worktree maintenance**. The host re-sends its report every 2 minutes, fetching each
