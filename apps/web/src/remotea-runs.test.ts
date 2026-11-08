@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   afterTargetSaved, buildAnswers, DEFAULT_DRAFT, defaultScope, harnessChoice, linkedRun, preflightNotes, preflightUrl, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
-  unmergedGroups, unmergedSummary, verifyLine, attentionKey, chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, unmergedWithRuns,
+  unmergedGroups, unmergedSummary, verifyLine, attentionKey, chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns,
   type RemoteaSession, type RunMerge, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion, type UnmergedWork,
 } from "./remotea-model";
 
@@ -270,5 +270,17 @@ describe("remotea page home", () => {
     // The run itself no longer waits on "Resolve unmerged work" once GitHub says merged.
     expect(attentionKey(merged, [], [work("merged-pr")])).toBe("done");
     expect(attentionKey(open, [], [work("open-pr")])).toBe("unmerged");
+  });
+});
+
+describe("new session targets", () => {
+  it("offers each host target once, saved or not", () => {
+    const saved = (id: string, record_id: string | null, repo = "/home/davin/jarvis") =>
+      ({ id, host_id: "h", host_target: "jarvis", name: "jarvis", repo, worktree_root: "", record_id });
+    const advert = (host_target: string) => ({ host_id: "h", host_name: "desk", host_target, repo: "/home/davin/" + host_target, worktree_root: "", host_connected: true });
+    const options = sessionTargets([saved("a", "p1"), saved("b", "p2"), saved("c", null, "")], [advert("jarvis"), advert("remotea")]);
+    expect(options.map(o => o.label)).toEqual(["jarvis", "remotea"]);
+    expect(options[0].saved_id).toBe("a");
+    expect(options[1]).toMatchObject({ saved_id: null, host_id: "h", host_target: "remotea" });
   });
 });

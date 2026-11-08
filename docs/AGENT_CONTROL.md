@@ -1054,8 +1054,10 @@ opens the run drawer with the timeline, the questions card, the review packet an
 it. Dismissing a session or another harness's chat archives it (`POST /sessions/{id}/archive`); the terminal stays
 open in remotea.
 
-**New session** (`POST /remotea/sessions/new {prompt, execution_target_id, harness, model?, effort?, action_id?}`):
-talk to an agent on a saved target straight away. Eridani makes a task named after the prompt's first line (the prompt
+**New session** (`POST /remotea/sessions/new {prompt, execution_target_id | (host_id, host_target), harness, model?,
+effort?, action_id?}`): talk to an agent straight away. "Where" lists each host target once (`sessionTargets`: a
+target saved for several records is one choice), including ones the host advertises but nothing has run on yet; those
+are saved on first use. Eridani makes a task named after the prompt's first line (the prompt
 is its notes, the target is saved on it) and starts a freestyle run with `origin: "session"` whose first prompt is the
 owner's own text plus one line saying a plan goes through `submit_plan` only when asked. The drawer opens in chat.
 Re-plan asks for a plan; turning Freestyle off puts the judge and automation back on.

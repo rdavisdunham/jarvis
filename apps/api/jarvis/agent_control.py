@@ -90,7 +90,10 @@ class SessionInput(Input):
     """New session (the remotea page): talk to an agent directly on a saved target, without a plan or judge."""
     action_id: UUID | None = None
     prompt: str = Field(min_length=1, max_length=PROMPT_CHARS)
-    execution_target_id: str = Field(max_length=36)
+    # A saved target, or a target the host advertises that has not been saved yet (saved on first use).
+    execution_target_id: str | None = Field(default=None, max_length=36)
+    host_id: str | None = Field(default=None, max_length=36)
+    host_target: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
     harness: str = Field(default="claude", max_length=20)
     model: str | None = Field(default=None, pattern=MODEL)
     effort: str | None = Field(default=None, max_length=40)
@@ -779,7 +782,13 @@ def start_session(db, owner, account_id, body, *, actor):
     from .task_alerts import new_task
 
     agent_link.gate(db, owner)
-    target = owned(db, ExecutionTarget, body.execution_target_id, owner)
+    if body.execution_target_id:
+        target = owned(db, ExecutionTarget, body.execution_target_id, owner)
+    elif body.host_id and body.host_target:
+        target = save_target(db, owner, TargetInput(host_id=body.host_id, host_target=body.host_target))
+        target = db.get(ExecutionTarget, target["id"]) if isinstance(target, dict) else target
+    else:
+        raise DomainError("INVALID_ARGUMENT", "Choose where the session runs.")
     task = new_task(db, owner, session_title(body.prompt))
     task.notes, task.execution_target_id = body.prompt, target.id
     start = StartInput(task_id=task.id, harness=body.harness, model=body.model, effort=body.effort,

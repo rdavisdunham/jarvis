@@ -405,7 +405,7 @@ def runs(user: User, task_id: UUID | None = None, active: bool = False, limit: i
 def new_session(body: control.SessionInput, user: User):
     with session_scope() as db:
         writable(db, user)
-        return receipts.once(db, user.owner_id, body.execution_target_id, "session", body, lambda: control.start_session(
+        return receipts.once(db, user.owner_id, body.execution_target_id or "", "session", body, lambda: control.start_session(
             db, user.owner_id, user.account_id, body, actor=actor_for(user)))
 
 

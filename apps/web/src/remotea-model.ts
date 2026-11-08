@@ -1279,6 +1279,24 @@ export function targetOptions(need: NeedsTarget) {
   return [...saved.filter(o => o.live), ...offered.filter(o => o.live), ...saved.filter(o => !o.live), ...offered.filter(o => !o.live)];
 }
 
+/** New session's "Where" options: each host target once (a target saved for several records is one choice), saved
+ * and advertised-but-unsaved alike, live ones first. Picking an unsaved one sends its host and name; Eridani saves it. */
+export type SessionTarget = { key: string; label: string; detail: string; live: boolean; host_id: string; host_target: string;
+  /** The saved target's id; null for one the host lists that is not saved yet. */
+  saved_id: string | null };
+export function sessionTargets(candidates: SavedTarget[], advertised: AdvertisedTarget[]): SessionTarget[] {
+  const seen = new Set<string>(), out: SessionTarget[] = [];
+  for (const o of targetOptions({ task_id: "", candidates, advertised, records: [] })) {
+    const t: { host_id: string; host_target: string } = "saved" in o ? o.saved : o.advertised;
+    const key = `${t.host_id}:${t.host_target}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key: o.key, label: o.label, detail: o.detail, live: o.live, host_id: t.host_id, host_target: t.host_target,
+      saved_id: "saved" in o ? o.saved.id : null });
+  }
+  return out;
+}
+
 /** The picker's default "Remember for": the nearest record that is not a task (usually the project), so the choice
  * also covers the task's siblings; else the task's own record; else "task" (only this task). */
 export function defaultScope(need: NeedsTarget) {

@@ -337,3 +337,6 @@
 .remotea-new-session header { display: flex; align-items: center; justify-content: space-between; }
 .remotea-new-session h2 { margin: 0; font-size: 1.1rem; }
 .remotea-new-session textarea { width: 100%; resize: vertical; font: inherit; }
+/* The ledger on the page is part of the page's scroll: the panel's inner scroller (.activity-items: overflow auto,
+   overscroll contain) would swallow the wheel over its cards without ever scrolling itself. */
+.remotea-ledger .activity-items { overflow: visible; overscroll-behavior: auto; padding: 0; }
