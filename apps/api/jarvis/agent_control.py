@@ -1417,16 +1417,39 @@ def list_runs(db, owner, *, task_id=None, active=False, limit=50):
     return [public_run(db, r) for r in db.scalars(query.order_by(AgentRun.created_at.desc()).limit(limit))]
 
 
+UNMERGED_KINDS = ("dirty", "unpushed", "unmerged", "unknown")
+
+
+def unmerged_kind(row):
+    """Why a worktree holds work that is not safe in its base yet, worst first, or None when nothing would be lost
+    but the folder (merged or empty, kept only by ignored files such as node_modules or .env: that is Worktrees'
+    cleanup, not unmerged work). The same order as the web's worktreeClass."""
+    if row.get("candidate"):
+        return None
+    if not isinstance(row.get("uncommitted"), int):
+        return "unknown"  # An older host's row: it cannot say.
+    if row["uncommitted"] > 0 or (row.get("untracked") or 0) > 0:
+        return "dirty"
+    if (row.get("unpushed") or 0) > 0 or (row.get("merged") is False and not row.get("upstream")):
+        return "unpushed"
+    if row.get("merged") is False:
+        return "unmerged"
+    return None
+
+
 def unmerged(db, owner):
-    """Worktrees the host reports with unmerged or unpushed work (worktrees.report, optional on the wire)."""
+    """Worktrees the host reports with work at risk (worktrees.report, optional on the wire), worst kind first:
+    dirty (uncommitted or untracked), unpushed (commits only on the host), unmerged (pushed, not in its base yet),
+    unknown (an older host). Merged or empty worktrees kept only by ignored files are left to Worktrees."""
     items = []
     for host in db.scalars(select(AgentHost).where(AgentHost.owner_id == owner)):
         report = (host.caps or {}).get("worktrees") or {}
         for row in report.get("worktrees") or []:
-            if isinstance(row, dict) and not row.get("candidate"):
-                items.append({"host_id": host.id, "host_name": host.name, **{k: row.get(k) for k in (
+            if isinstance(row, dict) and (kind := unmerged_kind(row)):
+                items.append({"host_id": host.id, "host_name": host.name, "kind": kind, **{k: row.get(k) for k in (
                     "target", "path", "branch", "base", "ahead", "behind", "unpushed", "uncommitted", "untracked",
-                    "merged", "merged_reason", "base_ref", "active", "reasons")}})
+                    "merged", "merged_reason", "base_ref", "upstream", "active", "reasons")}})
+    items.sort(key=lambda i: (UNMERGED_KINDS.index(i["kind"]), i["target"] or "", i["branch"] or i["path"] or ""))
     return encode({"items": items})
 
 

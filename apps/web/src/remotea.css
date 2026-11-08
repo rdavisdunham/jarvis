@@ -38,6 +38,7 @@
 .remotea-unmerged { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-2); }
 .remotea-unmerged summary { cursor: pointer; font-weight: 600; }
 .remotea-unmerged ul { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 0.85rem; overflow-wrap: anywhere; }
+.remotea-unmerged h4 { margin: 10px 0 0; font-size: 0.8rem; font-weight: 600; color: var(--ink-2); }
 /* The run detail (RunDrawer) renders inside the app shell's run panel; runs.css lays out .run-view. */
 .run-view h2 { margin: 4px 0 0; font-size: 1.05rem; overflow-wrap: anywhere; }
 .run-view code { font-size: 0.8rem; overflow-wrap: anywhere; }

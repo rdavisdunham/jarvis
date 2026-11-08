@@ -751,9 +751,25 @@ def test_manual_control_round_trip_over_the_link(client):
         put(ws, "question.resolved", question_id="q-1", generation=1, outcome="accepted", still_open=False,
             answer_echo={"Ship it?": "Yes"})
         assert client.get(f"/api/v1/remotea/runs/{run_id}").json()["state"] == "executing"
-        put(ws, "worktrees.report", worktrees=[{"target": "jarvis", "path": "/home/davin/wt/old", "branch": "task/old",
-                                                "candidate": False, "unpushed": 2, "reasons": ["2 unpushed commits"]}])
-        assert client.get("/api/v1/remotea/unmerged").json()["items"][0]["unpushed"] == 2
+        put(ws, "worktrees.report", worktrees=[
+            {"target": "jarvis", "path": "/home/davin/wt/old", "branch": "task/old", "candidate": False, "unpushed": 2,
+             "uncommitted": 0, "untracked": 0, "merged": False, "upstream": "origin/task/old",
+             "reasons": ["2 unpushed commits"]},
+            {"target": "jarvis", "path": "/home/davin/wt/pr", "branch": "task/pr", "candidate": False, "unpushed": 0,
+             "uncommitted": 0, "untracked": 0, "merged": False, "upstream": "origin/task/pr",
+             "reasons": ["not merged into origin/main"]},
+            {"target": "jarvis", "path": "/home/davin/wt/edit", "branch": "task/edit", "candidate": False,
+             "uncommitted": 3, "untracked": 0, "merged": False, "upstream": "origin/task/edit",
+             "reasons": ["3 uncommitted change(s)"]},
+            # Merged, kept only by node_modules and .env: Worktrees' cleanup, not unmerged work.
+            {"target": "jarvis", "path": "/home/davin/wt/done", "branch": "task/done", "candidate": False,
+             "unpushed": 0, "uncommitted": 0, "untracked": 0, "merged": None, "ahead": 0, "ignored": 13,
+             "upstream": "origin/task/done", "reasons": ["13 ignored file(s) (e.g. .env) would be deleted"]},
+            {"target": "jarvis", "path": "/home/davin/wt/gone", "branch": "task/gone", "candidate": True}])
+        items = client.get("/api/v1/remotea/unmerged").json()["items"]
+        assert [(i["branch"], i["kind"]) for i in items] == [
+            ("task/edit", "dirty"), ("task/old", "unpushed"), ("task/pr", "unmerged")]
+        assert items[1]["unpushed"] == 2
         stopped = client.post(f"/api/v1/remotea/runs/{run_id}/stop", json={})
         assert stopped.json()["state"] == "stopping"
         stop = ws.receive_json()

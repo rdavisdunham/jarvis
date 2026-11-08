@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   afterTargetSaved, buildAnswers, DEFAULT_DRAFT, defaultScope, harnessChoice, linkedRun, preflightNotes, preflightUrl, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
-  unmergedSummary, verifyLine, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion,
+  unmergedGroups, unmergedSummary, verifyLine, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion, type UnmergedWork,
 } from "./remotea-model";
 
 const host = (connected: boolean): Host => ({
@@ -101,6 +101,11 @@ describe("run drawer model", () => {
     expect(options[1]).toMatchObject({ label: "remotea", detail: "/r/remotea" });
     expect(unmergedSummary({ host_id: "h", host_name: "desk", target: "jarvis", path: "/w", branch: "b", base: "main", ahead: 2,
       behind: 0, unpushed: 1, uncommitted: 0, untracked: 0, merged: false, active: false, reasons: null })).toBe("2 ahead of main · 1 unpushed");
+    const work = (branch: string, kind?: UnmergedWork["kind"]): UnmergedWork => ({ host_id: "h", host_name: "desk", target: "jarvis",
+      path: "/w/" + branch, branch, base: "main", ahead: 1, behind: 0, unpushed: 0, uncommitted: 0, untracked: 0, merged: false,
+      active: false, reasons: null, kind });
+    expect(unmergedGroups([work("pr", "unmerged"), work("edit", "dirty"), work("old")]).map(g => [g.label, g.items.map(w => w.branch)]))
+      .toEqual([["Uncommitted changes", ["edit"]], ["Pushed, not merged", ["pr"]], ["Can't tell (update remotea)", ["old"]]]);
   });
 });
 
