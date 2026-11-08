@@ -288,6 +288,7 @@
   background: var(--surface);
 }
 .atlas-key.is-in_progress { border-color: var(--violet); background: linear-gradient(90deg, var(--violet) 50%, var(--surface) 50%); }
+.atlas-key.is-in_review { border-color: var(--due-today); background: linear-gradient(90deg, var(--due-today) 50%, var(--surface) 50%); }
 .atlas-key.is-done { border-color: var(--done); background: var(--done); }
 .atlas-key.is-overdue { border-color: var(--due-overdue); }
 .atlas-key.is-today { border-color: var(--due-today); background: var(--due-today); }
@@ -392,6 +393,8 @@
 .atlas-item:hover .atlas-glyph { stroke-width: 2.6; }
 /* Status lens (default) */
 .lens-status.state-in_progress .atlas-glyph { stroke: var(--violet); stroke-width: 2.5; }
+.lens-status.state-in_review .atlas-glyph { stroke: var(--due-today); stroke-width: 2.5; }
+.lens-status.state-in_review .atlas-glyph-half { fill: var(--due-today); }
 .lens-status.state-done .atlas-glyph { fill: var(--done); stroke: var(--done); }
 .lens-status.state-overdue .atlas-glyph { stroke: var(--due-overdue); stroke-width: 2.6; }
 .lens-status.state-waiting .atlas-glyph { stroke-dasharray: 3 2.5; }
@@ -450,6 +453,7 @@
 }
 .atlas-moon.state-done { fill: var(--done); stroke: var(--done); }
 .atlas-moon.state-in_progress { stroke: var(--violet); }
+.atlas-moon.state-in_review { stroke: var(--due-today); }
 .atlas-moon.state-overdue { stroke: var(--due-overdue); }
 @keyframes atlas-orbit { to { transform: rotate(360deg); } }
 .atlas-selring {

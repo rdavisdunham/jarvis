@@ -19,6 +19,7 @@ STATE_TYPES = {
     "backlog": "backlog",
     "open": "unstarted",
     "in_progress": "started",
+    "in_review": "started",
     "completed": "completed",
     "cancelled": "canceled",
     "deferred": "backlog",
@@ -32,6 +33,14 @@ REMOTE_STATUS = {
     "duplicate": "cancelled",
     "backlog": "backlog",
 }
+
+
+def remote_status(state):
+    """Eridani status for a Linear workflow state: a started state named like "In Review" is in_review."""
+    state = state or {}
+    if state.get("type") == "started" and "review" in (state.get("name") or "").lower():
+        return "in_review"
+    return REMOTE_STATUS.get(state.get("type"), "open")
 
 
 # Set while an agent run writes the task's status (agent_sync.py): the observed start (in_progress) or the
@@ -280,7 +289,9 @@ def apply_remote(db, conn, link, remote, force=False):
         return  # A reordered, older Linear read never rolls back a newer applied snapshot.
     task = db.scalar(select(Task).where(Task.id == link.task_id, Task.owner_id == conn.owner_id).with_for_update().execution_options(populate_existing=True))
     project = local_project(db, conn.owner_id, conn.workspace_id, remote.get("project"))
-    status = REMOTE_STATUS.get(remote["state"]["type"], "open")
+    status = remote_status(remote["state"])
+    if status == "in_progress" and task is not None and task.status == "in_review" and not review_state(conn, remote):
+        status = "in_review"  # The team has no review state, so In review was pushed as a started state; keep it.
     changes = {
         "title": remote["title"],
         "notes": remote.get("description") or "",
@@ -606,18 +617,36 @@ def queue_write(db, conn, link, patch, create=False, origin=None):
     return job
 
 
-def state_id(conn, link, status):
-    candidates = [
-        s
-        for s in conn.directory.get("states", [])
-        if s["team"]["id"] == link.snapshot["team"]["id"] and s["type"] == STATE_TYPES[status]
-    ]
+def pick_state(states, team_id, status):
+    """The team's workflow state for an Eridani status, or None. in_review prefers a started state named like
+    "In Review" (exactly "In Review" first); every other status avoids review-named states, so in_progress
+    never lands on "In Review" when "In Progress" exists."""
+    candidates = [s for s in states if s["team"]["id"] == team_id and s["type"] == STATE_TYPES[status]]
     if not candidates:
+        return None
+    review = status == "in_review"
+
+    def rank(s):
+        name = s["name"].lower()
+        if review:
+            return ("review" not in name, name != "in review", s["name"])
+        return ("review" in name, name not in {"todo", "in progress", "done", "canceled", "backlog"}, s["name"])
+
+    return min(candidates, key=rank)
+
+
+def review_state(conn, remote):
+    """Whether the issue's team has a started state named like "In Review"."""
+    team = (remote.get("team") or {}).get("id")
+    return any(s["team"]["id"] == team and s["type"] == "started" and "review" in s["name"].lower()
+               for s in (conn.directory or {}).get("states", []))
+
+
+def state_id(conn, link, status):
+    state = pick_state(conn.directory.get("states", []), link.snapshot["team"]["id"], status)
+    if not state:
         raise DomainError("LINEAR_STATE", "Choose an available Linear workflow status in the Linear editor.")
-    return min(
-        candidates,
-        key=lambda s: (s["name"].lower() not in {"todo", "in progress", "done", "canceled", "backlog"}, s["name"]),
-    )["id"]
+    return state["id"]
 
 
 def task_patch(conn, link, changes, task):
@@ -705,7 +734,7 @@ def supersede_start(db, link):
     if not link.pending_job_id:
         return None
     job = db.get(Job, link.pending_job_id, with_for_update=True)
-    if not job or job.status in TERMINAL or (job.payload or {}).get("purpose") != "in_progress":
+    if not job or job.status in TERMINAL or (job.payload or {}).get("purpose") not in ("in_progress", "in_review"):
         return None
     if job.status in ("queued", "retrying") and not (job.result or {}).get("attempted"):
         job.status, job.finished_at = "cancelled", now()

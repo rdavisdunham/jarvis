@@ -57,7 +57,7 @@ export function AtlasMap({ layout, index, view, width, height, focus, selected, 
     const state = itemState(rec, today);
     return <>
       <circle className="atlas-glyph" cx={cx} cy={cy} r={r}/>
-      {state === "in_progress" && r > 4 && <path className="atlas-glyph-half" d={`M${cx},${cy - (r - 2.5)}A${r - 2.5},${r - 2.5} 0 0 0 ${cx},${cy + (r - 2.5)}Z`}/>}
+      {(state === "in_progress" || state === "in_review") && r > 4 && <path className="atlas-glyph-half" d={`M${cx},${cy - (r - 2.5)}A${r - 2.5},${r - 2.5} 0 0 0 ${cx},${cy + (r - 2.5)}Z`}/>}
     </>;
   };
   const itemClass = (n: PackedNode) => {

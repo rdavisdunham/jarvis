@@ -104,8 +104,10 @@ class Fake:
                     (
                         {
                             "id": value,
-                            "name": {"done": "Done", "backlog": "Backlog"}.get(value, "Todo"),
-                            "type": {"done": "completed", "backlog": "backlog"}.get(value, "unstarted"),
+                            "name": {"done": "Done", "backlog": "Backlog", "progress": "In Progress",
+                                     "review": "In Review"}.get(value, "Todo"),
+                            "type": {"done": "completed", "backlog": "backlog", "progress": "started",
+                                     "review": "started"}.get(value, "unstarted"),
                         }
                         if field == "state"
                         else {"id": value, "name": "Owner"}
@@ -853,3 +855,46 @@ def test_a_linear_closure_is_marked_so_today_does_not_count_it(linear):
     with session_scope() as db:
         task = db.get(Task, tid)
         assert task.status == "completed" and not task.external.get("finished_via")
+
+
+STARTED = {"progress": "In Progress", "review": "In Review"}
+
+
+def started_states(*ids):
+    """Give the team started workflow states (the fake directory has none by default)."""
+    with session_scope() as db:
+        conn = db.get(LinearConnection, "davin")
+        states = [s for s in conn.directory["states"] if s["type"] != "started"]
+        states += [{"id": i, "name": STARTED[i], "type": "started", "team": {"id": "team"}} for i in ids]
+        conn.directory = {**conn.directory, "states": states}
+
+
+@pytest.mark.parametrize("name, status", [("In Review", "in_review"), ("In Progress", "in_progress")])
+def test_linear_started_state_maps_by_name(linear, name, status):
+    tid, _ = imported()
+    linear.rows["remote"]["state"] = {"id": "s", "name": name, "type": "started"}
+    linear.rows["remote"]["updatedAt"] = "2026-09-13T10:00:00Z"
+    resync()
+    with session_scope() as db:
+        assert db.get(Task, tid).status == status
+
+
+@pytest.mark.parametrize("status, state", [("in_review", "review"), ("in_progress", "progress")])
+def test_local_status_pushes_matching_started_state(linear, status, state):
+    started_states("review", "progress")
+    tid, rev = imported()
+    saved = run("task.update", task_id=tid, expected_revision=rev, status=status)
+    sync.process_write(saved["external"]["job_id"])
+    assert linear.writes[-1][1] == {"stateId": state}
+    with session_scope() as db:
+        assert db.get(Task, tid).status == status
+
+
+def test_in_review_falls_back_to_a_started_state_without_a_review_state(linear):
+    started_states("progress")
+    tid, rev = imported()
+    saved = run("task.update", task_id=tid, expected_revision=rev, status="in_review")
+    sync.process_write(saved["external"]["job_id"])
+    assert linear.writes[-1][1] == {"stateId": "progress"}
+    with session_scope() as db:
+        assert db.get(Task, tid).status == "in_review"  # The confirmed In Progress write keeps In review here.

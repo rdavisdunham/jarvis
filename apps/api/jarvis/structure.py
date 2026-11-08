@@ -29,7 +29,7 @@ from .structure_models import (
 )
 from .structure_schema import Definition
 
-MEANINGS = ("backlog", "open", "in_progress", "waiting", "deferred", "completed", "cancelled")
+MEANINGS = ("backlog", "open", "in_progress", "in_review", "waiting", "deferred", "completed", "cancelled")
 TASK_BINDINGS = {
     "due_date",
     "due_time",
@@ -47,6 +47,7 @@ NEAREST = {
     "backlog": ("open",),
     "open": ("backlog", "in_progress"),
     "in_progress": ("open",),
+    "in_review": ("in_progress", "waiting", "open"),
     "waiting": ("in_progress", "open"),
     "deferred": ("backlog", "open"),
     "completed": ("cancelled",),
