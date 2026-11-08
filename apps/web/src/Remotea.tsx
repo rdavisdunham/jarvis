@@ -159,13 +159,14 @@ export function Remotea() {
       <WorktreeMaintenance/>
     </section>
     <OtherChats/>
-    <details className="remotea-parity">
+    {/* Once a host's own collector is the store's source (stage E cutover), the parity comparison is over. */}
+    {!(status?.hosts ?? []).some(h => h.connected && h.caps?.includes("collector.authoritative")) && <details className="remotea-parity">
       <summary>Collector parity{cutover?.ready ? " · ready for cutover" : ""}</summary>
       {cutover && <p className={"chip " + (cutover.ready ? "chip-done" : "chip-due-today")} role="status">{cutover.text}</p>}
       <p>{paritySummary(parity)}</p>
       {!!parity?.recent.length && <ul>{parity.recent.slice(0, 8).map(r =>
         <li key={r.tool + r.session_id}><code>{r.session_id.slice(0, 12)}</code> {r.missing ? "not reported by the current collector" : Object.keys(r.diff).join(", ")}</li>)}</ul>}
-    </details>
+    </details>}
     <section className="remotea-ledger" aria-label="Session ledger">
       <h2>Session ledger</h2>
       <SessionsLedger/>
