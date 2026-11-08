@@ -287,6 +287,9 @@ class AgentRun(Base):
     plan_pending: Mapped[bool] = mapped_column(Boolean, default=False)
     # Freestyle (0034): the operator talks to the agent directly; turns are recorded but not verified, judged or capped.
     freestyle: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # 0059: the owner hid the run from the remotea page; "task" (Run on a task) or "session" (New session).
+    dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    origin: Mapped[str] = mapped_column(String(20), default="task", server_default="task")
     # Hyperplan (0041): {planner: {harness, model}, reviewer: {harness, model} | null, worker: {harness, model} | null,
     # rounds, approve_final}. NULL is a classic run (one session plans and works). `tool`/`model` always describe the
     # session that owns the run now (the planner, then the worker).

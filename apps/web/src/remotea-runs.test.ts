@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   afterTargetSaved, buildAnswers, DEFAULT_DRAFT, defaultScope, harnessChoice, linkedRun, preflightNotes, preflightUrl, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
-  unmergedGroups, unmergedSummary, verifyLine, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion, type UnmergedWork,
+  unmergedGroups, unmergedSummary, verifyLine, attentionKey, chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, unmergedWithRuns,
+  type RemoteaSession, type RunMerge, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion, type UnmergedWork,
 } from "./remotea-model";
 
 const host = (connected: boolean): Host => ({
@@ -222,5 +223,52 @@ describe("verifyLine", () => {
       verify_readiness: readiness }).text).toBe("Verified by tests after each turn (tests is not ready on the host: its program is not on the service PATH (uv))");
     expect(verifyLine({ plan, verify_options: ["lint", "tests"], verify_readiness: readiness }).text)
       .toBe("No verify command: test results cannot be recorded; tests is not ready on the host: its program is not on the service PATH (uv)");
+  });
+});
+
+describe("remotea page home", () => {
+  const session = (id: string, values: Partial<RemoteaSession> = {}): RemoteaSession => ({
+    id, tool_label: "Claude Code", title: id, repo: "", branch: "", cwd: "/home/davin/jarvis", host: null, last_turn: null,
+    filed: { record_title: null }, live_state: { state: "idle", since: "2026-11-08T10:00:00Z", host_id: "h", reason: "" }, ...values,
+  });
+  const bound = (runId: string, origin: "task" | "session" = "task") =>
+    ({ origin: "run" as const, run: { id: runId, state: "executing", origin, task_id: "t", dismissed: false } });
+
+  it("labels where each session came from", () => {
+    expect(originLabel(session("a", bound("r1")))).toBe("Eridani run");
+    expect(originLabel(session("b", bound("r2", "session")))).toBe("New session");
+    expect(originLabel(session("c", { origin: "remotea", run: null }))).toBe("Opened in remotea");
+    expect(originLabel(session("d"))).toBe("Opened in remotea"); // Older Eridani: no origin.
+  });
+
+  it("lists sessions not already shown as a run card, needs-you first", () => {
+    const items = [session("on-card", bound("r1")), session("loose", { origin: "remotea" }),
+      session("finished-run", bound("gone")), session("asks", { origin: "remotea", live_state: { state: "needs_you", since: "2026-11-08T09:00:00Z", host_id: "h", reason: "" } })];
+    expect(looseSessions(items, new Set(["r1"])).map(s => s.id)).toEqual(["asks", "loose", "finished-run"]);
+  });
+
+  it("says where another harness's chat ran and what it did", () => {
+    const chat = { machine: "laptop", environment: "WSL", repo: "rdavisdunham/eridani", branch: "main", cwd: "", summary: "", title: "t",
+      last_prompt: "make the CSS tidy", first_prompt: "hi" };
+    expect(chatWhere(chat)).toBe("laptop · WSL · rdavisdunham/eridani · main");
+    expect(chatWhat(chat)).toBe("make the CSS tidy");
+    expect(chatWhat({ ...chat, summary: "Tidied the CSS" })).toBe("Tidied the CSS");
+  });
+
+  it("asks before dismissing, and says an active run stops", () => {
+    expect(dismissQuestion(run())).toMatch(/^Stop the agent on "Task"/);
+    expect(dismissQuestion(run({ state: "completed" }))).toMatch(/^Dismiss "Task" from this page\?/);
+  });
+
+  it("keeps one Unmerged work list and drops work GitHub reports merged", () => {
+    const work = (branch: string): UnmergedWork => ({ host_id: "h", host_name: "desk", target: "jarvis", path: "/w/" + branch, branch,
+      base: "main", ahead: 1, behind: 0, unpushed: 0, uncommitted: 0, untracked: 0, merged: false, active: false, reasons: null, kind: "unmerged" });
+    const merged = run({ id: "m", branch: "merged-pr", state: "completed", merge: { status: "merged" } as RunMerge });
+    const open = run({ id: "o", branch: "open-pr", state: "completed" });
+    const listed = unmergedWithRuns([work("merged-pr"), work("open-pr"), work("loose")], [merged, open]);
+    expect(listed.map(w => [w.branch, w.run?.id ?? null])).toEqual([["open-pr", "o"], ["loose", null]]);
+    // The run itself no longer waits on "Resolve unmerged work" once GitHub says merged.
+    expect(attentionKey(merged, [], [work("merged-pr")])).toBe("done");
+    expect(attentionKey(open, [], [work("open-pr")])).toBe("unmerged");
   });
 });

@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play, RefreshCw, Square, SquareTerminal, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play, Plus, RefreshCw, Square, SquareTerminal, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
@@ -8,7 +8,7 @@ import { AttentionList, Facts, useNow } from "./RunsPanel";
 import { SessionsLedger } from "./Sessions";
 import { SettingRow, SettingsGroup } from "./SettingsLayout";
 import {
-  executionModeLabel, ago, answerableInterviews, ATTENTION_STATES, attentionGroups, baseLine, criteriaBody, reviewPacket, type Host, type ReviewPacket, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns, orderSessions,
+  executionModeLabel, ago, answerableInterviews, ATTENTION_STATES, attentionGroups, baseLine, criteriaBody, reviewPacket, type Host, type ReviewPacket, buildAnswers, criteriaEvidence, hostSummary, interviewAnswers, isSettled, latestAttempt, orderRuns,
   cutoverSummary, linearOutcomes, orderOptions, paritySummary, place, planReviewBody, POLICY_TEXT, questionMode, recommended, REMOTEA_POLL_MS,
   defaultScope, runButton, runControls, runLabel, stateLabel, targetOptions, timeline, unmergedGroups, unmergedSummary, verifyLine,
   isRevisionConflict, latestOnly, latestRun, RUN_CHANGED, runAction, type LatestOnly, type RunAction,
@@ -30,6 +30,8 @@ import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, 
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
+import { chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, unmergedWithRuns, type OtherChat } from "./remotea-model";
+import { Dialog } from "./ux";
 
 import "./remotea.css";
 import "./runs.css";
@@ -61,19 +63,33 @@ function TurnText({ session, turn }: { session: string; turn: Turn }) {
   </div>;
 }
 
-function SessionRow({ item }: { item: RemoteaSession }) {
+function SessionRow({ item, onOpenRun, onDismiss }: { item: RemoteaSession; onOpenRun: (id: string) => void; onDismiss: (item: RemoteaSession) => void }) {
   const state = item.live_state?.state ?? "";
   return <article className={"remotea-session state-" + state} data-session-id={item.id}>
     <header>
       <span className={"remotea-state state-" + state}>{stateLabel(state)}</span>
+      <span className={"remotea-origin origin-" + (item.origin ?? "remotea")}>{originLabel(item)}</span>
       <span className="remotea-since">since {ago(item.live_state?.since ?? null)}</span>
       <span className="remotea-host">{item.host ? item.host.name || "remotea" : ""}{item.host && !item.host.connected && " (offline)"}</span>
+      <button className="btn-icon remotea-session-dismiss" aria-label={"Dismiss " + item.title} title="Dismiss" onClick={() => onDismiss(item)}><X size={14}/></button>
     </header>
     <h3>{item.title}</h3>
     <p className="remotea-place">{item.tool_label}{place(item) && " · " + place(item)}{item.filed.record_title && " · " + item.filed.record_title}</p>
     {item.live_state?.reason && <p className="remotea-reason">{item.live_state.reason}</p>}
     {item.last_turn ? <TurnText session={item.id} turn={item.last_turn}/> : <p className="footnote">No final response captured yet.</p>}
+    {item.run && <button className="btn btn-ghost btn-sm" onClick={() => onOpenRun(item.run!.id)}>Open its run</button>}
   </article>;
+}
+
+/** The page's runs (dismissed ones left out), shared by the run cards, the session list and Unmerged work. */
+function usePageRuns() {
+  const [runs, setRuns] = useState<Run[] | null>(null), [error, setError] = useState("");
+  const refresh = useCallback(() => {
+    api<{ items: Run[] }>("/remotea/runs?limit=30&dismissed=false").then(r => { setRuns(orderRuns(r.items)); setError(""); }).catch(e => setError(message(e)));
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  useAgentRefresh(refresh);
+  return { runs, error, refresh };
 }
 
 export function Remotea() {
@@ -83,13 +99,15 @@ export function Remotea() {
   const [items, setItems] = useState<RemoteaSession[] | null>(null);
   const [parity, setParity] = useState<Parity | null>(null);
   const [error, setError] = useState(""), [loading, setLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const page = usePageRuns();
   const refresh = useCallback(() => {
     setLoading(true);
     Promise.all([
       api<RemoteaStatus>("/remotea/status"),
       api<{ items: RemoteaSession[] }>("/remotea/sessions"),
       api<Parity>("/remotea/parity"),
-    ]).then(([s, list, p]) => { setStatus(s); setItems(orderSessions(list.items)); setParity(p); setError(""); })
+    ]).then(([s, list, p]) => { setStatus(s); setItems(list.items); setParity(p); setError(""); })
       .catch(e => setError((e as Error).message))
       .finally(() => setLoading(false));
   }, []);
@@ -98,27 +116,49 @@ export function Remotea() {
   const hosts = hostSummary(status?.hosts ?? []);
   const cutover = cutoverSummary(parity);
   const unmerged = useUnmerged();
+  const runs = page.runs ?? [];
+  // The runs that get a box (RunList: every active run, then the five most recent settled ones).
+  const shown = new Set([...runs.filter(r => !isSettled(r)), ...runs.filter(isSettled).slice(0, 5)].map(r => r.id));
+  const loose = items ? looseSessions(items, shown) : null;
+  const dismissRun = async (run: Run) => {
+    if (!window.confirm(dismissQuestion(run))) return;
+    try { await post(`/remotea/runs/${run.id}/dismiss`, { action_id: crypto.randomUUID() }); page.refresh(); }
+    catch (e) { setError(message(e)); }
+  };
+  const dismissSession = async (item: RemoteaSession) => {
+    const stopsRun = item.run && !item.run.dismissed && !["completed", "stopped", "failed", "capped"].includes(item.run.state);
+    if (!window.confirm(stopsRun ? `Hide "${item.title}" from this page? Its run keeps going; dismiss the run to stop it.`
+      : `Hide "${item.title}" from this page? The terminal stays open in remotea.`)) return;
+    try { await post(`/sessions/${item.id}/archive`, { archived: true }); refresh(); }
+    catch (e) { setError(message(e)); }
+  };
   return <div className="remotea-page">
     <section className={"remotea-hosts tone-" + hosts.tone} aria-label="remotea server">
       <MonitorSmartphone size={18} aria-hidden="true"/><span>{hosts.text}
         {(status?.hosts ?? []).filter(h => h.connected).map(h => ({ h, line: versionLine(h) })).filter(x => x.line).map(({ h, line }) =>
           <small key={h.id} className="remotea-host-build"> · {line!.text}{line!.dirty && <span className="remotea-dirty" title="Built with uncommitted changes">dirty</span>}</small>)}
       </span>
-      <button className="btn-icon" aria-label="Refresh remotea" disabled={loading} onClick={refresh}><RefreshCw size={16}/></button>
+      <button className="btn btn-primary btn-sm" onClick={() => setStarting(true)}><Plus size={14}/>New session</button>
+      <button className="btn-icon" aria-label="Refresh remotea" disabled={loading} onClick={() => { refresh(); page.refresh(); }}><RefreshCw size={16}/></button>
     </section>
+    {starting && <NewSessionDialog onClose={() => setStarting(false)} onStarted={id => { setStarting(false); page.refresh(); openRun(id); }}/>}
     {hosts.warning && <p className="remotea-warning" role="alert">{hosts.warning}</p>}
     {error && <p className="error-banner" role="alert">{error}</p>}
     <RemoteaReadiness onlyWhenNotReady/>
     <PendingControls/>
-    <RunList onOpen={openRun} hosts={status?.hosts ?? []} unmerged={unmerged}/>
-    <SwarmList onOpenRun={openRun}/>
-    <UnmergedList items={unmerged}/>
-    <WorktreeMaintenance/>
-    <section className="remotea-sessions" aria-label="Agent sessions" aria-busy={loading}>
-      {items && !items.length && <p className="activity-empty">No agent sessions are running in remotea right now.</p>}
-      {items?.map(item => <SessionRow key={item.id} item={item}/>)}
-      {!items && !error && <p role="status" className="settings-empty">Loading sessions…</p>}
+    <section className="remotea-home" aria-label="remotea">
+      <RunList onOpen={openRun} hosts={status?.hosts ?? []} unmerged={unmerged} runs={page.runs} loadError={page.error} onDismiss={r => void dismissRun(r)}/>
+      <section className="remotea-sessions" aria-label="Sessions in remotea" aria-busy={loading}>
+        <h2>Sessions in remotea</h2>
+        {loose && !loose.length && <p className="footnote">No other sessions are open in remotea. Sessions a run started show on its card.</p>}
+        {!!loose?.length && <div className="remotea-session-cards">{loose.map(item => <SessionRow key={item.id} item={item} onOpenRun={openRun} onDismiss={s => void dismissSession(s)}/>)}</div>}
+        {!items && !error && <p role="status" className="settings-empty">Loading sessions…</p>}
+      </section>
+      <SwarmList onOpenRun={openRun}/>
+      <UnmergedList items={unmerged} runs={runs} onOpen={openRun}/>
+      <WorktreeMaintenance/>
     </section>
+    <OtherChats/>
     <details className="remotea-parity">
       <summary>Collector parity{cutover?.ready ? " · ready for cutover" : ""}</summary>
       {cutover && <p className={"chip " + (cutover.ready ? "chip-done" : "chip-due-today")} role="status">{cutover.text}</p>}
@@ -131,6 +171,79 @@ export function Remotea() {
       <SessionsLedger/>
     </section>
   </div>;
+}
+
+/** Chats from other harnesses (never in a remotea tab), in a fold: which harness, where it ran, what it was doing. */
+function OtherChats() {
+  const [items, setItems] = useState<OtherChat[] | null>(null), [error, setError] = useState("");
+  const refresh = useCallback(() => {
+    api<{ items: OtherChat[] }>("/remotea/other-chats").then(r => { setItems(r.items); setError(""); }).catch(e => setError(message(e)));
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  useAgentRefresh(refresh);
+  const hide = async (chat: OtherChat) => {
+    if (!window.confirm(`Hide "${chat.title}" from this page? It stays in the session ledger's hidden items.`)) return;
+    try { await post(`/sessions/${chat.id}/archive`, { archived: true }); refresh(); }
+    catch (e) { setError(message(e)); }
+  };
+  if (!items?.length && !error) return null;
+  return <details className="remotea-other-chats">
+    <summary>Other chats ({items?.length ?? 0}) <small>other harnesses, last 14 days</small></summary>
+    {error && <p role="alert" className="work-error">{error}</p>}
+    <ul>{items?.map(chat => <li key={chat.id} className="remotea-other-chat">
+      <header>
+        <span className="remotea-origin origin-other">{chat.tool_label}</span>
+        <strong>{chat.title}</strong>
+        <small>{ago(chat.last_active_at)}{chat.turn_count ? ` · ${chat.turn_count} turn${chat.turn_count === 1 ? "" : "s"}` : ""}</small>
+        <button className="btn-icon" aria-label={"Hide " + chat.title} title="Hide" onClick={() => void hide(chat)}><X size={14}/></button>
+      </header>
+      {chatWhere(chat) && <p className="remotea-place">{chatWhere(chat)}{chat.filed.record_title && " · " + chat.filed.record_title}</p>}
+      {chatWhat(chat) && <p className="remotea-chat-what">{chatWhat(chat)}</p>}
+      {!!chat.pr_urls.length && <p className="remotea-chat-prs">{chat.pr_urls.map(u => <a key={u} href={u} target="_blank" rel="noreferrer">{u.replace(/^https:\/\/github\.com\//, "")}</a>)}</p>}
+    </li>)}</ul>
+  </details>;
+}
+
+/** New session: talk to an agent on a saved target straight away, with no plan or judge. Re-plan and the Freestyle
+ * switch in the run drawer turn it into a planned, judged run when you ask. */
+function NewSessionDialog({ onClose, onStarted }: { onClose: () => void; onStarted: (runId: string) => void }) {
+  const [targets, setTargets] = useState<{ id: string; name: string; host_target: string; repo: string }[] | null>(null);
+  const [target, setTarget] = useState(""), [harness, setHarness] = useState<"claude" | "codex">("claude");
+  const [prompt, setPrompt] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const action = useRef(crypto.randomUUID());
+  useEffect(() => {
+    api<{ items: { id: string; name: string; host_target: string; repo: string }[] }>("/remotea/targets")
+      .then(r => { setTargets(r.items); setTarget(t => t || r.items[0]?.id || ""); }).catch(e => setError(message(e)));
+  }, []);
+  const start = async () => {
+    setBusy(true); setError("");
+    try {
+      const run = await post<Run>("/remotea/sessions/new", { prompt, execution_target_id: target, harness, action_id: action.current });
+      onStarted(run.id);
+    } catch (e) { setError(message(e)); action.current = crypto.randomUUID(); } finally { setBusy(false); }
+  };
+  return <Dialog onBackdrop={onClose} onEscape={onClose} className="remotea-new-session" aria-label="New session">
+    <header><h2>New session</h2><button className="btn-icon" aria-label="Close" onClick={onClose}><X size={18}/></button></header>
+    <p className="footnote">Opens an agent in remotea and talks to it directly. Nothing is planned or judged unless you ask it for a plan.</p>
+    {targets && !targets.length && <p className="remotea-warning" role="note">No saved targets yet. Run a task once and choose where it runs; that target shows up here.</p>}
+    <label className="field"><span className="field-label-text">Where</span>
+      <select value={target} disabled={!targets?.length || busy} onChange={e => setTarget(e.target.value)}>
+        {targets?.map(t => <option key={t.id} value={t.id}>{t.name || t.host_target}{t.repo ? " · " + t.repo : ""}</option>)}
+      </select></label>
+    <label className="field"><span className="field-label-text">Agent</span>
+      <select value={harness} disabled={busy} onChange={e => setHarness(e.target.value as "claude" | "codex")}>
+        <option value="claude">Claude Code</option><option value="codex">Codex</option>
+      </select></label>
+    <label className="field"><span className="field-label-text">First message</span>
+      <textarea rows={5} maxLength={20000} value={prompt} disabled={busy} placeholder="What should the agent do?"
+        onChange={e => setPrompt(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && prompt.trim() && target && !busy) void start(); }}/></label>
+    {error && <p role="alert" className="work-error">{error}</p>}
+    <div className="settings-form-actions">
+      <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+      <button className="btn btn-primary btn-sm" disabled={!prompt.trim() || !target || busy} onClick={() => void start()}>{busy ? "Starting…" : "Start session"}</button>
+    </div>
+  </Dialog>;
 }
 
 export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; onChanged: () => void }) {
@@ -264,23 +377,30 @@ function message(e: unknown) {
   return (e as Error).message || "Something went wrong.";
 }
 
-/** The page's runs, grouped by the next human action (attentionGroups); the five most recent settled runs close it. */
-export function RunList({ onOpen, hosts, unmerged, preloaded }: { onOpen: (id: string) => void; hosts: Host[]; unmerged: UnmergedWork[];
+/** The page's runs as boxes, grouped by the next human action (attentionGroups); the five most recent settled runs
+ * close it. Runs with unmerged work are listed under Unmerged work instead, so there is one place for it. `runs`
+ * comes from the page; without it (tests) the list loads its own. */
+export function RunList({ onOpen, hosts, unmerged, preloaded, runs: given, loadError, onDismiss }: { onOpen: (id: string) => void; hosts: Host[]; unmerged: UnmergedWork[];
   /** Runs already in hand (tests); the list still loads. */
-  preloaded?: Run[] }) {
-  const [runs, setRuns] = useState<Run[] | null>(preloaded ?? null), [error, setError] = useState("");
+  preloaded?: Run[]; runs?: Run[] | null; loadError?: string; onDismiss?: (run: Run) => void }) {
+  const [own, setOwn] = useState<Run[] | null>(preloaded ?? null), [ownError, setError] = useState("");
+  const loads = given === undefined;
   const refresh = useCallback(() => {
-    api<{ items: Run[] }>("/remotea/runs?limit=20").then(r => { setRuns(orderRuns(r.items)); setError(""); }).catch(e => setError(message(e)));
-  }, []);
+    if (!loads) return;
+    api<{ items: Run[] }>("/remotea/runs?limit=20&dismissed=false").then(r => { setOwn(orderRuns(r.items)); setError(""); }).catch(e => setError(message(e)));
+  }, [loads]);
   useEffect(() => { refresh(); }, [refresh]);
   useAgentRefresh(refresh);
-  if (!runs?.length && !error) return null;
+  const runs = loads ? own : given, error = loads ? ownError : loadError ?? "";
+  if (!runs?.length && !error) return <section className="remotea-runs" aria-label="Agent runs"><h2>Running</h2>
+    <p className="footnote">No runs yet. Press Run on a task, or New session to talk to an agent directly.</p></section>;
   const active = runs?.filter(r => !isSettled(r)) ?? [], recent = runs?.filter(isSettled).slice(0, 5) ?? [];
+  const groups = attentionGroups([...active, ...recent], [], hosts, unmerged).filter(g => g.key !== "unmerged");
   return <section className="remotea-runs" aria-label="Agent runs">
-    <h2>Runs</h2>
+    <h2>Running</h2>
     {error && <p role="alert" className="work-error">{error}</p>}
     {!active.length && <p className="footnote">No runs are active.</p>}
-    <AttentionList groups={attentionGroups([...active, ...recent], [], hosts, unmerged)} onOpen={onOpen}/>
+    <AttentionList groups={groups} onOpen={onOpen} cards onDismiss={onDismiss}/>
   </section>;
 }
 
@@ -292,14 +412,18 @@ function useUnmerged() {
   return items;
 }
 
-function UnmergedList({ items }: { items: UnmergedWork[] }) {
-  if (!items.length) return null;
+/** The one Unmerged work list: worktrees with work at risk, grouped worst first, each with its run when there is one.
+ * A run whose pull request GitHub reports merged or closed leaves it, whatever its worktree still holds. */
+function UnmergedList({ items, runs, onOpen }: { items: UnmergedWork[]; runs: Run[]; onOpen: (id: string) => void }) {
+  const listed = unmergedWithRuns(items, runs);
+  if (!listed.length) return null;
   return <details className="remotea-unmerged">
-    <summary>Unmerged work ({items.length})</summary>
-    {unmergedGroups(items).map(g => <section key={g.kind} aria-label={g.label}>
+    <summary>Unmerged work ({listed.length})</summary>
+    {unmergedGroups(listed).map(g => <section key={g.kind} aria-label={g.label}>
       <h4>{g.label} ({g.items.length})</h4>
       <ul>{g.items.map(w => <li key={w.host_id + (w.path ?? w.branch ?? "")}>
         <GitBranch size={14} aria-hidden="true"/> <code>{w.branch ?? w.path}</code> <small>{w.target ? w.target + " · " : ""}{unmergedSummary(w)}{w.active ? " · run active" : ""}</small>
+        {w.run && <button className="btn btn-ghost btn-sm" onClick={() => onOpen(w.run!.id)}>{w.run.task?.title ? "Open: " + w.run.task.title : "Open its run"}</button>}
       </li>)}</ul>
     </section>)}
   </details>;

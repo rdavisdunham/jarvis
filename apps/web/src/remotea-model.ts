@@ -27,6 +27,16 @@ export type RemoteaSession = {
   id: string; tool_label: string; title: string; repo: string; branch: string; cwd: string;
   live_state: LiveState | null; host: { id: string; name: string; connected: boolean } | null;
   last_turn: Turn | null; filed: { record_title: string | null };
+  /** Where it came from (older Eridani: absent): an Eridani run started it, it was opened in remotea by hand, or it
+   * is another harness's chat the collector found. `run` is the run that owns it. */
+  origin?: SessionOrigin; run?: { id: string; state: string; origin: "task" | "session"; task_id: string; dismissed: boolean } | null;
+};
+export type SessionOrigin = "run" | "remotea" | "other";
+/** A chat from another harness (never in a remotea tab), from /remotea/other-chats. */
+export type OtherChat = {
+  id: string; tool: string; tool_label: string; session_id: string; title: string; summary: string; first_prompt: string; last_prompt: string;
+  machine: string; environment: string; cwd: string; repo: string; branch: string; turn_count: number;
+  started_at: string | null; last_active_at: string | null; pr_urls: string[]; filed: { record_title: string | null };
 };
 export type RemoteaStatus = {
   enabled: boolean; key: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
@@ -132,6 +142,44 @@ export function place(item: Pick<RemoteaSession, "repo" | "branch" | "cwd">) {
   return [item.repo || item.cwd.split("/").filter(Boolean).at(-1), item.branch].filter(Boolean).join(" · ");
 }
 
+/** The chip on a live session saying where it came from. */
+export function originLabel(item: Pick<RemoteaSession, "origin" | "run">) {
+  if (item.origin === "run") return item.run?.origin === "session" ? "New session" : "Eridani run";
+  if (item.origin === "other") return "Other harness";
+  return "Opened in remotea";
+}
+
+/** The live sessions to list under the run cards: those not already shown as a run card (`shown`: the run ids on
+ * the page), in the usual order. A run's session whose run is dismissed or not listed still shows, labelled. */
+export function looseSessions(items: RemoteaSession[], shown: Set<string>) {
+  return orderSessions(items.filter(s => !(s.origin === "run" && s.run && shown.has(s.run.id))));
+}
+
+/** "laptop · WSL · eridani · main": where another harness's chat ran. */
+export function chatWhere(chat: Pick<OtherChat, "machine" | "environment" | "repo" | "branch" | "cwd">) {
+  return [chat.machine, chat.environment, place(chat)].filter(Boolean).join(" · ");
+}
+
+/** What another harness's chat was doing: its summary, else its title, else the last prompt. */
+export function chatWhat(chat: Pick<OtherChat, "summary" | "title" | "last_prompt" | "first_prompt">) {
+  return chat.summary || chat.last_prompt || chat.first_prompt || "";
+}
+
+/** The page's one Unmerged work list: worktrees with work at risk, minus those whose run's pull request GitHub
+ * reports merged or closed, each with the run on that branch (to open it) when there is one. */
+export function unmergedWithRuns(items: UnmergedWork[], runs: Run[]) {
+  const runFor = (w: UnmergedWork) => runs.find(r => !!r.branch && r.branch === w.branch && r.host?.id === w.host_id);
+  return items.map(w => ({ ...w, run: runFor(w) ?? null }))
+    .filter(w => w.run?.merge?.status !== "merged" && w.run?.merge?.status !== "closed");
+}
+
+/** The confirmation before dismissing a run from the page; an active run is stopped too. */
+export function dismissQuestion(run: Pick<Run, "state" | "task">) {
+  const title = run.task?.title ? `"${run.task.title}"` : "this run";
+  return isSettled(run as Run) ? `Dismiss ${title} from this page? The task keeps its run history.`
+    : `Stop the agent on ${title} and dismiss it from this page? The task keeps its run history.`;
+}
+
 // ---------------------------------------------------------------- runs (stage C)
 
 export type RunState =
@@ -174,6 +222,10 @@ export type Run = {
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
   freestyle?: boolean;
+  /** How it started: Run on a task, or New session on the remotea page (older Eridani: absent, a task run). */
+  origin?: "task" | "session";
+  /** When the owner dismissed it from the remotea page. */
+  dismissed_at?: string | null;
   /** The full text behind the current state (the judge's notes, the proposal summary); reason_text is the one-liner. */
   reason_detail?: string;
   /** Why the run stopped for you, structured (run_attention.py): what happened, what to do, the last output lines.
@@ -1189,7 +1241,7 @@ export const UNMERGED_GROUPS: { kind: NonNullable<UnmergedWork["kind"]>; label: 
   { kind: "unknown", label: "Can't tell (update remotea)" },
 ];
 
-export function unmergedGroups(items: UnmergedWork[]) {
+export function unmergedGroups<T extends UnmergedWork>(items: T[]) {
   return UNMERGED_GROUPS.map(g => ({ ...g, items: items.filter(w => (w.kind ?? "unknown") === g.kind) })).filter(g => g.items.length);
 }
 
@@ -1417,6 +1469,8 @@ function hostOffline(run: Run, hosts: Host[]) {
   return known ? !known.connected : !run.host.connected;
 }
 function unmergedFor(run: Run, unmerged: UnmergedWork[]) {
+  // GitHub says the pull request is merged (or closed): nothing left to resolve, whatever the worktree still holds.
+  if (run.merge?.status === "merged" || run.merge?.status === "closed") return false;
   return !!run.branch && unmerged.some(w => w.branch === run.branch && w.host_id === run.host?.id && !w.active);
 }
 
