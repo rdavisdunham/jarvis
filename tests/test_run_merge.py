@@ -299,3 +299,64 @@ def test_auto_merge_needs_a_real_check(merge_host):
 def panel_auto(run_id):
     with session_scope() as db:
         return control.public_run(db, db.get(AgentRun, run_id))["auto_merge"]
+
+
+def test_a_host_that_cannot_read_the_pull_request_says_why(merge_host):
+    run_id = planned(merge_host)
+    assert met(merge_host, run_id) == ("awaiting_ci", "ci_pending")
+    assert panel(run_id)["status"] == "unknown"
+    outcome(run_id, "ci.status", "failed", detail="gh pr checks: unknown flag: --json")
+    view = panel(run_id)
+    assert view["status"] == "host" and not view["can_merge"]
+    assert "could not read the pull request: gh pr checks: unknown flag: --json." in view["detail"]
+    assert "Update the GitHub CLI (gh)" in view["detail"]
+    # A later good answer replaces the error.
+    answer(run_id)
+    assert panel(run_id)["status"] != "host"
+
+
+def test_behind_comes_before_waiting_on_ci_and_survives_failed_ci(merge_host):
+    run_id = green_awaiting_approval(merge_host)
+    # CI still running on a head that is behind main: updating reruns it, so Update branch is offered now.
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "completed"
+    answer(run_id, pr(merge_state="BEHIND"), checks=checks("pass", "pending"))
+    view = panel(run_id)
+    assert view["status"] == "behind" and view["can_update"]
+    # Failed and behind: still the agent's to fix, but updating stays on offer.
+    answer(run_id, pr(merge_state="BEHIND"), checks=checks("pass", "fail"))
+    view = panel(run_id)
+    assert view["status"] == "ci_failed" and view["can_update"] and not view["can_merge"]
+    assert "behind main" in view["detail"]
+    click(run_id, "update")
+    assert command(run_id, "pr.update_branch") is not None
+
+
+def test_a_settled_runs_old_worktree_is_not_unpushed_work(merge_host):
+    run_id = green_awaiting_approval(merge_host)
+    old = "1" * 40
+    # The branch moved on GitHub (updated there, or a fix pushed by hand); the worktree stayed on an older commit.
+    answer(run_id, pr(head_sha=NEW, merge_state="BEHIND"), worktree_head=old)
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "awaiting_approval"
+    assert panel(run_id)["status"] == "behind"  # Behind wins even here.
+    answer(run_id, pr(head_sha=NEW), worktree_head=old)
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "awaiting_approval"
+    view = panel(run_id)
+    assert view["status"] == "unpushed" and "different commit than PR" in view["detail"] and not view["can_merge"]
+    with session_scope() as db:
+        db.get(AgentRun, run_id).state = "completed"
+    view = panel(run_id)
+    assert view["status"] == "ready" and view["ci"] == "passed" and view["can_merge"]
+
+
+def test_the_ci_chip_agrees_with_the_panel_on_a_settled_run(merge_host):
+    run_id = green_awaiting_approval(merge_host)
+    answer(run_id, pr(head_sha=NEW), worktree_head="1" * 40)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        run.state = "awaiting_approval"
+        assert run_ci.public(db, run)["state"] == "unpushed"
+        run.state = "completed"
+        assert run_ci.public(db, run)["state"] == "passed"

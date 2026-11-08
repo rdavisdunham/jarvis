@@ -469,6 +469,10 @@ READ_TOOLS["record_overview"] = {
     "description":"What Eridani knows about one client or project: the owner's description, its living overview (scope, vocabulary, people, recent changes, open questions), linked people, meeting facts, the latest meeting brief and open tasks. Use for questions like what is going on with a client or what a project covers. Changes nothing.",
     "parameters":{"type":"object","properties":{"record_id":{"type":"string","format":"uuid"}},
                   "required":["record_id"],"additionalProperties":False}}
+READ_TOOLS["person_lookup"] = {
+    "description":"Find who a name means when it may be misspelled (speech-to-text often gets names wrong: Janice for Janiece). Checks exact names, saved alternate spellings and sound-alike or near spellings, best first, each with the clients and projects that person works on. When several come back, choose by what the conversation is about or ask; use the returned actor_id for assignments. Changes nothing.",
+    "parameters":{"type":"object","properties":{"name":{"type":"string","minLength":1,"maxLength":100}},
+                  "required":["name"],"additionalProperties":False}}
 READ_TOOLS["record_browse"] = {
     "description":"Browse a home with complete counts and pagination. scope children is direct contents; subtree includes descendants; related is extra links only. parent_id omitted means Unfiled. Work/content/groups are views, not additional homes. groups lists records whose opens_as is container (the type's Organizing container setting; auto infers it). Each record reports opens_as: container opens as contents, item as its detail card.",
     "parameters":{"type":"object","properties":{
@@ -724,6 +728,9 @@ async def _call_tool(owner, turn_id, index, name, arguments, *, device=None, con
         with session_scope() as db:
             personal(db, owner)
             return snapshot(db, owner)
+    if name == "person_lookup":
+        from .people_links import lookup
+        with session_scope() as db:return lookup(db,owner,arguments["name"])
     if name == "record_overview":
         from .record_overviews import knowledge
         with session_scope() as db:return knowledge(db,owner,arguments["record_id"])

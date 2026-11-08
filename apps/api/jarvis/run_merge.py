@@ -43,7 +43,7 @@ UPDATE = "pr.update_branch"
 # Run states where the agent is still at work: Merge waits for it to finish.
 WORKING = ("queued", "spawning", "interviewing", "planning", "plan_reviewing", "handing_off", "executing",
            "waiting_answer", "verifying", "judging", "replanning", "awaiting_integration", "stopping")
-SETTLED = ("completed", "stopped", "capped", "failed")
+SETTLED = run_ci.SETTLED
 # GitHub's mergeStateStatus values that mean "it would merge" (UNSTABLE: a non-required check failed; HAS_HOOKS: a
 # pre-receive hook will run; UNKNOWN: GitHub has not computed it yet, it tells us on the click).
 MERGEABLE = ("CLEAN", "UNSTABLE", "HAS_HOOKS", "UNKNOWN", "")
@@ -78,12 +78,16 @@ def latest_facts(db, run):
     return (attempt.result or {}), attempt.updated_at
 
 
+def host_name(host):
+    return (host.name or host.machine or "The host") if host else "The host"
+
+
 def host_reason(db, run, kind=MERGE):
     """Why the host cannot take the command now, or ""."""
     host = db.get(AgentHost, run.host_id) if run.host_id else None
     if host is None:
         return "This run has no host."
-    name = host.name or host.machine or "The host"
+    name = host_name(host)
     if not agent_link.connected(host):
         return f"{name} is offline."
     if not coordinator.host_cap(db, run.host_id, kind):
@@ -103,7 +107,9 @@ def public(db, run):
     """The drawer's merge panel: {status, detail, can_merge, can_update, pr, ci, checked_at, op, via}.
 
     status: merged, closed, merging, updating, unknown (no CI answer yet), no_pr, working (the agent is still at
-    it), host (offline or too old), waiting_ci, ci_failed, draft, conflicts, behind, blocked, ready."""
+    it), host (offline, too old, or its last answer failed), waiting_ci, ci_failed (can_update when also behind),
+    draft, conflicts, behind (checked before CI: updating reruns it), unpushed (an unsettled run's worktree differs
+    from the PR head), blocked, ready."""
     facts, checked_at = latest_facts(db, run)
     op = state(run)
     pr = None
@@ -112,6 +118,10 @@ def public(db, run):
               "head_sha": facts.get("head_sha") or "", "state": facts.get("pr_state") or ""}
     has_ci = bool(facts and facts.get("checks")) or run_ci.target_ci(db, run) is True
     ci = (facts or {}).get("state") if facts else None
+    if ci == "unpushed" and run.state in SETTLED:
+        # The agent is done: what merges is the pull request, so its own checks decide. A worktree left on an older
+        # commit (the branch was updated on GitHub or by hand) is not work waiting to be pushed.
+        ci = run_ci.checks_state(facts.get("checks") or [])
     view = {"pr": pr, "checked_at": checked_at, "op": public_op(op), "ci": ci if has_ci else "none",
             "can_merge": False, "can_update": False}
     base = (pr or {}).get("base") or "main"
@@ -126,6 +136,12 @@ def public(db, run):
         return out("merging" if op.get("kind") == MERGE else "updating",
                    "Merging…" if op.get("kind") == MERGE else "Updating the branch…")
     if facts is None:
+        # No answer yet. A host that answered with a failure says why, instead of "Checking…" forever.
+        error = run_ci.ci_state(run).get("error")
+        if error:
+            name = host_name(db.get(AgentHost, run.host_id) if run.host_id else None)
+            hint = " Update the GitHub CLI (gh) there." if "unknown flag" in error else ""
+            return out("host", f"{name} could not read the pull request: {error}.{hint}")
         return out("unknown", "Checking the pull request…")
     if pr is None:
         return out("no_pr", "No pull request yet.")
@@ -137,16 +153,25 @@ def public(db, run):
     if why:
         return out("host", why)
     merge_state = facts.get("merge_state") or ""
+    behind = merge_state == "BEHIND"
+    can_update = behind and not host_reason(db, run, UPDATE)
     if facts.get("draft") or merge_state == "DRAFT":
         return out("draft", REFUSALS["draft"])
     if facts.get("mergeable") == "CONFLICTING" or merge_state == "DIRTY":
         return out("conflicts", REFUSALS["conflicts"].format(base=base))
     if has_ci and ci == "failed":
-        return out("ci_failed", "CI failed on this pull request.")
+        # Behind as well: updating may be the fix (CI runs again on the new head), so it stays on offer.
+        return out("ci_failed", "CI failed on this pull request." + (f" It is also behind {base}." if behind else ""),
+                   can_update=can_update)
+    if behind:
+        # Before waiting on CI: checks on a head that is behind its base are moot, and updating runs them again.
+        return out("behind", REFUSALS["behind"].format(base=base), can_update=can_update)
+    if ci == "unpushed":
+        name = host_name(db.get(AgentHost, run.host_id) if run.host_id else None)
+        return out("unpushed", f"The worktree on {name} is at a different commit than PR #{pr['number']}: work not "
+                   "pushed yet, or the pull request was changed outside Eridani.")
     if has_ci and ci != "passed":
         return out("waiting_ci", "Waiting on CI.")
-    if merge_state == "BEHIND":
-        return out("behind", REFUSALS["behind"].format(base=base), can_update=not host_reason(db, run, UPDATE))
     if merge_state not in MERGEABLE:
         # BLOCKED: a rule GitHub enforces (reviews, a required check it still counts as missing). Let the click try;
         # GitHub's own words come back as the refusal.
