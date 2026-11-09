@@ -1536,6 +1536,22 @@
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+.session-match {
+  margin: 4px 0;
+  color: var(--ink-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.session-match small {
+  margin-right: 6px;
+  color: var(--ink-3);
+}
+.session-match mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: var(--violet-soft);
+  color: var(--ink);
+}
 .session-filed {
   display: flex;
   flex-wrap: wrap;

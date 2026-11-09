@@ -13,13 +13,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.postgresql import distinct_on
 
 from .calendar_details import web_link
 from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError, advisory, enqueue_job, owned
 from .models import Job, LinearIssue, Task, now
-from .session_models import AgentSession, AgentSessionRule
+from .session_models import AgentSession, AgentSessionRule, AgentTurn
 from .structure_models import StructureRecord
 
 TOOLS = {
@@ -120,6 +121,8 @@ class Listing(Input):
     query: str = Field(default="", max_length=300)
     unfiled: bool = False
     live: bool = False
+    # Only sessions that ran in a remotea terminal (seen on a surface, reported a state, or started by a run).
+    remotea: bool = False
     record_id: UUID | None = None
     tool: Tool | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -435,6 +438,9 @@ def scoped(db, owner, args):
         query = query.where(AgentSession.tool == args.tool)
     if args.live:
         query = query.where(or_(AgentSession.resume.has_key("live"), AgentSession.state.in_(LIVE_STATES)))
+    if args.remotea:
+        query = query.where(or_(AgentSession.surf != "", AgentSession.state != "", AgentSession.run_id.is_not(None),
+                                AgentSession.host_id.is_not(None)))
     if args.record_id:
         # A client's sessions include those filed under its projects and issues.
         from .record_contents import rows_under
@@ -472,8 +478,37 @@ def query_vector(owner, query):
     return query_embedding(owner, query)
 
 
+# Private-use characters around matched words in a turn snippet; the page turns them into highlights.
+MARK = ("\ue000", "\ue001")
+SNIPPET = f'StartSel={MARK[0]}, StopSel={MARK[1]}, MinWords=12, MaxWords=32, MaxFragments=2, FragmentDelimiter=" … "'
+
+
+def said(db, owner, sessions_query, terms):
+    """The best-matching turn per session, from what was asked and answered: {session_pk: (rank, turn_id)}."""
+    rank = func.ts_rank_cd(AgentTurn.tsv, terms)
+    rows = db.execute(
+        select(AgentTurn.session_pk, AgentTurn.id, rank)
+        .where(AgentTurn.owner_id == owner, AgentTurn.session_pk.in_(sessions_query), AgentTurn.tsv.op("@@")(terms))
+        .order_by(AgentTurn.session_pk, rank.desc(), AgentTurn.created_at.desc())
+        .ext(distinct_on(AgentTurn.session_pk))
+    ).all()
+    return {pk: (float(value), turn) for pk, turn, value in rows}
+
+
+def snippets(db, turns, terms):
+    """{turn_id: {turn_id, at, run_id, snippet}} with matched words between MARK characters."""
+    if not turns:
+        return {}
+    headline = func.ts_headline("english", AgentTurn.prompt + " " + AgentTurn.text, terms, SNIPPET)
+    rows = db.execute(
+        select(AgentTurn.id, AgentTurn.created_at, AgentTurn.run_id, headline).where(AgentTurn.id.in_(turns))
+    ).all()
+    return {i: {"turn_id": i, "at": stamp(at), "run_id": run, "snippet": text.strip()} for i, at, run, text in rows}
+
+
 def search(owner, args, *, reveal=True):
-    """Recent sessions, or ranked matches: full-text, exact issue keys, folder names and meaning."""
+    """Recent sessions, or ranked matches: full-text over the session and what was said in it (`match` is the best
+    turn's snippet), exact issue keys, folder names and meaning."""
     from .memory_learning import EMBEDDING_MODEL, cosine
 
     with session_scope() as db:
@@ -525,6 +560,7 @@ def search(owner, args, *, reveal=True):
                 )
             ).all()
         )
+        turns = said(db, owner, base.with_only_columns(AgentSession.id), terms)
         keys, phrase = set(issue_keys(args.query)), args.query.casefold()
         candidates = []
         for row in db.scalars(base):
@@ -535,15 +571,21 @@ def search(owner, args, *, reveal=True):
             )
             named = phrase in " ".join((row.title, row.repo, row.branch, row.cwd)).casefold()
             issue = bool(keys & {r["identifier"] for r in row.issue_refs})
-            if not (row.id in ranks or named or issue or similarity >= 0.35):
+            spoken = turns.get(row.id, (0, None))[0]
+            if not (row.id in ranks or row.id in turns or named or issue or similarity >= 0.35):
                 continue
-            value = similarity + min(ranks.get(row.id, 0), 0.5) + (0.6 if named else 0) + (1.5 if issue else 0)
+            value = (similarity + min(ranks.get(row.id, 0), 0.5) + min(spoken, 0.5) + (0.6 if named else 0)
+                     + (1.5 if issue else 0))
             candidates.append((round(value, 4), row))
         candidates.sort(key=lambda c: (-c[0], -(c[1].last_active_at.timestamp() if c[1].last_active_at else 0)))
         total = len(candidates)
         page = candidates[args.offset : args.offset + args.limit]
         titles = record_titles(db, owner, {r.record_id for _, r in page})
-        items = [public(db, r, titles=titles, reveal=reveal, score=s) for s, r in page]
+        found = snippets(db, [turns[r.id][1] for _, r in page if r.id in turns], terms)
+        items = [
+            {**public(db, r, titles=titles, reveal=reveal, score=s), "match": found.get(turns.get(r.id, (0, None))[1])}
+            for s, r in page
+        ]
         return {
             "items": items,
             "total": total,

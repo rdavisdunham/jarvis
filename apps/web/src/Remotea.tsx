@@ -30,7 +30,7 @@ import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, 
 import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
-import { chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type OtherChat, type SavedTarget, type SessionTarget } from "./remotea-model";
+import { dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type SavedTarget, type SessionTarget } from "./remotea-model";
 import { Dialog } from "./ux";
 
 import "./remotea.css";
@@ -158,7 +158,6 @@ export function Remotea() {
       <UnmergedList items={unmerged} runs={runs} onOpen={openRun}/>
       <WorktreeMaintenance/>
     </section>
-    <OtherChats/>
     {/* Once a host's own collector is the store's source (stage E cutover), the parity comparison is over. */}
     {!(status?.hosts ?? []).some(h => h.connected && h.caps?.includes("collector.authoritative")) && <details className="remotea-parity">
       <summary>Collector parity{cutover?.ready ? " · ready for cutover" : ""}</summary>
@@ -172,37 +171,6 @@ export function Remotea() {
       <SessionsLedger/>
     </section>
   </div>;
-}
-
-/** Chats from other harnesses (never in a remotea tab), in a fold: which harness, where it ran, what it was doing. */
-function OtherChats() {
-  const [items, setItems] = useState<OtherChat[] | null>(null), [error, setError] = useState("");
-  const refresh = useCallback(() => {
-    api<{ items: OtherChat[] }>("/remotea/other-chats").then(r => { setItems(r.items); setError(""); }).catch(e => setError(message(e)));
-  }, []);
-  useEffect(() => { refresh(); }, [refresh]);
-  useAgentRefresh(refresh);
-  const hide = async (chat: OtherChat) => {
-    if (!window.confirm(`Hide "${chat.title}" from this page? It stays in the session ledger's hidden items.`)) return;
-    try { await post(`/sessions/${chat.id}/archive`, { archived: true }); refresh(); }
-    catch (e) { setError(message(e)); }
-  };
-  if (!items?.length && !error) return null;
-  return <details className="remotea-other-chats">
-    <summary>Other chats ({items?.length ?? 0}) <small>other harnesses, last 14 days</small></summary>
-    {error && <p role="alert" className="work-error">{error}</p>}
-    <ul>{items?.map(chat => <li key={chat.id} className="remotea-other-chat">
-      <header>
-        <span className="remotea-origin origin-other">{chat.tool_label}</span>
-        <strong>{chat.title}</strong>
-        <small>{ago(chat.last_active_at)}{chat.turn_count ? ` · ${chat.turn_count} turn${chat.turn_count === 1 ? "" : "s"}` : ""}</small>
-        <button className="btn-icon" aria-label={"Hide " + chat.title} title="Hide" onClick={() => void hide(chat)}><X size={14}/></button>
-      </header>
-      {chatWhere(chat) && <p className="remotea-place">{chatWhere(chat)}{chat.filed.record_title && " · " + chat.filed.record_title}</p>}
-      {chatWhat(chat) && <p className="remotea-chat-what">{chatWhat(chat)}</p>}
-      {!!chat.pr_urls.length && <p className="remotea-chat-prs">{chat.pr_urls.map(u => <a key={u} href={u} target="_blank" rel="noreferrer">{u.replace(/^https:\/\/github\.com\//, "")}</a>)}</p>}
-    </li>)}</ul>
-  </details>;
 }
 
 /** New session: talk to an agent on a saved target straight away, with no plan or judge. Re-plan and the Freestyle

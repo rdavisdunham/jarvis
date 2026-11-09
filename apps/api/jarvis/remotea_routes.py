@@ -333,31 +333,12 @@ def session_runs(db, rows):
 
 def session_origin(row, run):
     """Where a session came from: "run" (an Eridani run started it), "remotea" (opened in remotea by hand) or "other"
-    (another harness's chat the collector found, never in a remotea tab)."""
+    (a chat the collector found outside remotea; only reported when the host's collector scope is "all")."""
     if run is not None:
         task = run.task_id
         return {"origin": "run", "run": {"id": run.id, "state": run.state, "origin": run.origin or "task",
                                          "task_id": task, "dismissed": run.dismissed_at is not None}}
     return {"origin": "remotea" if row.surf or row.state else "other", "run": None}
-
-
-@router.get("/other-chats")
-def other_chats(user: User, days: int = Query(14, ge=1, le=90), limit: int = Query(30, ge=1, le=100)):
-    """Chats from other harnesses (never in a remotea tab), most recently active first, within `days`."""
-    from datetime import timedelta
-
-    with session_scope() as db:
-        gated(db, user)
-        rows = list(db.scalars(
-            select(AgentSession)
-            .where(AgentSession.owner_id == user.owner_id, AgentSession.archived.is_(False),
-                   AgentSession.surf == "", AgentSession.state == "", AgentSession.run_id.is_(None),
-                   AgentSession.last_active_at >= now() - timedelta(days=days))
-            .order_by(AgentSession.last_active_at.desc().nulls_last())
-            .limit(limit)
-        ))
-        titles = sessions.record_titles(db, user.owner_id, {r.record_id for r in rows})
-        return encode({"items": [{**sessions.public(db, r, titles=titles), "origin": "other"} for r in rows]})
 
 
 @router.get("/sessions/{identity}/turns")

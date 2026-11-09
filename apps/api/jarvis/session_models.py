@@ -1,8 +1,8 @@
 """External agent sessions (Claude Code, Codex, desktop apps) and the rules that file them."""
 
 from datetime import date, datetime
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, Computed, Date, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 from .models import Base, now, uid
 
@@ -117,12 +117,16 @@ class AgentCommand(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+TURN_TSV = "to_tsvector('english', prompt || ' ' || text)"
+
+
 class AgentTurn(Base):
     """An agent's final response for one root provider turn (bounded; never the transcript)."""
     __tablename__ = "agent_turns"
     __table_args__ = (
         UniqueConstraint("session_pk", "provider_turn_id", name="uq_agent_turn"),
         Index("ix_agent_turns_session_pk_seq", "session_pk", "seq"),
+        Index("ix_agent_turns_tsv", "tsv", postgresql_using="gin"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
     owner_id: Mapped[str] = mapped_column(String(100), index=True)
@@ -141,6 +145,8 @@ class AgentTurn(Base):
     truncated: Mapped[bool] = mapped_column(Boolean, default=False)
     source: Mapped[str] = mapped_column(String(30), default="hook")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    # What was asked and answered, for the session ledger's search (agent_sessions.search).
+    tsv: Mapped[str] = mapped_column(TSVECTOR, Computed(TURN_TSV, persisted=True))
 
 
 class AgentQuestion(Base):

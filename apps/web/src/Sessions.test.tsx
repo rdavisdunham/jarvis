@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SessionCard, since, type AgentSession } from "./Sessions";
+import { SessionCard, since, snippetParts, type AgentSession } from "./Sessions";
 
 const base: AgentSession = {
   id: "s-1", tool: "claude_code", tool_label: "Claude Code", session_id: "abc", title: "Fix flaky login test",
@@ -60,5 +60,19 @@ describe("agent session cards", () => {
     expect(since("2026-10-26T09:00:00Z", now)).toBe("3h ago");
     expect(since("2026-10-23T12:00:00Z", now)).toBe("3d ago");
     expect(since(null, now)).toBe("");
+  });
+});
+
+describe("what was said", () => {
+  it("splits a search snippet into plain and matched parts", () => {
+    expect(snippetParts("the \ue000login\ue001 race in \ue000auth\ue001")).toEqual([
+      { text: "the ", hit: false }, { text: "login", hit: true }, { text: " race in ", hit: false }, { text: "auth", hit: true }]);
+    expect(snippetParts("no marks")).toEqual([{ text: "no marks", hit: false }]);
+    expect(snippetParts("open \ue000end")).toEqual([{ text: "open ", hit: false }, { text: "end", hit: false }]);
+  });
+  it("shows the matching turn with its words highlighted", () => {
+    const html = render({ ...base, match: { turn_id: "t", at: null, run_id: null, snippet: "we moved the \ue000cache\ue001 to Redis" } });
+    expect(html).toContain('class="session-match"'); expect(html).toContain("<mark>cache</mark> to Redis");
+    expect(render(base)).not.toContain("session-match");
   });
 });
