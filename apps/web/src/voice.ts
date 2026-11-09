@@ -22,6 +22,7 @@ export interface VoiceState {
   awaiting_answer?: boolean;
   end_candidate?: EndCandidate | null;
   needs_audio?: boolean;
+  notice?: string;
 }
 // Status doubles as the server lease (30 s cutoff); every interval stays well under it.
 export const POLL_ACTIVE_MS = 400;
@@ -57,6 +58,7 @@ export class Voice {
   private startupMuted=false;
   private pendingCueEpoch:number|null=null;
   private audioBlocked=false;
+  private recoveryInputReceived=false;
   private seenProviderEvents=new Set<string>();
   private declinedCandidates = new Set<string>();
   private latestState: VoiceState = {
@@ -88,7 +90,9 @@ export class Voice {
   ) {
     // Only publish real changes; pollers and the idle ticker otherwise rerender the app.
     this.changed = (state) => {
-      state={...state,state:this.draining && this.mediaReady && !state.closed ? "draining_startup_audio" : state.state,needs_audio:this.audioBlocked};
+      state={...state,state:this.draining && this.mediaReady && !state.closed ? "draining_startup_audio" : state.state,needs_audio:this.audioBlocked,
+        notice:this.startupAttempt?.repeatRequest && !this.recoveryInputReceived && this.mediaReady && !this.draining && !state.closed
+          ? "Dani is listening—please repeat your request." : undefined};
       const key = JSON.stringify(state);
       if (key === this.published) return;
       this.published = key;
@@ -96,7 +100,10 @@ export class Voice {
     };
     const transcriptMessage = (value: ChatMessage) => {
       message(value);
-      if (!this.stopped && value.role === "user") this.pollSoon();
+      if (!this.stopped && value.role === "user") {
+        this.recoveryInputReceived=true;
+        this.pollSoon();
+      }
     };
     this.liveTranscript = new LiveTranscript("live:" + crypto.randomUUID() + ":", transcriptMessage);
     this.transcript = new VoiceTranscript(

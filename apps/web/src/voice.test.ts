@@ -570,6 +570,42 @@ test("accepted contextual close stops local audio before final provider usage se
  settle({closed:true});await vi.advanceTimersByTimeAsync(0);expect(Peer.current.close).toHaveBeenCalledOnce();
 });
 
+test("fresh wake recovery shows a repeat notice until the next user transcript and skips the greeting", async () => {
+  const changed = vi.fn();
+  const listeners = new Set<(activity: any) => void>();
+  const track = { enabled: true, stop: vi.fn() };
+  const capture = {
+    stream: { getTracks: () => [track], getAudioTracks: () => [track] },
+    context: null,
+    subscribe: (listener: (activity: any) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    ready: vi.fn(), pause: vi.fn(), command: vi.fn(),
+  };
+  const voice = new Voice(changed);
+  const starting = voice.start("conversation", undefined, { provider: "live", voice: "marin" }, capture as never, {
+    id: "recovered-wake", generation: 0, wake: true, wakeOnly: false,
+    detectedAt: performance.now(), epoch: 1, repeatRequest: true,
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  event({ type: "session.started" });
+  await starting;
+  for (const listener of listeners) listener({
+    type: "activity", active: false, epoch: 1, startupDrained: true, sent: 100, level: 0,
+  });
+  await vi.advanceTimersByTimeAsync(2500);
+  expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({
+    notice: "Dani is listening—please repeat your request.",
+  }));
+  expect(vi.mocked(post).mock.calls.some(([path, body]) =>
+    path.endsWith("/startup") && (body as any)?.state === "ready")).toBe(false);
+  userReply("live", "Add a test task.");
+  await vi.advanceTimersByTimeAsync(500);
+  expect(changed.mock.calls.at(-1)?.[0].notice).toBeUndefined();
+  await voice.stop();
+});
+
 test.each(["manual","wake"].flatMap(mode=>[0,.0001].map(noise=>({mode,noise}))))(
   "$mode voice completes startup with ongoing capture at noise $noise and stays open past its deadline",async({mode,noise})=>{
     const listeners=new Set<(value:any)=>void>(),changed=vi.fn(),status=vi.fn();
@@ -585,7 +621,7 @@ test.each(["manual","wake"].flatMap(mode=>[0,.0001].map(noise=>({mode,noise}))))
       subscribe:(listener:(value:any)=>void)=>{listeners.add(listener);return()=>listeners.delete(listener);},
       command:(type:string,epoch?:number)=>processor.command({type,generation,epoch}),
       reset:()=>{generation++;latest=null;processor.command({type:"reset",generation});},
-      confirm:()=>processor.command({type:"confirm",generation}),
+      confirm:async()=>{processor.command({type:"confirm",generation});return "buffered";},
       ready:()=>processor.command({type:"ready",generation}),
       pause:()=>processor.command({type:"pause",generation}),
     };

@@ -6,6 +6,7 @@
  * "Bug reports" lists what is sent.
  */
 import { readTheme } from "./theme";
+import { voiceDiagnostics } from "./voice-timing";
 
 export class Ring<T> {
   private items: T[] = [];
@@ -202,6 +203,7 @@ export async function collectContext(page: PageState) {
     errors: rings.console.list(),
     requests: rings.requests.list(),
     navigations: rings.navigations.list(),
+    voice: voiceDiagnostics(),
   };
 }
 export type BugContext = Awaited<ReturnType<typeof collectContext>>;

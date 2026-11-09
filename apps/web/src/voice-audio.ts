@@ -39,15 +39,12 @@ export class AudioQueue {
     if (this.confirmed) return;
     this.pinned = null; this.trim(this.written - 3 * this.rate);
   }
-  confirm(requiredStart?:number) {
+  confirm() {
     if (this.failed) throw new Error("Voice audio capture failed. Please retry.");
     if (this.confirmed) return;
     const oldest=this.blocks[0]?.start ?? this.written;
-    if(requiredStart!==undefined && (oldest>requiredStart || (this.pinned!==null && this.pinned!==requiredStart))){
-      this.clear();this.failed=true;throw new Error("Wake audio continuity is uncertain. Please repeat your request.");
-    }
     this.confirmed = true;
-    this.cursor = Math.max(oldest, this.pinned ?? requiredStart ?? this.written - 3 * this.rate);
+    this.cursor = Math.max(oldest, this.pinned ?? this.written - 3 * this.rate);
     this.trim(this.cursor);
   }
   read(count: number) {
@@ -88,8 +85,8 @@ export class CaptureProcessor {
   lastVoice = -Infinity;
   epoch = 0;
   ticks = 0;
-  private utteranceStart:number|null=null;
   private awaitOnset=false;
+  private discardUntilQuiet=false;
   private cueArmed=false;
   private cueEpoch=0;
   constructor(readonly rate: number, private publish: (message: Record<string, any>) => void) {
@@ -99,7 +96,7 @@ export class CaptureProcessor {
     if (message.type === "reset") {
       if (message.generation < this.generation) return;
       this.generation = message.generation;
-      this.queue.clear(); this.queue.failed = false; this.active = false;this.lastVoice=-Infinity;this.cueArmed=false;this.utteranceStart=null;this.awaitOnset=false;
+      this.queue.clear(); this.queue.failed = false; this.active = false;this.lastVoice=-Infinity;this.cueArmed=false;this.awaitOnset=false;this.discardUntilQuiet=false;
       return;
     }
     if (message.generation !== this.generation) return;
@@ -109,8 +106,23 @@ export class CaptureProcessor {
     }
     if(message.type==="cue_disarm")this.cueArmed=false;
     if (message.type === "confirm") {
-      try {this.queue.confirm(this.utteranceStart===null?undefined:Math.max(0,this.utteranceStart-Math.round(this.rate*.2)));}
-      catch {this.publish({type:"failure",generation:this.generation,reason:"continuity"});}
+      if (this.queue.failed) {
+        this.publish({type:"failure",generation:this.generation,reason:"overflow"});
+        return;
+      }
+      // The queue's pin is the single start boundary across pauses. A negative
+      // recognition result releases that candidate until a new onset arrives.
+      const fresh = this.awaitOnset && !this.queue.confirmed;
+      const retainedMs = Math.round(this.queue.retained * 1000 / this.rate);
+      if (fresh) {
+        this.queue.clear();
+        this.awaitOnset = false;
+        // Never send the tail of the discarded utterance as a fresh request.
+        this.discardUntilQuiet = this.active;
+      }
+      this.queue.confirm();
+      this.publish({type:"confirmed",generation:this.generation,mode:fresh?"fresh":"buffered",retainedMs});
+      return;
     }
     if (message.type === "ready") this.queue.startDelivery();
     if (message.type === "release" && !this.queue.confirmed) {this.queue.release();this.awaitOnset=true;}
@@ -123,16 +135,17 @@ export class CaptureProcessor {
     const active = voiced || this.queue.written - this.lastVoice < .2 * this.rate;
     if (active && !this.active) {
       this.epoch++;
-      if(!this.queue.confirmed){this.utteranceStart=this.queue.written;this.awaitOnset=false;}
+      if(!this.queue.confirmed)this.awaitOnset=false;
     }
     this.active = active;
+    if (!active) this.discardUntilQuiet = false;
     if(this.cueArmed && this.epoch>this.cueEpoch){
       // Hold new speech before its first output frame until stale greeting audio
       // drains. Input remains captured in this same ordered queue.
       this.cueArmed=false;this.queue.ready=false;this.status("cue_cancel");
     }
     try {
-      this.queue.push(input, active && !this.awaitOnset);
+      this.queue.push(this.discardUntilQuiet ? new Float32Array(input.length) : input, active && !this.awaitOnset);
       output.set(this.queue.read(output.length));
       if (++this.ticks % 16 === 0) this.status("activity",Math.min(1,rms*7));
     } catch {

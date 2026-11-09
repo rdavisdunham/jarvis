@@ -2,7 +2,7 @@ import { VoiceCapture } from "./voice-capture";
 import { WakeWord, recognitionType } from "./wake-word";
 import { VoiceTiming, voiceCount } from "./voice-timing";
 export type ForegroundVoiceState = "off"|"paused_hidden"|"needs_gesture"|"permission_blocked"|"listening_for_wake"|"connecting_voice"|"draining_startup_audio"|"active_voice"|"recovering";
-export type VoiceAttempt = {id:string; generation:number; wake:boolean; wakeOnly:boolean; detectedAt:number; epoch:number};
+export type VoiceAttempt = {id:string; generation:number; wake:boolean; wakeOnly:boolean; detectedAt:number; epoch:number; repeatRequest?:boolean};
 type Capture = Pick<VoiceCapture,"open"|"close"|"reset"|"confirm"|"pause"|"command"|"subscribe"|"latest"|"stream"|"microphone">;
 type Dependencies = {
   start:(capture:VoiceCapture, attempt:VoiceAttempt)=>Promise<void>;
@@ -135,20 +135,31 @@ export class VoiceCoordinator {
     this.schedule(()=>this.listen(generation),delay);
   }
   private schedule(action:()=>void, delay:number) { if(this.timer)clearTimeout(this.timer);this.timer=setTimeout(action,delay); }
-  private activate(request:string,generation:number) {
+  private async activate(request:string,generation:number) {
     if (generation!==this.generation || this.activeAttempt || !this.capture || !this.desired || !this.visible() || this.disposed) {voiceCount("deduplication");return;}
     this.listenGeneration++;this.detector?.stop();this.detector=null;this.unsubscribe?.();this.unsubscribe=null;
-    this.capture.confirm();
-    const attempt:VoiceAttempt={id:crypto.randomUUID(),generation,wake:true,wakeOnly:request==="",detectedAt:performance.now(),epoch:this.capture.latest?.epoch??0};
+    this.clearTimers();
+    const capture=this.capture;
+    const attempt:VoiceAttempt={id:crypto.randomUUID(),generation,wake:true,wakeOnly:request==="",detectedAt:performance.now(),epoch:capture.latest?.epoch??0};
     this.activeAttempt=attempt;
     voiceCount("detection");new VoiceTiming(attempt.id,attempt.detectedAt).mark("detected");
     this.publish("connecting_voice","Connecting voice; keeping your first request…");
     this.deadline=setTimeout(()=> { if(this.activeAttempt===attempt && this.state!=="active_voice")this.fail("Voice startup timed out. Please retry your request; check Activity for accepted work."); },30000);
-    void this.deps.start(this.capture as VoiceCapture,attempt).catch(error=> { if(this.activeAttempt===attempt)this.fail((error as Error).message); });
+    try {
+      const confirmation=await capture.confirm();
+      if(this.activeAttempt!==attempt)return;
+      new VoiceTiming(attempt.id,attempt.detectedAt).mark("confirmation");
+      if(confirmation==="fresh") {
+        attempt.repeatRequest=true;
+        attempt.wakeOnly=false;
+        this.publish("connecting_voice","Connecting Dani; please repeat your request when voice is ready.");
+      }
+      await this.deps.start(capture as VoiceCapture,attempt);
+    } catch(error) { if(this.activeAttempt===attempt)this.fail((error as Error).message); }
   }
   draining(active:boolean) {
     if(!this.activeAttempt)return;
-    this.publish(active?"draining_startup_audio":"active_voice",active?"Finishing startup audio…":"Voice active.");
+    this.publish(active?"draining_startup_audio":"active_voice",active?"Finishing startup audio…":this.activeAttempt.repeatRequest?"Dani is listening—please repeat your request.":"Voice active.");
     if(!active && this.deadline) { clearTimeout(this.deadline);this.deadline=null; }
   }
   async manual() {
@@ -167,11 +178,14 @@ export class VoiceCoordinator {
         await capture.open();
         if(this.disposed || generation!==this.generation){capture.close();return;}
       }else this.capture.reset();
-      this.capture.confirm();
+      const capture=this.capture;
       const attempt:VoiceAttempt={id:crypto.randomUUID(),generation,wake:false,wakeOnly:false,detectedAt:performance.now(),epoch:this.capture.latest?.epoch??0};
       this.activeAttempt=attempt;
       this.deadline=setTimeout(()=>{if(this.activeAttempt===attempt && this.state!=="active_voice")this.fail("Voice startup timed out. Please retry; check Activity for accepted work.");},30000);
-      await this.deps.start(this.capture as VoiceCapture,attempt);
+      await capture.confirm();
+      if(this.activeAttempt!==attempt)return;
+      new VoiceTiming(attempt.id,attempt.detectedAt).mark("confirmation");
+      await this.deps.start(capture as VoiceCapture,attempt);
     }catch(error){if(generation===this.generation)this.fail((error as Error).message);}
     finally{if(generation===this.generation)this.manualPending=false;}
   }
