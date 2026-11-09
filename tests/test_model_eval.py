@@ -57,7 +57,7 @@ def test_validator_rejects_a_stub_that_production_would_not_parse(tmp_path):
     bad.write_text(json.dumps(data))
     with pytest.raises(ValueError, match="login-fix-with-pr"):
         case_schema.validate_file(bad)
-    data["cases"][0]["stub"] = {"summary": "ok"}
+    data["cases"][0]["stub"] = {"summary": "ok", "recall": ""}
     data["cases"][0]["expect"] = {"max_chars": 300, "must_mention": "login"}  # Groups are lists of terms.
     bad.write_text(json.dumps(data))
     with pytest.raises(ValueError):
@@ -284,8 +284,8 @@ def test_each_jobs_production_call_records_under_its_mapped_feature(monkeypatch)
         return {"choices": [{"message": {"content": json.dumps(stub)}}], "usage": {}}
 
     monkeypatch.setattr(memory_learning, "extraction_request", fake)
-    stub = {"summary": "Fixed it."}
-    assert agent_sessions.summarize_text("owner", {"title": "x"}) == "Fixed it."
+    stub = {"summary": "Fixed it.", "recall": ""}
+    assert agent_sessions.summarize_text("owner", {"title": "x"}).summary == "Fixed it."
     assert seen["feature"] == model_map.JOBS["session_summary"].cost_feature
     stub = json.loads((case_schema.ROOT / "evals/agent_control/cases.json").read_text())["cases"][0]["stub"]
     agent_judge.ask("owner", {"plan": {}})

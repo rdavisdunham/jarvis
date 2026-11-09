@@ -400,3 +400,48 @@ def test_in_review_migration_adds_status_to_work_types_and_downgrades(test_datab
         with admin.connect() as c:
             c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+def test_session_recall_migration_archives_chats_from_outside_remotea(test_database):
+    name = 'jarvis_recall_' + uuid4().hex
+    supplied = make_url(test_database)
+    admin = create_engine(supplied.set(database='postgres'), isolation_level='AUTOCOMMIT')
+    target = supplied.set(database=name)
+    trial = None
+    with admin.connect() as c:
+        c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env = {**os.environ, 'JARVIS_DATABASE_URL': target.render_as_string(hide_password=False), 'JARVIS_ENV_FILE': ''}
+        def migrate(*args):
+            result = subprocess.run([sys.executable, '-m', 'alembic', *args], cwd=ROOT, env=env, capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+        migrate('upgrade', 'head')
+        trial = create_engine(target)
+        from jarvis.session_models import AgentSession
+        rows = {
+            'laptop-chat': {},
+            'hidden-by-hand': {'archived': True},
+            'remotea-tab': {'surf': 'surf-1'},
+            'remotea-state': {'state': 'idle'},
+            'collector-live': {'resume': {'live': {'state': 'live', 'workspace': 'Inbox', 'terminal': 't', 'host': 'pc'}}},
+            'collector-closed': {'resume': {'cmd': "remotea open --group Inbox --cwd /x -- claude --resume abc"}},
+            'plain-resume': {'resume': {'cmd': 'claude --resume abc'}},
+        }
+        with Session(trial) as db:
+            for sid, values in rows.items():
+                db.add(AgentSession(owner_id='release-owner', tool='claude_code', session_id=sid, **values))
+            db.commit()
+        migrate('downgrade', '0060_turn_search')
+        assert 'recall' not in {c['name'] for c in inspect(trial).get_columns('agent_sessions')}
+        migrate('upgrade', 'head')
+        migrate('check')
+        with Session(trial) as db:
+            archived = {r.session_id for r in db.scalars(select(AgentSession).where(AgentSession.archived.is_(True)))}
+            assert archived == {'laptop-chat', 'hidden-by-hand', 'plain-resume'}
+            assert all(r.recall == '' for r in db.scalars(select(AgentSession)))
+    finally:
+        if trial:
+            trial.dispose()
+        with admin.connect() as c:
+            c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()

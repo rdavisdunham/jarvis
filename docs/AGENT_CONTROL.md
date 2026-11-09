@@ -2267,19 +2267,19 @@ the same rows, so after either redaction they show the marker and never the text
 
 | Where | Content | Kept |
 |---|---|---|
-| `agent_turns` `text`, `prompt` | the agent's final responses and the typed prompts (bounded bytes) | a run's (and the unattributed turns of the session it owns): deleted at the window; a session no run owns: 30 days |
+| `agent_turns` `text`, `prompt` | the agent's final responses and the typed prompts (bounded bytes) | a run's (and the unattributed turns of the session it owns): deleted at the window; a session no run owns: also at the window (it was 30 days until 2026-11-09), by which time the session's `recall` holds what was discussed |
 | `agent_commands` `payload`, `outcome` | spawn prompt and run token (`[redacted]` once acked), input `text`, outcome details | payload emptied 7 days after the command settles; the row is deleted at the window |
 | `agent_run_plans` `prd_text`, `proposals` | the frozen PRD, the agent's proposals | marker / null at the window; title, steps, criteria, verify, policy kept with the run |
 | `agent_runs` `history[]` | `sent` (≤ 2,000 chars of each message to the agent), transition and outcome `detail` (≤ 300 chars) | bounded to 200 entries; `text`/`detail` become the marker at the window, the rest stays |
 | `agent_runs` other columns | state, reason codes, branch, worktree path, base facts, Linear outcome codes (`sync_state`) | kept with the run (no free agent text) |
 | `agent_attempts` `result` | verify tail (≤ 8,000) and error, the judge's gap, summary and per-criterion evidence | deleted at the window; the redact route keeps the row and scrubs the text |
-| `agent_questions` `items`, `answers`, `detail` | the agent's questions, choices and the answers | a run's: deleted at the window; a session no run owns: 30 days once no longer open |
+| `agent_questions` `items`, `answers`, `detail` | the agent's questions, choices and the answers | a run's: deleted at the window; a session no run owns: at the window once no longer open |
 | `agent_interviews` `questions`, `answers` | the interview form and answers | deleted at the window |
 | `agent_plan_reviews` `findings`, `questions`, `summary`, `resolutions` | hyperplan review rounds: the reviewer's findings and summary (or its turn text), the planner's answers; `token_hash`/`token_salt` of the reviewer token | deleted at the window and by the redact route; exported without the token columns |
 | `agent_pending_controls` `summary`, `arguments` | Dani's proposed start or message | marker at the window; the row is deleted 30 days after it expires (10-minute expiry) |
 | `agent_action_receipts` `result` | a whole run response (history included) | 7 days; deleted at the window and by the redact route |
 | `notifications` `body` (`target.run_id`) | task title plus a question's text or a reason | marker at the window; the row follows the notification lifecycle |
-| `agent_sessions` title, prompts, excerpt, `summary` | the collector's session ledger (redacted on ingestion) | kept: it is the collector's record of a session on your machine, re-reported by the collector; not run content this module owns |
+| `agent_sessions` title, prompts, excerpt, `summary`, `recall` | the collector's session ledger (redacted on ingestion); `recall` is the summary job's record of what was discussed, written from the turns | kept: it is the collector's record of a session on your machine, re-reported by the collector; not run content this module owns. `recall` outlives the turns on purpose, so old remotea conversations stay findable |
 | `agent_session_rules`, `agent_hosts`, `execution_targets`, `autolink_rejections`, `migration_counters`, `migration_reservations` | configuration: folder rules, host caps and worktree reports, repo paths and verify commands, numbers | kept until changed or removed; no run text |
 | `agent_swarms` `tasks`, `planner`, `batches` | a swarm plan: task titles, the planner's one-line reasons and predicted areas, run ids, start refusals | kept, finished and canceled plans too (no agent output: titles and the planner's text only); exported |
 | `agent_parity`, `agent_parity_days`, `agent_ingest_days` | collector-vs-link diffs, daily counts | 30 days |

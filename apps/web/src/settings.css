@@ -1552,6 +1552,19 @@
   background: var(--violet-soft);
   color: var(--ink);
 }
+.session-recall {
+  margin: 4px 0;
+  font-size: 13px;
+}
+.session-recall summary {
+  cursor: pointer;
+  color: var(--ink-2);
+}
+.session-recall p {
+  margin: 4px 0 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
 .session-filed {
   display: flex;
   flex-wrap: wrap;

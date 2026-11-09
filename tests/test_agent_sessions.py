@@ -257,7 +257,8 @@ def test_mcp_tools_link_before_the_collector_reports(client):
 
 def test_settled_sessions_get_one_summary_and_semantic_search(client, monkeypatch):
     calls = []
-    monkeypatch.setattr(sessions, "summarize_text", lambda owner, source: calls.append(source) or "Fixed the flaky login test.")
+    monkeypatch.setattr(sessions, "summarize_text", lambda owner, source: calls.append(source) or sessions.Summary(
+        summary="Fixed the flaky login test.", recall=""))
     monkeypatch.setattr(sessions, "embed", lambda owner, text: [1.0] + [0.0] * 511)
     monkeypatch.setattr(sessions, "query_vector", lambda owner, query: [1.0] + [0.0] * 511)
     _, headers = key(client, ["sessions:write", "sessions:read"])
@@ -348,3 +349,58 @@ def test_the_ledger_lists_remotea_sessions_and_searches_what_was_said(client):
     assert {i["session_id"] for i in both} == {"in-remotea", "elsewhere"}
     titled = client.get("/api/v1/sessions", params={"query": "speed"}).json()["items"]
     assert titled[0]["session_id"] == "in-remotea" and titled[0]["match"] is None
+
+
+def test_collector_reported_remotea_sessions_count_as_remotea(client):
+    _, headers = key(client, ["sessions:write"])
+    live = {"state": "live", "workspace": "Acme", "terminal": "surf-1", "host": "DavisPC"}
+    report(headers, "live-tab", resume={"hint": "Live in remotea → Acme", "live": live})
+    report(headers, "closed-tab", resume={"cmd": "remotea open --group Acme --cwd /x -- claude --resume closed-tab"})
+    report(headers, "laptop", resume={"cmd": "claude --resume laptop"})
+    listed = {i["session_id"] for i in client.get("/api/v1/sessions", params={"remotea": "true"}).json()["items"]}
+    assert listed == {"live-tab", "closed-tab"}
+
+
+def test_the_summary_job_writes_recall_from_the_conversation_and_carries_it_forward(client, monkeypatch):
+    calls = []
+    answers = iter([
+        sessions.Summary(summary="Sped up the dashboard.", recall="Dashboard slow: full scan; added index on owner_id."),
+        sessions.Summary(summary="Moved the cache.", recall=""),  # Nothing new: the earlier recall stays.
+    ])
+    monkeypatch.setattr(sessions, "summarize_text", lambda owner, source: calls.append(source) or next(answers))
+    monkeypatch.setattr(sessions, "embed", lambda owner, text: calls.append({"embedded": text}) or [1.0] + [0.0] * 511)
+    _, headers = key(client, ["sessions:write"])
+    settled = (now() - timedelta(minutes=30)).isoformat()
+    report(headers, "tab", last_active_at=settled, resume={"cmd": "remotea open --group A --cwd /x -- claude --resume tab"})
+    said("tab", ("why is the dashboard slow?", "It scans every row; I added an index on owner_id."))
+
+    def run_job():
+        with session_scope() as db:
+            job = db.scalar(select(Job).where(Job.kind == "summarize_session", Job.status == "queued"))
+        sessions.summarize(job.id)
+
+    run_job()
+    assert "You: why is the dashboard slow?\nAgent: It scans every row" in calls[0]["conversation"]
+    assert "earlier_recall" not in calls[0]
+    assert "added index on owner_id" in calls[1]["embedded"]
+    with session_scope() as db:
+        row = db.scalar(select(AgentSession).where(AgentSession.session_id == "tab"))
+        assert row.recall.startswith("Dashboard slow")
+    report(headers, "tab", last_active_at=settled, turn_count=2,
+           resume={"cmd": "remotea open --group A --cwd /x -- claude --resume tab"})
+    run_job()
+    assert calls[2]["earlier_recall"].startswith("Dashboard slow")
+    item = client.get("/api/v1/sessions", params={"remotea": "true", "query": "index owner_id"}).json()["items"][0]
+    assert item["summary"] == "Moved the cache." and item["recall"].startswith("Dashboard slow")
+
+
+def test_the_conversation_sent_for_recall_is_bounded_and_keeps_the_newest_turns(client):
+    _, headers = key(client, ["sessions:write"])
+    report(headers, "long")
+    said("long", *[(f"question {i}", "x" * 5000) for i in range(20)])
+    with session_scope() as db:
+        row = db.scalar(select(AgentSession).where(AgentSession.session_id == "long"))
+        text = sessions.conversation(db, row)
+    assert len(text) <= sessions.CONVERSATION_CHARS + 100
+    assert "question 19" in text and "question 0\n" not in text
+    assert "x" * (sessions.REPLY_CHARS + 1) not in text

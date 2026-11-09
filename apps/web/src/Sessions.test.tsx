@@ -75,4 +75,9 @@ describe("what was said", () => {
     expect(html).toContain('class="session-match"'); expect(html).toContain("<mark>cache</mark> to Redis");
     expect(render(base)).not.toContain("session-match");
   });
+  it("keeps what was discussed in a fold", () => {
+    const html = render({ ...base, recall: "Moved the session cache to Redis; added an index on owner_id." });
+    expect(html).toContain("<summary>What was discussed</summary>"); expect(html).toContain("cache to Redis");
+    expect(render(base)).not.toContain("What was discussed");
+  });
 });

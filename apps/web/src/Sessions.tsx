@@ -7,6 +7,8 @@ import { liveChip, type LiveState } from "./remotea-model";
 
 export type AgentSession = {
   id: string; tool: string; tool_label: string; session_id: string; title: string; summary: string;
+  /** What was discussed, written from the remotea conversation; kept after the turns themselves are deleted. */
+  recall?: string;
   first_prompt: string; last_prompt: string; machine: string; environment: string; cwd: string; repo: string; branch: string;
   turn_count: number; started_at: string | null; last_active_at: string | null; pr_urls: string[];
   issue_refs: { identifier: string; task_id: string; url: string | null }[];
@@ -82,6 +84,7 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
     {(item.summary || item.first_prompt) && <p className="work-result">{item.summary || item.first_prompt}</p>}
     {item.match?.snippet && <p className="session-match"><small>Said {since(item.match.at)}</small>
       {snippetParts(item.match.snippet).map((p, i) => <Fragment key={i}>{p.hit ? <mark>{p.text}</mark> : p.text}</Fragment>)}</p>}
+    {item.recall && <details className="session-recall"><summary>What was discussed</summary><p>{item.recall}</p></details>}
     <p className="session-place" title={item.cwd}>{place}{item.environment && <small> · {item.environment}</small>}{item.turn_count > 0 && <small> · {item.turn_count} {item.turn_count === 1 ? "prompt" : "prompts"}</small>}</p>
     <div className="session-filed">
       {hosted && item.live_state && <span className={"chip " + (hosted.tone === "live" ? "chip-done" : hosted.tone === "restoring" ? "chip-due-today" : "")}

@@ -28,6 +28,9 @@ class AgentSession(Base):
     last_prompt: Mapped[str] = mapped_column(Text, default="")
     excerpt: Mapped[str] = mapped_column(Text, default="")
     summary: Mapped[str] = mapped_column(Text, default="")
+    # A longer record of what was discussed, written from the conversation (remotea turns) by the summary job and
+    # carried forward on each re-summary, so the session stays findable after its turns are deleted.
+    recall: Mapped[str] = mapped_column(Text, default="", server_default="")
     pr_urls: Mapped[list] = mapped_column(JSONB, default=list)
     issue_refs: Mapped[list] = mapped_column(JSONB, default=list)
     resume: Mapped[dict] = mapped_column(JSONB, default=dict)

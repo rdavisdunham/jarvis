@@ -683,8 +683,8 @@ def test_retention_drops_old_unbound_turns_settled_runs_children_and_payloads(ho
         db.add(loose)
         db.flush()
         loose_pk = loose.id
-    turns_for(host, loose_pk, 2, age=timedelta(days=31))
-    turns_for(host, loose_pk, 1, age=timedelta(days=1))  # Recent: kept.
+    turns_for(host, loose_pk, 2, age=timedelta(days=91))
+    turns_for(host, loose_pk, 1, age=timedelta(days=31))  # Inside the 90-day window: kept (it was 30 days).
     old_run = start(host, task("Old run")["id"])["id"]
     settled_run = start(host, task("Recently settled run")["id"])["id"]
     live_run = start(host, task("Live run")["id"])["id"]
