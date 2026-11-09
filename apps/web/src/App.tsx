@@ -3372,7 +3372,7 @@ export default function App() {
                   voiceState.idle_seconds !== undefined &&
                   voiceState.idle_seconds <= 5
                     ? "Voice ends in " + voiceState.idle_seconds + "s"
-                    : voiceLabel(voiceState.state)}
+                    : voiceState.notice || voiceLabel(voiceState.state)}
                 </span>
                 <button
                   className="icon-button"
@@ -3548,7 +3548,7 @@ export default function App() {
             voiceState.idle_seconds !== undefined &&
             voiceState.idle_seconds <= 5
               ? "Listening, " + voiceState.idle_seconds + "s left"
-              : voiceLabel(voiceState.state)}
+              : voiceState.notice || voiceLabel(voiceState.state)}
           </button>
           {voiceState.needs_audio && <button type="button" onClick={()=>void voice.current?.resumeAudio()}>Enable audio</button>}
           <button

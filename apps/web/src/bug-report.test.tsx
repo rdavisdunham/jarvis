@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./api";
 import { collectContext, installDiagnostics, LIMITS, recordNavigation, redactPath, redactUrl, Ring, rings, safeStorage } from "./bug-report";
+import { voiceCaptureFailure } from "./voice-timing";
 import { BugReportButton, isReportShortcut } from "./BugReport";
 import { dataUrlBytes } from "./bug-report-capture";
 import appSource from "./App.tsx?raw";
@@ -102,12 +103,14 @@ describe("the context", () => {
   it("names the page, build and device and carries the buffers", async () => {
     history.replaceState(null, "", "/?view=remotea&run=r-1&code=oauth-secret");
     rings.console.push({ level: "error", message: "x", at: "t" });
+    voiceCaptureFailure("continuity", 3, 1250);
     const ctx = await collectContext({ view: "remotea", runId: "r-1", taskId: "t-1" });
     expect(ctx.page).toMatchObject({ view: "remotea", run_id: "r-1", task_id: "t-1", params: { view: "remotea", run: "r-1", code: "…" } });
     expect(ctx.page.url).toContain("?view=remotea&run=r-1&code=…");
     expect(ctx.build.version).toBeTruthy();
     expect(ctx.device).toMatchObject({ online: true, time_zone: expect.any(String), viewport: expect.stringMatching(/^\d+x\d+$/) });
     expect(ctx.errors).toHaveLength(1);
+    expect(ctx.voice.failures.at(-1)).toEqual({ reason: "continuity", generation: 3, retained_ms: 1250 });
     expect(JSON.stringify(ctx)).not.toContain("oauth-secret");
     history.replaceState(null, "", "/");
   });

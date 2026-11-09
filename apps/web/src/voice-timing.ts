@@ -1,7 +1,13 @@
 // Bounded, content-free client diagnostics. No speech, samples, names or prompts.
-export type VoiceStage = "detected"|"capture"|"preparation"|"sdp"|"create_request"|"create_response"|"data_channel"|"session_started"|"first_frame"|"drained"|"first_audible";
+export type VoiceStage = "detected"|"confirmation"|"capture"|"preparation"|"sdp"|"create_request"|"create_response"|"data_channel"|"session_started"|"first_frame"|"drained"|"first_audible";
 const traces: {attempt:string; stage:VoiceStage; elapsed_ms:number}[] = [];
 const counters:Record<string,number> = {};
+export type VoiceCaptureFailure = "continuity"|"overflow"|"processor"|"confirmation_timeout";
+const failures: {reason:VoiceCaptureFailure; generation:number; retained_ms?:number}[] = [];
+export function voiceCaptureFailure(reason: VoiceCaptureFailure, generation: number, retained_ms?: number) {
+  failures.push({ reason, generation, retained_ms });
+  if (failures.length > 32) failures.shift();
+}
 export function voiceCount(event:"detection"|"deduplication"|"recovery"|"overflow"|"stale_ending") { counters[event]=(counters[event]??0)+1; }
 export class VoiceTiming {
   private seen = new Set<VoiceStage>();
@@ -12,4 +18,4 @@ export class VoiceTiming {
     if(traces.length>256)traces.shift();
   }
 }
-export const voiceDiagnostics=()=>({traces:traces.map(x=>({...x})),counters:{...counters}});
+export const voiceDiagnostics=()=>({traces:traces.map(x=>({...x})),counters:{...counters},failures:failures.map(x=>({...x}))});

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { VoiceCoordinator } from "./voice-coordinator";
-import type { CaptureActivity } from "./voice-capture";
+import type { CaptureActivity, CaptureConfirmation } from "./voice-capture";
 class CaptureFake {
   latest:CaptureActivity|null=null;stream=null;microphone=null;
-  open=vi.fn(async()=>{});close=vi.fn();reset=vi.fn();confirm=vi.fn();pause=vi.fn();command=vi.fn();
+  open=vi.fn(async()=>{});close=vi.fn();reset=vi.fn();confirm=vi.fn(async():Promise<CaptureConfirmation>=>"buffered");pause=vi.fn();command=vi.fn();
   listeners=new Set<(a:CaptureActivity)=>void>();
   subscribe=(fn:(a:CaptureActivity)=>void)=>{this.listeners.add(fn);return ()=>this.listeners.delete(fn);};
   flow(){this.latest={type:"activity",generation:0,active:false,epoch:0,captured:128,delivered:0,sent:0,backlog:0,startupDrained:false,level:0};for(const l of this.listeners)l(this.latest);}
@@ -22,7 +22,7 @@ test("no provider before confirmed wake; runtime readiness needs capture AND rec
  const h=harness();await h.coordinator.enable(true,true);
  expect(h.coordinator.desired).toBe(true);expect(h.start).not.toHaveBeenCalled();
  h.options.started();expect(h.coordinator.state).toBe("recovering");h.capture.flow();expect(h.coordinator.state).toBe("listening_for_wake");
- h.wake("add milk");h.wake("add milk");expect(h.start).toHaveBeenCalledOnce();expect(h.capture.confirm).toHaveBeenCalledOnce();
+ h.wake("add milk");h.wake("add milk");await vi.advanceTimersByTimeAsync(0);expect(h.start).toHaveBeenCalledOnce();expect(h.capture.confirm).toHaveBeenCalledOnce();
  expect(h.start.mock.calls[0]).toHaveLength(2);h.coordinator.dispose();
 });
 test("preference survives failures/reload, stays account isolated, and off releases capture",async()=>{
@@ -43,7 +43,7 @@ test("old recognition/capture promises cannot create sessions after account disp
 });
 test("ten wake/end cycles own one session at a time and no paid standby",async()=>{
  const h=harness();await h.coordinator.enable(true,true);
- for(let i=0;i<10;i++){h.options.started();h.capture.flow();h.wake("add milk");h.coordinator.draining(false);await h.coordinator.ended();}
+ for(let i=0;i<10;i++){h.options.started();h.capture.flow();h.wake("add milk");await vi.advanceTimersByTimeAsync(0);h.coordinator.draining(false);await h.coordinator.ended();}
  expect(h.start).toHaveBeenCalledTimes(10);expect(h.capture.confirm).toHaveBeenCalledTimes(10);expect(h.capture.reset).toHaveBeenCalledTimes(10);
  expect(h.coordinator.state).toBe("recovering"); // readiness isn't published until actual capture and recognition restart
  h.options.started();h.capture.flow();expect(h.coordinator.state).toBe("listening_for_wake");h.coordinator.dispose();
@@ -58,7 +58,7 @@ test("manual voice reuses prepared foreground capture and disabled wake stays of
 });
 test("wake-off while startup is pending cancels it; deadline never retries uncertain audio",async()=>{
  const h=harness();await h.coordinator.enable(true,true);h.wake("add milk");await h.coordinator.enable(false);
- expect(h.cancel).toHaveBeenCalled();expect(h.capture.close).toHaveBeenCalled();await vi.advanceTimersByTimeAsync(60000);expect(h.start).toHaveBeenCalledOnce();
+ expect(h.cancel).toHaveBeenCalled();expect(h.capture.close).toHaveBeenCalled();await vi.advanceTimersByTimeAsync(60000);expect(h.start).not.toHaveBeenCalled();
  h.coordinator.dispose();
  const next=harness();await next.coordinator.enable(true,true);next.wake("add milk");await vi.advanceTimersByTimeAsync(30000);
  expect(next.coordinator.state).toBe("needs_gesture");expect(next.start).toHaveBeenCalledOnce();expect(next.cancel).toHaveBeenCalled();next.coordinator.dispose();
@@ -93,4 +93,44 @@ test("rapid off/on abandons an unresolved capture without blocking the next gene
  const captures=[first,second];const c=new VoiceCoordinator("a","d",{capture:()=>captures.shift()!,detector:()=>({start(){},stop(){}}),start:async()=>{},cancel:async()=>{},status:vi.fn(),visible:()=>true,storage:{getItem:()=>null,setItem(){}}});
  const pending=c.enable(true,true);await c.enable(false);await c.enable(true,true);
  expect(second.open).toHaveBeenCalledOnce();resolve();await pending;expect(second.close).not.toHaveBeenCalled();await c.dispose();
+});
+
+test("wake waits for capture acknowledgement and opens fresh voice with a repeat notice",async()=>{
+ const h=harness();let confirm!:(result:CaptureConfirmation)=>void;
+ h.capture.confirm.mockImplementation(()=>new Promise(resolve=>{confirm=resolve;}));
+ await h.coordinator.enable(true,true);
+ h.wake("add a task");h.wake("add a task");
+ expect(h.start).not.toHaveBeenCalled();
+ expect(h.capture.confirm).toHaveBeenCalledOnce();
+ confirm("fresh");await vi.advanceTimersByTimeAsync(0);
+ expect(h.start).toHaveBeenCalledOnce();
+ expect(h.start).toHaveBeenCalledWith(h.capture,expect.objectContaining({repeatRequest:true,wakeOnly:false}));
+ h.coordinator.draining(false);
+ expect(h.coordinator.state).toBe("active_voice");
+ expect(h.status).toHaveBeenLastCalledWith("active_voice","Dani is listening—please repeat your request.",true);
+ expect(h.capture.close).not.toHaveBeenCalled();
+ h.coordinator.dispose();
+});
+
+test.each(["disable","hide","dispose","cancel"])("%s during capture confirmation cannot start stale voice",async action=>{
+ const h=harness();let confirm!:(result:CaptureConfirmation)=>void;
+ h.capture.confirm.mockImplementation(()=>new Promise(resolve=>{confirm=resolve;}));
+ await h.coordinator.enable(true,true);h.wake();
+ if(action==="disable")await h.coordinator.enable(false);
+ if(action==="hide")h.hide();
+ if(action==="dispose")await h.coordinator.dispose();
+ if(action==="cancel")await h.coordinator.cancelStartup();
+ confirm("buffered");await vi.advanceTimersByTimeAsync(0);
+ expect(h.start).not.toHaveBeenCalled();
+ h.coordinator.dispose();
+});
+
+test("capture acknowledgement rejection ends startup without opening a provider session",async()=>{
+ const h=harness();
+ h.capture.confirm.mockRejectedValue(new Error("Microphone audio confirmation timed out. Please retry voice."));
+ await h.coordinator.enable(true,true);h.wake();await vi.advanceTimersByTimeAsync(0);
+ expect(h.start).not.toHaveBeenCalled();
+ expect(h.coordinator.state).toBe("needs_gesture");
+ expect(h.capture.close).toHaveBeenCalled();
+ h.coordinator.dispose();
 });

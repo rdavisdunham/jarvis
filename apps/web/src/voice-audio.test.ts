@@ -139,14 +139,73 @@ test("startup cue barge-in holds the very first voiced frame until stale output 
  expect(p.queue.read(100)).toEqual(request);
 });
 
-test("late negative recognition cannot silently clip a pinned wake utterance",()=>{
+test("late negative recognition switches to fresh audio and discards the old utterance's tail",()=>{
  const messages:Record<string,any>[]=[];const p=new CaptureProcessor(1000,m=>messages.push(m));
  for(let i=0;i<50;i++)p.process(new Float32Array(100).fill(.2),new Float32Array(100));
  p.command({type:"release",generation:0});
  p.process(new Float32Array(100).fill(.2),new Float32Array(100));
  p.command({type:"confirm",generation:0});p.command({type:"ready",generation:0});
- expect(messages.some(m=>m.type==="failure" && m.reason==="continuity")).toBe(true);
+ expect(messages).toContainEqual(expect.objectContaining({type:"confirmed",mode:"fresh"}));
+ expect(messages.some(m=>m.type==="failure")).toBe(false);
  expect(p.queue.read(100)).toEqual(new Float32Array(100));
+ const output=new Float32Array(100);
+ p.process(new Float32Array(100).fill(.3),output);
+ expect(output.every(sample=>sample===0)).toBe(true);
+ for(let i=0;i<4;i++)p.process(new Float32Array(100),output);
+ const repeated=new Float32Array(100).fill(.4);
+ p.process(repeated,output);
+ expect(output).toEqual(repeated);
+});
+
+test.each([1000,44100,48000])("pauses preserve one candidate boundary at %s Hz with real-sized frames",rate=>{
+ const messages:Record<string,any>[]=[];
+ const p=new CaptureProcessor(rate,message=>messages.push(message));
+ const output=new Float32Array(128),expected:number[]=[];
+ const capture=(seconds:number,value:number)=>{
+   for(let i=0;i<Math.ceil(seconds*rate/128);i++){
+     const input=new Float32Array(128).fill(value);
+     p.process(input,output);
+     if(value)expected.push(...input);
+     expect(output.every(sample=>sample===0)).toBe(true);
+   }
+ };
+ capture(4,0);
+ capture(.35,.2);
+ const start=p.queue.pinned;
+ capture(.35,0);
+ capture(.35,.3);
+ expect(p.queue.pinned).toBe(start);
+ p.command({type:"confirm",generation:0});
+ expect(messages).toContainEqual(expect.objectContaining({type:"confirmed",mode:"buffered"}));
+ expect(messages.some(message=>message.type==="failure")).toBe(false);
+ p.command({type:"ready",generation:0});
+ const heard=p.queue.read(p.queue.backlog);
+ expect(Array.from(heard).filter(sample=>sample!==0)).toEqual(expected);
+});
+
+test("negative recognition excludes earlier audio while a new multi-part wake stays intact",()=>{
+ const messages:Record<string,any>[]=[];
+ const p=new CaptureProcessor(1000,message=>messages.push(message));
+ const output=new Float32Array(100);
+ const capture=(count:number,value:number)=>{
+   for(let i=0;i<count;i++)p.process(new Float32Array(100).fill(value),output);
+ };
+ capture(5,.1);capture(4,0);
+ p.command({type:"release",generation:0});
+ capture(35,0);capture(4,.3);capture(4,0);capture(4,.4);
+ p.command({type:"confirm",generation:0});p.command({type:"ready",generation:0});
+ expect(messages).toContainEqual(expect.objectContaining({type:"confirmed",mode:"buffered"}));
+ expect(Array.from(p.queue.read(p.queue.backlog)).filter(sample=>sample!==0))
+   .toEqual([...Array(400).fill(Math.fround(.3)),...Array(400).fill(Math.fround(.4))]);
+});
+
+test("confirmation of an overflowing buffer fails and never reports fresh recovery",()=>{
+ const messages:Record<string,any>[]=[];
+ const p=new CaptureProcessor(10,message=>messages.push(message));
+ p.process(new Float32Array(601).fill(.2),new Float32Array(601));
+ p.command({type:"confirm",generation:0});
+ expect(messages).toContainEqual(expect.objectContaining({type:"failure",reason:"overflow"}));
+ expect(messages.some(message=>message.type==="confirmed")).toBe(false);
 });
 test("negative recognition followed by a new utterance resets the pin at its actual onset",()=>{
  const p=new CaptureProcessor(1000,()=>{});

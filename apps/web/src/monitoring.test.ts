@@ -2,13 +2,29 @@
 import { afterEach, expect, it, vi } from "vitest";
 import type { ErrorEvent } from "@sentry/react";
 import { captureError, resetMonitoring, scrubBreadcrumb, scrubEvent, startMonitoring } from "./monitoring";
+const sentry = vi.hoisted(() => ({ init: vi.fn(), captureException: vi.fn() }));
+vi.mock("@sentry/react", () => sentry);
 
-afterEach(() => { resetMonitoring(); vi.restoreAllMocks(); });
+afterEach(() => { resetMonitoring(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 it("stays off without a DSN and never loads the SDK", async () => {
   expect(await startMonitoring("")).toBe(false);
   expect(await startMonitoring(null)).toBe(false);
   expect(() => captureError(new Error("x"))).not.toThrow();
+  expect(sentry.init).not.toHaveBeenCalled();
+  expect(sentry.captureException).not.toHaveBeenCalled();
+});
+
+it("reports handled capture errors through the configured browser DSN", async () => {
+  expect(await startMonitoring("https://public@example.invalid/1")).toBe(true);
+  const error = new Error("Voice capture continuity");
+  captureError(error, { boundary: "voice_capture" });
+  expect(sentry.init).toHaveBeenCalledWith(expect.objectContaining({
+    dsn: "https://public@example.invalid/1", beforeSend: scrubEvent, beforeBreadcrumb: scrubBreadcrumb,
+  }));
+  expect(sentry.captureException).toHaveBeenCalledWith(error, {
+    tags: { boundary: "voice_capture" }, contexts: undefined,
+  });
 });
 
 it("drops cookies, headers, bodies, query values and console text", () => {

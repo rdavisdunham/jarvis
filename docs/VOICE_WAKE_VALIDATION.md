@@ -9,6 +9,33 @@ standalone wake phrases, immediate requests and retired-name negatives.
 
 # Foreground voice and wake validation
 
+## Wake handoff recovery — November 9, 2026
+
+The capture queue owns the candidate speech-start boundary. Pauses within a
+candidate keep that boundary; a negative recognition result releases it, and a new
+speech onset starts the next candidate. Wake and manual startup wait for an
+explicit worklet confirmation before creating a provider session.
+
+If recognition releases a candidate and then delivers a late wake result before
+a new onset, capture discards the uncertain buffer and confirms fresh-audio mode.
+Any remaining speech from the discarded utterance is muted until quiet. Voice
+opens with “Dani is listening—please repeat your request.” in both the conversation
+panel and compact dock until the next user transcript arrives. Recovery suppresses
+the wake-only greeting. Overflow, processing failure and missing confirmation
+remain explicit failures.
+
+Content-free capture failure codes, generation numbers and retained durations are
+bounded to 32 local diagnostics and included in user-submitted bug reports. A
+fixed error message and `voice_capture` boundary are also reported when browser
+Sentry is enabled. Speech, samples and recognized text are excluded from these
+diagnostics. Regression coverage includes real-sized frames at 1,000, 44,100 and
+48,000 Hz, multi-part speech, negative recognition, recovery, acknowledgement
+timeouts and cancellation. The complete frontend suite passes with 942 tests and
+one existing skip, and the production build passes. Isolated Chromium validation
+using generated audio and the real AudioWorklet passes both buffered delivery
+across a pause and fresh recovery with the discarded speech tail muted. Physical
+microphone/provider acceptance still requires device testing.
+
 Approved plan: task 1f324cd9-aed5-4c14-83f4-8f0a6de456b3, revision 1.
 Baseline: clean 1d8eb83. Deployment is not authorized.
 
