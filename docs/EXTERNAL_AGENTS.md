@@ -273,7 +273,7 @@ Eridani keeps metadata, an excerpt of at most 8,000 characters and a summary per
   - `POST /sessions/rules` (`path_prefix`, `record_id`) and `DELETE /sessions/rules/{rule_id}`: add, replace or remove a folder rule. Existing sessions are refiled at once.
 - `sessions:read`:
   - `GET /sessions?query=&unfiled=&live=&remotea=&record_id=&tool=`: recent sessions, or ranked by full-text match, issue key, folder and meaning. `live=true` keeps only sessions running in a persistent terminal. `remotea=true` keeps only sessions that ran in a remotea terminal (seen on a surface, reported a state, or started by a run); the remotea page's ledger sends it.
-  - With a `query`, full-text search also covers what was said: each stored turn's prompt and reply (`agent_turns.tsv`, GIN-indexed). A session found that way carries `match` = `{turn_id, at, run_id, snippet}`, the best turn's snippet with matched words between U+E000 and U+E001; otherwise `match` is null. Turns are kept 30 days for a session no run owns and for the run retention window otherwise ([retention](AGENT_CONTROL.md)); the session's title, prompts, excerpt, summary and embedding stay searchable after that.
+  - With a `query`, full-text search also covers what was said: each stored turn's prompt and reply (`agent_turns.tsv`, GIN-indexed). A session found that way carries `match` = `{turn_id, at, run_id, snippet}`, the best turn's snippet with matched words between U+E000 and U+E001; otherwise `match` is null. Turns are kept for the owner's run retention window (`agent_retention_days`, 90 days by default; [retention](AGENT_CONTROL.md)). After that, the session's title, prompts, excerpt, summary, `recall` and embedding stay searchable.
   - A `record_id` covers everything under that record, so a client includes its projects and issues.
   - `GET /sessions/rules`: the folder rules.
 - MCP tools: `session_search`, `session_link`, `session_rules` and `session_rule`. Eri has the same `session_search` tool in the `sessions` group.
@@ -292,7 +292,9 @@ Without `records:read`, a key sees whether a session is filed, but not the filed
 - A live session has no `cmd`: resuming it a second time would start a duplicate agent.
 - Changing `resume` doesn't trigger a new summary.
 
-A settled session (quiet for 10 minutes) gets one summary and one embedding per content change, via the `summarize_session` job.
+A settled session (quiet for 10 minutes) gets one summary and one embedding per content change, via the `summarize_session` job. When the session has stored turns (it ran in remotea), the same call also writes `recall`: up to 2,000 characters on what was discussed (topics, decisions, files, commands, errors, PRs), from the newest 24,000 characters of the conversation plus the previous `recall`. The previous `recall` is passed along so the record carries forward after old turns are deleted. `recall` is in full-text search and the embedding, and the remotea page's ledger shows it under **What was discussed**.
+
+On 2026-11-09 migration `0061_session_recall` archived every session that never ran in remotea, at the owner's request. Those are sessions with no surface, state, run or host, and no `live` or `remotea open` resume. `POST /sessions/{id}/archive` with `archived: false` restores one.
 
 ### Session ledger visibility and freshness
 

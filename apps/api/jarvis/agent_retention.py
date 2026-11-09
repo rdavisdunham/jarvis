@@ -2,7 +2,8 @@
 "Retention and redaction").
 
 The worker's housekeeping pass deletes what nobody needs any more: turns and settled questions of sessions
-no run owns after 30 days; a settled run's turns (its own and its session's), commands, questions, attempts
+no run owns once the owner's run retention window has passed (by then the session's summary job has written its
+`recall`, which stays); a settled run's turns (its own and its session's), commands, questions, attempts
 and interviews once the owner's run retention window has passed (`agent_retention_days`, default 90 days);
 and the payload of every settled command after 7 days (the replay horizon: the host never asks for it
 again). Parity rows go after 30 days; run action receipts (agent_receipts.py) after 7 days, long past any
@@ -46,7 +47,6 @@ from .session_models import (
     AgentTurn,
 )
 
-UNBOUND_TURNS = timedelta(days=30)
 RUN_DATA = timedelta(days=90)  # The default run retention window; an owner may set `agent_retention_days`.
 SETTING = "agent_retention_days"
 MIN_DAYS, MAX_DAYS = 1, 3650
@@ -77,14 +77,25 @@ def days_window(days):
     return timedelta(days=days) if valid else RUN_DATA
 
 
-def expired_runs(db, clock):
+def owner_windows(db):
+    """{owner_id: window} for owners who set `agent_retention_days`; everyone else has the default."""
+    return {row.owner_id: days_window(row.values.get(SETTING))
+            for row in db.scalars(select(OwnerSettings).where(OwnerSettings.values.has_key(SETTING)))}
+
+
+def past_window(owner_column, at_column, clock, overrides):
+    """A condition: `at_column` is older than its owner's run retention window."""
+    default = at_column < clock - RUN_DATA
+    past = [(owner_column.not_in(list(overrides)) & default) if overrides else default]
+    past += [(owner_column == owner) & (at_column < clock - span) for owner, span in overrides.items()]
+    return or_(false(), *past)
+
+
+def expired_runs(db, clock, overrides=None):
     """Settled runs past their owner's window, as a selectable of run ids."""
-    overrides = {row.owner_id: days_window(row.values.get(SETTING))
-                 for row in db.scalars(select(OwnerSettings).where(OwnerSettings.values.has_key(SETTING)))}
-    default = AgentRun.finished_at < clock - RUN_DATA
-    past = [(AgentRun.owner_id.not_in(list(overrides)) & default) if overrides else default]
-    past += [(AgentRun.owner_id == owner) & (AgentRun.finished_at < clock - span) for owner, span in overrides.items()]
-    return select(AgentRun.id).where(AgentRun.state.in_(TERMINAL_RUN_STATES), or_(false(), *past))
+    overrides = owner_windows(db) if overrides is None else overrides
+    return select(AgentRun.id).where(AgentRun.state.in_(TERMINAL_RUN_STATES),
+                                     past_window(AgentRun.owner_id, AgentRun.finished_at, clock, overrides))
 
 
 def scrub_history(history):
@@ -193,13 +204,14 @@ def sweep(db, clock=None):
     clock = clock or now()
     counts = {}
     bound = select(AgentSession.id).where(AgentSession.run_id.is_not(None))
+    overrides = owner_windows(db)
     counts["unbound_turns"] = db.execute(delete(AgentTurn).where(
         AgentTurn.run_id.is_(None), AgentTurn.session_pk.not_in(bound),
-        AgentTurn.created_at < clock - UNBOUND_TURNS)).rowcount
+        past_window(AgentTurn.owner_id, AgentTurn.created_at, clock, overrides))).rowcount
     counts["unbound_questions"] = db.execute(delete(AgentQuestion).where(
         AgentQuestion.run_id.is_(None), AgentQuestion.session_pk.not_in(bound), AgentQuestion.status != "open",
-        AgentQuestion.created_at < clock - UNBOUND_TURNS)).rowcount
-    old = expired_runs(db, clock)
+        past_window(AgentQuestion.owner_id, AgentQuestion.created_at, clock, overrides))).rowcount
+    old = expired_runs(db, clock, overrides)
     counts.update(run_children(db, old))
     # The skeleton stays; its copies of run content are scrubbed once (bounded per pass, the next pass continues).
     counts["redacted_runs"] = 0
