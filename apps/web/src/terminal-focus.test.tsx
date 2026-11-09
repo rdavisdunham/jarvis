@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { post } from "./api";
 import { RunDrawer, TerminalFallback } from "./Remotea";
-import { FOCUS_TEXT, focusSentText, shellWord, terminalFallback, type FocusResult, type RunDetail } from "./remotea-model";
+import { FOCUS_TEXT, focusSentText, focusTitle, shellWord, terminalFallback, type FocusResult, type RunDetail } from "./remotea-model";
 
 const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const detail = (id: string, values: Partial<RunDetail> = {}): RunDetail => ({
@@ -73,6 +73,15 @@ describe("open the run's terminal in remotea", () => {
     expect(html).toContain("<code>eri/task-1</code>");
     expect(html).toContain("cd /home/davin/wt/eri--task-1");
     expect(button(html.replace(/<small>[^<]*<\/small>/g, ""), "Copy")).toContain('aria-label="Copy: cd /home/davin/wt/eri--task-1"');
+  });
+
+  it("offers the worker's resume command first and says why the button is off", () => {
+    const cmd = "remotea open --group Inbox --cwd /x -- claude --resume abc";
+    const info = terminalFallback({ ...detail(A), worker_resume_command: cmd }, { sent: false, reason: "no_surface" });
+    expect(info.commands[0]).toEqual({ label: "Reopen the agent in a remotea tab (run it on the host)", command: cmd });
+    expect(terminalFallback(detail(A), null).commands.map(c => c.command)).not.toContain(cmd);
+    expect(focusTitle(detail(A))).toBe("Open this run's terminal in the remotea app on DavisPC");
+    expect(focusTitle(detail(A, { surf: "" }))).toBe("This run has no terminal yet");
   });
 
   it("quotes a path as one shell word", () => {
