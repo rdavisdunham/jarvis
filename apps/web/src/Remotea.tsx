@@ -1075,6 +1075,13 @@ export function RunDrawer({ id, onClose, preloaded }: {
       <DeliveryReceipt receipt={displayedReceipt}/>
       <div className="remotea-control-row run-view-controls">
         <button className="btn btn-sm btn-ghost" aria-expanded={chatOpen} onClick={() => { if (!chatOpen) stuck.current = true; setView({ chat: !chatOpen }); }}>{chatOpen ? "Hide chat" : "Show chat"}</button>
+        {bound && run.worker_resume_command && <button className="btn btn-sm btn-ghost" onClick={() => {
+          const command = run.worker_resume_command!;
+          void copyText(command).then(
+            () => setNotice("Worker resume command copied. Run it on the worker’s host."),
+            () => setError("Could not copy the worker resume command."),
+          );
+        }}><Copy size={14}/>Copy worker resume command</button>}
         {!isSettled(run) && run.automation?.held && <button className="btn btn-sm" disabled={off || !!run.automation.releasing} onClick={() => void resumeAutomation()}>Resume automation</button>}
         {!isSettled(run) && <><span className="remotea-control-gap"/>
           <button className="btn btn-sm btn-ghost" disabled={off || run.state === "stopping" || !!run.pause_reason} onClick={() => void lifecycle(run.paused ? "resume" : "pause")}>{run.paused ? "Resume" : "Pause"}</button>

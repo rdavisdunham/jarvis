@@ -68,7 +68,7 @@ TRANSITIONS = {
                     "judging", "replanning", "stopping"},
     # → verifying / judging: the operator's Judge again (judge_again) on the current turn.
     # → plan_reviewing / handing_off: a hyperplan run resumes its review round or its worker's spawn (phase()).
-    "needs_you": {"executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "awaiting_ci",
+    "needs_you": {"needs_you", "executing", "interviewing", "planning", "waiting_answer", "awaiting_approval", "awaiting_ci",
                   "replanning", "verifying", "judging", "plan_reviewing", "handing_off", "stopping", "failed"},
     # After integration the agent pulls the merged children and the loop verifies and judges again.
     "awaiting_integration": {"executing", "verifying", "judging", "needs_you", "replanning", "stopping"},
@@ -195,6 +195,7 @@ REASONS = {
     "ci_passed": "GitHub CI passed on the pull request head; checking the turn against the success criteria.",
     "ci_failed": "GitHub CI failed on the pull request; the agent is fixing it.",
     "ci_push": "GitHub CI has not run on this work; the agent is pushing it and opening the pull request.",
+    "manual_pr_delivery": "You verified the work. The worker is preparing the pull request.",
     "not_met": "Not met yet; the agent is on the next turn.",
     "queue": "Your message is queued for the agent.",
     "steer": "You steered the agent.",
@@ -2157,6 +2158,14 @@ def judged_met(db, run, plan, actor):
 
     if run_ci.gate(db, run, plan, actor) is not None:
         return run  # A quick check passed: GitHub CI on the PR head is the final verification (awaiting_ci).
+    if verification := manual_verification(run):
+        if not manual_pr_ready(db, run, plan):
+            return transition(db, run, "needs_you", actor=actor, reason="pr_unknown")
+        from .agent_control import complete_approved
+
+        owner = Actor("human", credential_id=verification["actor"].get("credential_id"))
+        complete_approved(db, run, verification["note"], owner, f"run-approve:{run.id}", verified_delivery=True)
+        return run
     from . import run_merge
 
     if run_merge.auto_on(db, run, plan):
@@ -2174,6 +2183,27 @@ def judged_met(db, run, plan, actor):
                               detail=f"Verification evidence was incomplete: {missing}"[:300])
         return complete_by_judge(db, run, actor)
     return transition(db, run, "awaiting_approval", actor=actor, reason="judge_met")
+
+
+def manual_verification(run):
+    """The owner's prior verification applies only to this frozen plan and execution generation."""
+    verification = (run.sync_state or {}).get("manual_verification") or {}
+    if (verification.get("generation"), verification.get("plan_revision")) == (run.generation, run.plan_revision):
+        return verification
+    return None
+
+
+def manual_pr_ready(db, run, plan):
+    from . import run_ci
+    from .agent_judge import completion_evidence
+
+    attempt = run_ci.latest(db, run, current=True)
+    facts = (attempt.result or {}) if attempt else {}
+    if facts.get("state") in ("no_pr", "unpushed") or facts.get("pr_state") == "CLOSED":
+        return False
+    if plan.completion_policy == "pr_merged":
+        return branch_merged(db, run)
+    return bool(facts.get("pr_url") or completion_evidence(db, run, plan)["pr_urls"])
 
 
 def current_verify(db, run):

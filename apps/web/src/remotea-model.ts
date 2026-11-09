@@ -417,6 +417,9 @@ export type Proposals = {
   completion_policy?: { current: string; proposed: string };
 };
 export type RunDetail = Run & {
+  worker_resume_command?: string | null;
+  manual_verification_needs_pr?: boolean;
+  manual_pr_delivery_pending?: boolean;
   plan: { revision: number; title: string; prd_text: string; steps: { id: string; title: string; status: string; task_id?: string; note?: string; phase?: string; updated_at?: string; revision?: number; by?: string }[];
     criteria: Criterion[]; verify?: { target_id: string; verify_id: string } | null; required_children?: string[];
     proposals?: Proposals | null; approval_status?: string } | null;
@@ -563,8 +566,10 @@ export function stopCard(run: RunDetail) {
     headline: a.headline, action: a.action, lines: a.last_output ?? [],
     detail: a.detail && a.detail !== a.action && !a.headline.includes(a.detail) ? a.detail : "",
     manual,
-    approve: { enabled: !terminal, label: manual ? "Verified, approve" : "Approve",
-      confirm: manual ? "Nothing verified this run. Approve it as verified by you?"
+    approve: { enabled: !terminal && (manual || !run.manual_pr_delivery_pending), label: manual ? "Verified, approve" : "Approve",
+      confirm: manual ? run.manual_verification_needs_pr
+        ? "Record your verification and continue to pull request delivery?"
+        : "Nothing verified this run. Approve it as verified by you?"
         : run.state_reason.startsWith("ci_") ? "GitHub CI has not passed on the pull request; approve anyway?"
         : hasVerify && !passing ? "Verification has no passing run; approve anyway?"
         : "The judge has not found the criteria met; approve anyway?",

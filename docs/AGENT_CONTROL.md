@@ -1425,6 +1425,25 @@ says "Needs your verification" and offers **Verified, approve** (completes the t
 `policy_override.manual_verification: true`) and **Describe what's wrong** (the note goes back to the agent).
 `pr_merged` ends on the merge.
 
+**Verified, approve when the finish rule needs a pull request** (`pr_open`, `pr_merged`; `agent_control.approve`).
+If the PR is already there (`run_coordinator.manual_pr_ready`), approving completes the run as above. If it is not,
+approving records the verification instead of completing. It is stored in `sync_state.manual_verification` with the
+generation, plan revision, turn and the worktree head the owner checked, and it holds only for that generation and
+plan revision. The run then:
+- **Under `pr_merged`, with a pushed PR:** waits for the merge, `needs_you(awaiting_merge)`.
+- **With a live worker** (attached, not paused, not freestyle, under its turn cap and wall clock): goes back to
+  `executing(manual_pr_delivery)`. The agent is told to push the verified work and open or update the PR, without
+  changing the code or merging.
+- **Otherwise:** `needs_you(pr_unknown)`, "Resume the worker to push the verified work and open the pull request."
+  The run drawer offers **Copy worker resume command** (`worker_resume_command`: the session's resume command).
+
+While delivery is pending (`manual_pr_delivery_pending`), Approve is refused with `409 PR_DELIVERY_PENDING`, except
+from `awaiting_approval`. The delivery turn goes through the judge and the PR's usual CI check. When that check
+finds no CI, the run completes on the owner's verification only if the PR head is still the head they checked
+(`run_ci.no_ci`). When the judge finds the criteria met, `judged_met` completes the run as the owner's approval, with
+no policy override recorded, once the PR is ready. The run detail also carries `manual_verification_needs_pr`, which
+changes Approve's confirmation to "Record your verification and continue to pull request delivery?".
+
 **Whether the repository has CI** is learned, not configured (`run_ci.target_ci`): the newest CI answers for any run
 on the same host target say so (checks reported: yes; none on `ABSENT_POLLS` polls: no; no answer yet: unknown).
 

@@ -974,17 +974,51 @@ def stop_run(db, owner, run_id, body, *, actor):
 
 
 def approve(db, owner, run_id, body, *, actor):
-    """Approval is a human completing the task; the gate then settles the run as completed."""
+    """Accept the work, deferring completion when manual verification still needs PR delivery."""
     run = coordinator.load(db, owner, run_id)
     coordinator.ensure_eridani_control(run, allow_verified_exit=True)
     coordinator.check_revision(run, body.expected_revision)
     if run.state in TERMINAL_RUN_STATES or run.state == "stopping":
         raise DomainError("RUN_SETTLED", "This run is stopping or finished.", 409)
+    plan = coordinator.frozen(db, run)
+    if run.state_reason == "verify_manual" and plan and plan.completion_policy in ("pr_open", "pr_merged"):
+        if not coordinator.manual_pr_ready(db, run, plan):
+            request_manual_pr(db, run, body.note, actor)
+            return public_run(db, run)
+    elif coordinator.manual_verification(run) and run.state != "awaiting_approval":
+        raise DomainError("PR_DELIVERY_PENDING", "Verification is recorded. The run still needs to finish its pull request checks.", 409)
     complete_approved(db, run, body.note, actor, f"run-approve:{run.id}")
     return public_run(db, run)
 
 
-def complete_approved(db, run, note, actor, key):
+def request_manual_pr(db, run, note, actor):
+    from .agent_judge import completion_evidence
+
+    attempt = run_ci.latest(db, run, current=True)
+    facts = (attempt.result or {}) if attempt else {}
+    verification = {
+        "generation": run.generation, "plan_revision": run.plan_revision, "turn_seq": run.turn_seq,
+        "head": facts.get("worktree_head"), "note": (note or "").strip()[:2000], "actor": actor.record(),
+    }
+    run.sync_state = {**(run.sync_state or {}), "manual_verification": verification}
+    coordinator.note(run, "manual_verification", **verification)
+    plan = coordinator.frozen(db, run)
+    has_pr = facts.get("pr_url") or completion_evidence(db, run, plan)["pr_urls"]
+    if plan.completion_policy == "pr_merged" and has_pr and facts.get("state") != "unpushed":
+        coordinator.transition(db, run, "needs_you", actor=actor, reason="awaiting_merge")
+    elif run.surf and not run.paused and not run.freestyle and not (
+        run.turn_cap and run.turn_count >= run.turn_cap
+    ) and not coordinator.past_wall_clock(run, now()):
+        coordinator.transition(db, run, "executing", actor=actor, reason="manual_pr_delivery")
+        coordinator.say(db, run, "The owner manually verified the work. Push the verified work and open or update "
+                        "the pull request for this branch. Do not change the verified code or merge the pull request. "
+                        "Return its URL, or explain what blocked you.", "manual_pr_delivery", actor=actor)
+    else:
+        coordinator.transition(db, run, "needs_you", actor=actor, reason="pr_unknown",
+                               detail="Your verification is recorded. Resume the worker to push the verified work and open the pull request.")
+
+
+def complete_approved(db, run, note, actor, key, *, verified_delivery=False):
     """A human completes the run's task (approve, or a merge from Eridani: run_merge.py); the gate then settles the
     run as completed. Approving anything but awaiting_approval records the override and why."""
     from . import agent_sync
@@ -992,7 +1026,7 @@ def complete_approved(db, run, note, actor, key):
     from .linear_sync import for_run
 
     db.flush()  # The refresh below must not drop what the caller changed on the run.
-    override = policy_override(db, run, SimpleNamespace(note=note), actor)
+    override = None if verified_delivery else policy_override(db, run, SimpleNamespace(note=note), actor)
     task = db.get(Task, run.task_id)
     with acting(Actor("human", credential_id=actor.credential_id, reason="approve")), for_run(run.id, "done") as outcome:
         execute(db, run.owner_id, key, "task.complete", {"task_id": task.id, "expected_revision": task.revision})
@@ -1413,9 +1447,13 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
                   connectivity="online" if host and agent_link.connected(host) else "offline",
                   activity=run.activity)
     if detail:
-        result.update(live_messages=(run.sync_state or {}).get("live_messages") or [],
+        result.update(worker_resume_command=(session.resume or {}).get("cmd") if session and not run.plan_pending else None,
+                      manual_pr_delivery_pending=bool(coordinator.manual_verification(run)),
+                      live_messages=(run.sync_state or {}).get("live_messages") or [],
                       message_deliveries=agent_automation.deliveries(db, run))
         plan = coordinator.frozen(db, run)
+        if run.state_reason == "verify_manual" and plan and plan.completion_policy in ("pr_open", "pr_merged"):
+            result["manual_verification_needs_pr"] = not coordinator.manual_pr_ready(db, run, plan)
         # Paginated (stage F, L7): the newest page by default; `offset` reaches older turns and commands.
         turns, more_turns, older_turns = page(db, run_turns(run), AgentTurn.created_at, limit, offset)
         commands, more_commands, older_commands = page(db, select(AgentCommand).where(

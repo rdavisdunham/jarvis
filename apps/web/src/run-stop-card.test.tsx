@@ -68,6 +68,12 @@ describe("the stop reason leads, without opening a dropdown", () => {
     expect(html).toContain("Verified, approve");
     expect(html).toContain("Describe what&#x27;s wrong");
     expect(stopCard(parked())!.approve.label).toBe("Approve");
+    // A run whose finish rule needs a pull request: approving records the verification and goes on to deliver the PR.
+    expect(stopCard({ ...manual, manual_verification_needs_pr: true })!.approve.confirm)
+      .toBe("Record your verification and continue to pull request delivery?");
+    // Once verified, a later stop waits on the PR, not on another approval.
+    const waiting = stopCard(parked({ state_reason: "pr_unknown", manual_pr_delivery_pending: true }))!;
+    expect(waiting.approve.enabled).toBe(false);
   });
 });
 
