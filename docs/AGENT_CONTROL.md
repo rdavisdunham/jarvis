@@ -2142,7 +2142,10 @@ already exists there. Turning remotea off revokes the link key; a live host stil
 - Snapshot parts are numbered `1..n` (as remotea sends them; the brief said `i < n`, which would refuse
   every real final part), bounded in bytes, and partial snapshots and chunks expire after 60 s.
 - `context.request` answers `scope: "run"` (plan and run token) only for a run bound to this host;
-  otherwise `scope: "candidates"` with only the fenced candidate list (≤ 4000 chars).
+  otherwise `scope: "candidates"` (≤ 4000 chars). A session already filed under a task or record (by its run,
+  by hand or automatically) is told where, with the fenced title and no `session_link` ask: a run's worker
+  reopened with `claude --resume` has no `run_id` on its frame but is still filed `spawned`. Until 2026-11-09
+  such a session was asked to link itself. Any other session gets only the fenced candidate list.
 
 ### Actors, the plan floor and the completion gate
 
