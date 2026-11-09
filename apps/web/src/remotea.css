@@ -323,15 +323,7 @@
 .run-origin, .remotea-origin { padding: 1px 8px; border-radius: 999px; background: var(--sunken); color: var(--ink-2); font-size: 0.75rem; white-space: nowrap; }
 .remotea-origin.origin-run { background: var(--violet-soft); color: var(--violet); }
 .remotea-session-dismiss { margin-left: auto; }
-.remotea-other-chats > summary, .remotea-unmerged > summary { cursor: pointer; font-weight: 600; }
-.remotea-other-chats > summary small { margin-left: 6px; font-weight: 400; color: var(--ink-3); }
-.remotea-other-chats ul { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
-.remotea-other-chat { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
-.remotea-other-chat header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
-.remotea-other-chat header strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.remotea-other-chat header small { color: var(--ink-3); }
-.remotea-chat-what { margin: 0; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.remotea-chat-prs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; font-size: 0.85rem; }
+.remotea-unmerged > summary { cursor: pointer; font-weight: 600; }
 .remotea-unmerged li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .remotea-new-session { display: grid; gap: 12px; width: min(560px, calc(100vw - 32px)); padding: 16px; }
 .remotea-new-session header { display: flex; align-items: center; justify-content: space-between; }

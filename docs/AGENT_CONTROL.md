@@ -1042,9 +1042,11 @@ a lost response (`NETWORK`, up to two retries); other errors are not retried.
 The page, top to bottom (task d6b29e9c): the host bar with **New session**; **Running**, the runs as boxes grouped by
 the next human action (below; the five most recent settled runs close it); **Sessions in remotea**, live sessions not
 already shown on a run card, each labelled with where it came from (`origin` on `/remotea/sessions`: `run` with its
-`run`, `remotea` for a tab opened by hand); swarms; **Unmerged work**; **Worktree maintenance**; **Other chats**, a fold
-of other harnesses' chats from the last 14 days that never ran in a remotea tab (`GET /remotea/other-chats`: harness,
-machine, repo and branch, summary or last prompt, PR links); collector parity; and the session ledger. Picking a run
+`run`, `remotea` for a tab opened by hand); swarms; **Unmerged work**; **Worktree maintenance**;
+collector parity (hidden once a connected host's collector is authoritative); and the **session ledger**, which lists
+remotea sessions only (`GET /sessions?remotea=true`) and searches what was said in them (below). Chats from other
+harnesses are not on the page: the host's collector reports remotea sessions only unless its scope is `all`
+(`remotea eridani collector scope all`, for testing). Picking a run
 opens the run drawer with the timeline, the questions card, the review packet and Message / Steer / Stop
 (**Stopping…**, then **Force stop**) / Approve.
 

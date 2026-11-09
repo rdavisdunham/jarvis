@@ -310,3 +310,41 @@ def test_live_terminals_list_separately_and_never_trigger_a_new_summary(client):
     assert client.get("/api/v1/sessions", params={"live": "true"}).json()["items"] == []
     for bad in ({**live, "state": "exited"}, {**live, "workspace": "x" * 201}, {**live, "pid": 1}):
         assert report(headers, "bad", resume={"live": bad}).status_code == 422
+
+
+def said(session_id, *turns):
+    """Adds turns (prompt, reply) to a reported session, as the remotea link stores them."""
+    from jarvis.session_models import AgentTurn
+
+    with session_scope() as db:
+        row = db.scalar(select(AgentSession).where(AgentSession.session_id == session_id))
+        for seq, (prompt, text) in enumerate(turns):
+            db.add(AgentTurn(owner_id=OWNER, session_pk=row.id, provider_session_id=session_id,
+                             provider_turn_id=f"{session_id}-{seq}", seq=seq, prompt=prompt, text=text))
+
+
+def test_the_ledger_lists_remotea_sessions_and_searches_what_was_said(client):
+    _, headers = key(client, ["sessions:write"])
+    report(headers, "in-remotea", title="Speed up the page")
+    report(headers, "elsewhere", title="Laptop chat")
+    with session_scope() as db:
+        db.scalar(select(AgentSession).where(AgentSession.session_id == "in-remotea")).surf = "surf-3"
+    said("in-remotea", ("why is the dashboard slow?", "The query scans every row; I added an index on owner_id."),
+         ("ship it", "We moved the session cache to Redis so restarts keep it."))
+    said("elsewhere", ("", "Redis came up here too."))
+
+    mine = client.get("/api/v1/sessions", params={"remotea": "true"}).json()["items"]
+    assert [i["session_id"] for i in mine] == ["in-remotea"]
+    assert {i["session_id"] for i in client.get("/api/v1/sessions").json()["items"]} == {"in-remotea", "elsewhere"}
+
+    found = client.get("/api/v1/sessions", params={"remotea": "true", "query": "redis cache"}).json()["items"]
+    assert [i["session_id"] for i in found] == ["in-remotea"]  # Only in a reply, not the title; the laptop chat is out.
+    match = found[0]["match"]
+    assert "Redis" in match["snippet"] and "cache" in match["snippet"] and match["at"]
+    asked = client.get("/api/v1/sessions", params={"remotea": "true", "query": "dashboard"}).json()["items"]
+    assert [i["session_id"] for i in asked] == ["in-remotea"]  # What the owner asked counts too.
+    assert "dashboard" in asked[0]["match"]["snippet"]
+    both = client.get("/api/v1/sessions", params={"query": "redis"}).json()["items"]
+    assert {i["session_id"] for i in both} == {"in-remotea", "elsewhere"}
+    titled = client.get("/api/v1/sessions", params={"query": "speed"}).json()["items"]
+    assert titled[0]["session_id"] == "in-remotea" and titled[0]["match"] is None

@@ -28,16 +28,10 @@ export type RemoteaSession = {
   live_state: LiveState | null; host: { id: string; name: string; connected: boolean } | null;
   last_turn: Turn | null; filed: { record_title: string | null };
   /** Where it came from (older Eridani: absent): an Eridani run started it, it was opened in remotea by hand, or it
-   * is another harness's chat the collector found. `run` is the run that owns it. */
+   * is a chat the collector found outside remotea (only when the host's collector scope is "all"). `run` is the run that owns it. */
   origin?: SessionOrigin; run?: { id: string; state: string; origin: "task" | "session"; task_id: string; dismissed: boolean } | null;
 };
 export type SessionOrigin = "run" | "remotea" | "other";
-/** A chat from another harness (never in a remotea tab), from /remotea/other-chats. */
-export type OtherChat = {
-  id: string; tool: string; tool_label: string; session_id: string; title: string; summary: string; first_prompt: string; last_prompt: string;
-  machine: string; environment: string; cwd: string; repo: string; branch: string; turn_count: number;
-  started_at: string | null; last_active_at: string | null; pr_urls: string[]; filed: { record_title: string | null };
-};
 export type RemoteaStatus = {
   enabled: boolean; key: { id: string; prefix: string; expires_at: string; last_used_at: string | null } | null;
   hosts: Host[]; link_url: string; connect_command: string; token?: string | null; auto_complete?: boolean; auto_merge?: boolean; quiet_bypass?: boolean;
@@ -153,16 +147,6 @@ export function originLabel(item: Pick<RemoteaSession, "origin" | "run">) {
  * the page), in the usual order. A run's session whose run is dismissed or not listed still shows, labelled. */
 export function looseSessions(items: RemoteaSession[], shown: Set<string>) {
   return orderSessions(items.filter(s => !(s.origin === "run" && s.run && shown.has(s.run.id))));
-}
-
-/** "laptop · WSL · eridani · main": where another harness's chat ran. */
-export function chatWhere(chat: Pick<OtherChat, "machine" | "environment" | "repo" | "branch" | "cwd">) {
-  return [chat.machine, chat.environment, place(chat)].filter(Boolean).join(" · ");
-}
-
-/** What another harness's chat was doing: its summary, else its title, else the last prompt. */
-export function chatWhat(chat: Pick<OtherChat, "summary" | "title" | "last_prompt" | "first_prompt">) {
-  return chat.summary || chat.last_prompt || chat.first_prompt || "";
 }
 
 /** The page's one Unmerged work list: worktrees with work at risk, minus those whose run's pull request GitHub

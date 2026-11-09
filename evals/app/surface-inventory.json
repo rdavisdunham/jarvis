@@ -1984,13 +1984,6 @@
     },
     {
       "method": "GET",
-      "path": "/api/v1/remotea/other-chats",
-      "handler": "other_chats",
-      "source": "apps/api/jarvis/remotea_routes.py",
-      "feature": "agent_control"
-    },
-    {
-      "method": "GET",
       "path": "/api/v1/remotea/parity",
       "handler": "parity",
       "source": "apps/api/jarvis/remotea_routes.py",

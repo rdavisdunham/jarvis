@@ -272,7 +272,8 @@ Eridani keeps metadata, an excerpt of at most 8,000 characters and a summary per
   - `POST /sessions/{tool}/{session_id}/link`: file a session under exactly one of `identifier` (a synced Linear issue key), `record_id`, or `clear`.
   - `POST /sessions/rules` (`path_prefix`, `record_id`) and `DELETE /sessions/rules/{rule_id}`: add, replace or remove a folder rule. Existing sessions are refiled at once.
 - `sessions:read`:
-  - `GET /sessions?query=&unfiled=&live=&record_id=&tool=`: recent sessions, or ranked by full-text match, issue key, folder and meaning. `live=true` keeps only sessions running in a persistent terminal.
+  - `GET /sessions?query=&unfiled=&live=&remotea=&record_id=&tool=`: recent sessions, or ranked by full-text match, issue key, folder and meaning. `live=true` keeps only sessions running in a persistent terminal. `remotea=true` keeps only sessions that ran in a remotea terminal (seen on a surface, reported a state, or started by a run); the remotea page's ledger sends it.
+  - With a `query`, full-text search also covers what was said: each stored turn's prompt and reply (`agent_turns.tsv`, GIN-indexed). A session found that way carries `match` = `{turn_id, at, run_id, snippet}`, the best turn's snippet with matched words between U+E000 and U+E001; otherwise `match` is null. Turns are kept 30 days for a session no run owns and for the run retention window otherwise ([retention](AGENT_CONTROL.md)); the session's title, prompts, excerpt, summary and embedding stay searchable after that.
   - A `record_id` covers everything under that record, so a client includes its projects and issues.
   - `GET /sessions/rules`: the folder rules.
 - MCP tools: `session_search`, `session_link`, `session_rules` and `session_rule`. Eri has the same `session_search` tool in the `sessions` group.

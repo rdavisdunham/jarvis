@@ -1,9 +1,8 @@
 """The remotea page's home (task d6b29e9c): New session starts a freestyle run with the owner's own prompt, runs can
-be dismissed from the page, every live session says where it came from, and chats from other harnesses are listed
-apart."""
+be dismissed from the page, and every live session says where it came from. Chats from other harnesses are not on
+the page (the session ledger lists remotea sessions only)."""
 
 import uuid
-from datetime import timedelta
 
 from jarvis.db import session_scope
 from jarvis.models import Task, now
@@ -77,20 +76,19 @@ def add_session(host, session_id, **values):
         return row.id
 
 
-def test_sessions_say_where_they_came_from_and_other_chats_are_apart(host, client):
+def test_sessions_say_where_they_came_from(host, client):
     body = new_session(client, host)
     attached(host, body["id"], session_id="run-sess")
     add_session(host, "opened-in-remotea", host_id=host.id, surf="surf-9", state="idle", state_since=now())
     add_session(host, "laptop-chat", machine="laptop", repo="rdavisdunham/eridani", summary="Tidied the CSS")
-    add_session(host, "old-chat", last_active_at=now() - timedelta(days=30))
     live = {i["session_id"]: i for i in client.get("/api/v1/remotea/sessions").json()["items"]}
     assert live["opened-in-remotea"]["origin"] == "remotea" and live["opened-in-remotea"]["run"] is None
     if "run-sess" in live:  # Listed once the host reports its state.
         assert live["run-sess"]["origin"] == "run" and live["run-sess"]["run"]["id"] == body["id"]
     assert "laptop-chat" not in live
-    other = client.get("/api/v1/remotea/other-chats").json()["items"]
-    assert [i["session_id"] for i in other] == ["laptop-chat"]  # Not the remotea one, not one older than 14 days.
-    assert other[0]["origin"] == "other" and other[0]["machine"] == "laptop" and other[0]["summary"] == "Tidied the CSS"
+    assert client.get("/api/v1/remotea/other-chats").status_code == 404  # The Other chats list is gone.
+    ledger = [i["session_id"] for i in client.get("/api/v1/sessions", params={"remotea": "true"}).json()["items"]]
+    assert "opened-in-remotea" in ledger and "laptop-chat" not in ledger
 
 
 def test_a_run_bound_session_reports_its_run(host, client):

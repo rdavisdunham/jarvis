@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   afterTargetSaved, buildAnswers, DEFAULT_DRAFT, defaultScope, harnessChoice, linkedRun, preflightNotes, preflightUrl, needsTargetData, orderRuns, questionMode, runButton, runControls, targetOptions, timeline,
-  unmergedGroups, unmergedSummary, verifyLine, attentionKey, chatWhat, chatWhere, dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns,
+  unmergedGroups, unmergedSummary, verifyLine, attentionKey, dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns,
   type RemoteaSession, type RunMerge, type Host, type NeedsTarget, type Preflight, type Run, type RunDetail, type RunQuestion, type UnmergedWork,
 } from "./remotea-model";
 
@@ -245,14 +245,6 @@ describe("remotea page home", () => {
     const items = [session("on-card", bound("r1")), session("loose", { origin: "remotea" }),
       session("finished-run", bound("gone")), session("asks", { origin: "remotea", live_state: { state: "needs_you", since: "2026-11-08T09:00:00Z", host_id: "h", reason: "" } })];
     expect(looseSessions(items, new Set(["r1"])).map(s => s.id)).toEqual(["asks", "loose", "finished-run"]);
-  });
-
-  it("says where another harness's chat ran and what it did", () => {
-    const chat = { machine: "laptop", environment: "WSL", repo: "rdavisdunham/eridani", branch: "main", cwd: "", summary: "", title: "t",
-      last_prompt: "make the CSS tidy", first_prompt: "hi" };
-    expect(chatWhere(chat)).toBe("laptop · WSL · rdavisdunham/eridani · main");
-    expect(chatWhat(chat)).toBe("make the CSS tidy");
-    expect(chatWhat({ ...chat, summary: "Tidied the CSS" })).toBe("Tidied the CSS");
   });
 
   it("asks before dismissing, and says an active run stops", () => {

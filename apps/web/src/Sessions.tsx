@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Copy, ExternalLink, FolderInput, Trash2, X } from "lucide-react";
 import { api, post } from "./api";
 import { sessionPages, watchSessionChanges, type SessionPage, type SessionPageState } from "./sessionPages";
@@ -14,6 +14,8 @@ export type AgentSession = {
   filed: { source: string | null; record_id: string | null; task_id: string | null; record_title: string | null };
   /** Reported by the remotea server over the agent link; absent for collector-only sessions. */
   live_state?: LiveState | null;
+  /** With a search: the turn whose prompt or reply matched best, matched words between U+E000 and U+E001. */
+  match?: { turn_id: string; at: string | null; run_id: string | null; snippet: string } | null;
 };
 type Listing = SessionPage<AgentSession>;
 type Rule = { id: string; path_prefix: string; record_id: string; record_title: string | null };
@@ -24,6 +26,17 @@ const filedBy: Record<string, string> = {
   branch: "from the branch", mention: "from the prompts", path_rule: "by folder rule", manual: "by you", explicit: "by the agent",
   auto: "by the dream sequence", spawned: "by its Eridani run",
 };
+
+/** A search snippet split into plain and matched parts (the API marks matches with U+E000 … U+E001). */
+export function snippetParts(snippet: string) {
+  const parts: { text: string; hit: boolean }[] = [];
+  snippet.split("\ue000").forEach((piece, i) => {
+    const [hit, rest] = i === 0 ? ["", piece] : piece.includes("\ue001") ? piece.split("\ue001", 2) : ["", piece];
+    if (hit) parts.push({ text: hit, hit: true });
+    if (rest) parts.push({ text: rest, hit: false });
+  });
+  return parts;
+}
 
 export function since(value: string | null, now = Date.now()) {
   if (!value) return "";
@@ -67,6 +80,8 @@ export function SessionCard({ item, onChanged }: { item: AgentSession; onChanged
     <header><span className="session-tool">{item.tool_label}</span><time dateTime={item.last_active_at ?? undefined}>{since(item.last_active_at)}</time></header>
     <h3>{item.title}</h3>
     {(item.summary || item.first_prompt) && <p className="work-result">{item.summary || item.first_prompt}</p>}
+    {item.match?.snippet && <p className="session-match"><small>Said {since(item.match.at)}</small>
+      {snippetParts(item.match.snippet).map((p, i) => <Fragment key={i}>{p.hit ? <mark>{p.text}</mark> : p.text}</Fragment>)}</p>}
     <p className="session-place" title={item.cwd}>{place}{item.environment && <small> · {item.environment}</small>}{item.turn_count > 0 && <small> · {item.turn_count} {item.turn_count === 1 ? "prompt" : "prompts"}</small>}</p>
     <div className="session-filed">
       {hosted && item.live_state && <span className={"chip " + (hosted.tone === "live" ? "chip-done" : hosted.tone === "restoring" ? "chip-due-today" : "")}
@@ -122,13 +137,14 @@ function Rules({ onChanged }: { onChanged: () => void }) {
 }
 
 const empty: Record<View, string> = {
-  all: "No sessions yet. Run the session collector on your work machine to report them.",
-  live: "No live terminal reports. Current status depends on the collector.",
+  all: "No remotea sessions yet. Sessions you open in remotea show here.",
+  live: "No live terminals in remotea.",
   unfiled: "Every session is filed.",
   rules: "",
 };
 
-/** The agent-sessions ledger: search, All/Live/Unfiled/Rules and the list. Lives on the remotea page; `SessionsPanel` wraps it in a dialog. */
+/** The agent-sessions ledger: remotea sessions only, searchable by what was said in them; All/Live/Unfiled/Rules and
+ * the list. Lives on the remotea page; `SessionsPanel` wraps it in a dialog. */
 export function SessionsLedger() {
   const [query, setQuery] = useState(""), [view, setView] = useState<View>("all");
   const [{ data, error, loading }, setListing] = useState<SessionPageState<AgentSession>>({ data: null, error: "", loading: false });
@@ -136,7 +152,7 @@ export function SessionsLedger() {
   useEffect(() => {
     if (view === "rules") return;
     const pages = sessionPages<AgentSession>((offset, limit) => {
-      const params = new URLSearchParams({ limit: String(limit), offset: String(offset),
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset), remotea: "true",
         ...(query.trim() ? { query: query.trim() } : {}),
         ...(view === "live" || view === "unfiled" ? { [view]: "true" } : {}) });
       return api<Listing>("/sessions?" + params);
@@ -148,9 +164,9 @@ export function SessionsLedger() {
   }, [query, view]);
   const refresh = () => { void loader.current?.refresh(); };
   return <div className="sessions-ledger">
-    <p className="footnote">Where work happened in Claude Code, Codex, ChatGPT and Claude Desktop.</p>
+    <p className="footnote">Sessions that ran in remotea. Search finds what was said in them, as well as titles, issue keys, repos and folders.</p>
     <div className="activity-toolbar session-toolbar">
-      <input type="search" aria-label="Search sessions" placeholder="Topic, issue key, repo or folder…" value={query} onChange={e => setQuery(e.target.value)}/>
+      <input type="search" aria-label="Search sessions" placeholder="Something that was said, an issue key, repo or folder…" value={query} onChange={e => setQuery(e.target.value)}/>
       <div className="segmented" role="group" aria-label="Show">
         {([["all", "All"], ["live", "Live"], ["unfiled", "Unfiled"], ["rules", "Rules"]] as const).map(([value, label]) =>
           <button key={value} aria-pressed={view === value} onClick={() => setView(value)}>{label}</button>)}
@@ -175,7 +191,7 @@ export function SessionsPanel({ onClose }: { onClose: () => void }) {
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => { close.current?.focus(); }, []);
   return <Dialog onBackdrop={() => onClose()} onEscape={onClose} backdropClassName="activity-backdrop" className="activity-panel sessions-panel" aria-label="Agent sessions">
-    <header><div><h2>Sessions</h2><p>Where work happened in Claude Code, Codex, ChatGPT and Claude Desktop.</p></div>
+    <header><div><h2>Sessions</h2><p>Sessions that ran in remotea.</p></div>
       <button ref={close} className="btn-icon" aria-label="Close sessions" onClick={onClose}><X size={20}/></button></header>
     <SessionsLedger/>
   </Dialog>;
