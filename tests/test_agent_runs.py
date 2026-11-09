@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from jarvis import agent_control as control
 from jarvis import agent_link
+from jarvis import agent_sessions as sessions
 from jarvis import run_coordinator as coordinator
 from jarvis.agent_actor import Actor
 from jarvis.db import session_scope
@@ -616,6 +617,41 @@ def test_context_request_returns_the_frozen_plan_and_a_working_run_token(host):
         reply = coordinator.context(db, OWNER, host.id, unlinked)
     assert "session_link" in reply["text"] and "s9" in reply["text"]
     assert reply["scope"] == "candidates" and "run_token" not in reply and len(reply["text"]) <= 4000
+
+
+def test_a_resumed_session_that_is_already_filed_is_not_asked_to_link(host):
+    """A run's worker reopened with `claude --resume` has no run_id on its SessionStart frame. It is still filed
+    under the task (`spawned`), so it is told so instead of being asked to call session_link."""
+    created = task(title="Quote Central Docs", steps=[{"id": "s1", "title": "Write tests"}])
+    result = start(host, created["id"])
+    spawned = agent_link.ContextRequest.model_validate({
+        "req_id": "r1", "surf": coordinator.surf_for(result["id"], 1, 1), "incarnation": 1, "provider": "claude",
+        "provider_session_id": "sess-worker", "source": "startup", "cwd": "/home/davin/wt/x", "run_id": result["id"],
+        "generation": 1})
+    with session_scope() as db:
+        coordinator.context(db, OWNER, host.id, spawned)
+    resumed = agent_link.ContextRequest.model_validate({"req_id": "r2", "provider": "claude",
+                                                        "provider_session_id": "sess-worker", "source": "resume",
+                                                        "cwd": "/home/davin/repo"})
+    with session_scope() as db:
+        reply = coordinator.context(db, OWNER, host.id, resumed)
+        assert sessions.find(db, OWNER, "claude_code", "sess-worker").binding_source == "spawned"
+    assert reply["scope"] == "candidates" and "run_token" not in reply and len(reply["text"]) <= 4000
+    assert f"already filed under task {created['id']}" in reply["text"] and "Quote Central Docs" in reply["text"]
+    assert "<<<ERIDANI_FILED_" in reply["text"] and "Ask the user which task" not in reply["text"]
+
+    with session_scope() as db:  # A session filed by hand says so too.
+        sessions.link(db, OWNER, "claude_code", "sess-hand", sessions.LinkInput(task_id=created["id"]))
+    by_hand = agent_link.ContextRequest.model_validate({"req_id": "r3", "provider": "claude",
+                                                        "provider_session_id": "sess-hand", "cwd": "/tmp"})
+    with session_scope() as db:
+        reply = coordinator.context(db, OWNER, host.id, by_hand)
+    assert f"already filed under task {created['id']}" in reply["text"]
+
+    with session_scope() as db:  # Cleared: back to the candidate list and the session_link ask.
+        sessions.link(db, OWNER, "claude_code", "sess-hand", sessions.LinkInput(clear=True))
+        reply = coordinator.context(db, OWNER, host.id, by_hand)
+    assert "Ask the user which task" in reply["text"] and "already filed" not in reply["text"]
 
 
 def test_template_spawn_rejections_fail_the_run_with_a_clear_reason(host):
