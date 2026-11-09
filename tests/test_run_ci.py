@@ -9,7 +9,7 @@ from jarvis import run_attention, run_ci
 from jarvis import run_coordinator as coordinator
 from jarvis.db import session_scope
 from jarvis.models import Notification, Task, now
-from jarvis.session_models import AgentCommand, AgentHost, AgentRun
+from jarvis.session_models import AgentCommand, AgentHost, AgentRun, AgentSession
 from sqlalchemy import select
 from test_agent_attempts import attempts, planned, result
 from test_agent_judge import judged, stub, verdict
@@ -487,6 +487,35 @@ def test_no_pull_request_after_two_push_prompts_needs_your_verification_without_
         assert report(run_id, pr=None) == ("executing", "ci_push")
     assert met_without_verify(run_id, 5) == ("awaiting_ci", "ci_pending")
     assert report(run_id, pr=None) == ("needs_you", "verify_manual")
+
+
+def test_manual_verification_keeps_pr_required_run_open_until_verified_head_is_delivered(ci_host):
+    run_id = planned(ci_host, verify=False)
+    for seq in (3, 4):
+        assert met_without_verify(run_id, seq) == ("awaiting_ci", "ci_pending")
+        assert report(run_id, pr=None) == ("executing", "ci_push")
+    assert met_without_verify(run_id, 5) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, pr=None) == ("needs_you", "verify_manual")
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        run.completion_policy = coordinator.frozen(db, run).completion_policy = "pr_open"
+        control.approve(db, OWNER, run_id, control.ApproveInput(expected_revision=run.state_revision), actor=HUMAN)
+        assert (run.state, run.state_reason) == ("executing", "manual_pr_delivery")
+        assert db.get(Task, run.task_id).status != "completed"
+        assert coordinator.manual_verification(run)["head"] == HEAD
+        assert any(h.get("kind") == "manual_pr_delivery" and h.get("event") == "sent" for h in run.history)
+    # The worker's delivery turn still goes through the judge and the PR's usual CI check.
+    turn(run_id, 6)
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        session = db.get(AgentSession, run.session_pk)
+        session.pr_urls = [PR["url"]]
+        coordinator.session_reported(db, session)
+    assert judged(run_id, stub(verdict())) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, checks=[]) == ("awaiting_ci", "ci_pending")
+    assert report(run_id, checks=[])[0] in ("stopping", "completed")
+    with session_scope() as db:
+        assert db.get(Task, db.get(AgentRun, run_id).task_id).status == "completed"
 
 
 def test_green_ci_later_unparks_a_run_that_needed_your_verification(ci_host):

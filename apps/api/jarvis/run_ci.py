@@ -474,6 +474,11 @@ def no_ci(db, run, facts, why):
         return run
     if local_pass(plan):
         return coordinator.judged_met(db, run, plan, actor)
+    verification = coordinator.manual_verification(run)
+    # Opening the PR can be a new turn, but the manual approval is for the work the owner reviewed.
+    if verification and facts["state"] == "absent" and verification["head"] \
+            and verification["head"] == facts["head_sha"] and coordinator.manual_pr_ready(db, run, plan):
+        return coordinator.judged_met(db, run, plan, actor)
     return coordinator.transition(db, run, "needs_you", actor=actor, reason="verify_manual",
                                   detail=f"The target has no verify command and there are {why}."[:300])
 
