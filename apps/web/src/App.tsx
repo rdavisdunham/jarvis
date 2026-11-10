@@ -2594,6 +2594,8 @@ export default function App() {
   return (
     <RecordNavigator workspace={boot.workspace?.id ?? "personal"} view={view} onOpen={openLinkedRecord}><TaskCardHostContext.Provider value={{
       tasks, schedules,
+      account: { name: boot.name, accountId: boot.account_id, workspaceId: boot.workspace?.id ?? null },
+      actors: organization.actors,
       openNote: (id) => void openNote(id),
       newNote: (task) => { setNoteEditor(blankNote(task)); setError(""); },
       reminder: (schedule, task) => setScheduleEditor({ schedule, task }),
