@@ -12,7 +12,7 @@ from jarvis.models import now
 from jarvis.session_models import AgentCommand, AgentHost, AgentRun, AgentSession
 from protocol_harness import FIXTURES, drift, shape
 from sqlalchemy import select
-from test_agent_runs import attached, commands, quiet, start, state, task  # noqa: F401 - quiet is a fixture
+from test_agent_runs import HUMAN, OWNER, attached, commands, quiet, start, state, task  # noqa: F401 - quiet is a fixture
 from test_agent_runs import host as host  # noqa: F401 - pytest fixture
 
 URL = "/api/v1/remotea/runs/{}/reopen"
@@ -110,6 +110,30 @@ def test_reopen_is_offered_only_for_an_exited_agent_on_a_connected_host_that_can
         db.get(AgentRun, run_id).state_reason = "exited"
     assert not commands(run_id, "run.reopen")
     assert reopen(client, run_id).status_code == 200
+
+
+def test_a_stopped_or_finished_run_is_never_reopened(host, client):
+    """remotea clears its stop flag on exit, so Eridani itself refuses a run the owner stopped or cancelled."""
+    capable(host)
+    run_id = exited(host)
+    with session_scope() as db:  # Stopped while its agent was gone: stopping, then settled.
+        control.stop_run(db, OWNER, run_id, control.StopInput(), actor=HUMAN)
+    assert state(run_id)[0] in ("stopping", "stopped")
+    assert refusal(reopen(client, run_id)) == "stopped"
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        coordinator.finish(db, row, detail="test")
+    assert state(run_id)[0] == "stopped"
+    assert refusal(reopen(client, run_id)) == "stopped"
+    assert view(run_id)["reopen"] == {"available": False, "pending": False, "why": None}
+    # Even parked in needs_you(exited), a run with a recorded stop request is refused.
+    other = exited(host)
+    with session_scope() as db:
+        row = db.get(AgentRun, other)
+        row.stop_requested_at = now()
+        assert run_reopen.unavailable(db, row) == "stopped"
+    assert refusal(reopen(client, other)) == "stopped"
+    assert not commands(run_id, "run.reopen") and not commands(other, "run.reopen")
 
 
 def test_a_reviewer_surface_or_an_unfinished_handoff_is_not_the_runs_worker(host, monkeypatch):

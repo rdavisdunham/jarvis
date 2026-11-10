@@ -25,6 +25,7 @@ COMMAND = "run.reopen"  # Its TTL (5 minutes) is in run_coordinator.TTL.
 # A reopen the host has not answered yet (an acked one may still be respawning the terminal).
 PENDING = ("queued", "sent", "acked")
 WHY = {
+    "stopped": "This run was stopped or has ended; it cannot be reopened.",
     "not_exited": "Reopen is only for a run whose agent exited.",
     "terminal_control": "The terminal has control of this session. Continue there.",
     "no_surface": "This run has no terminal to reopen.",
@@ -47,6 +48,10 @@ def pending(db, run, clock=None):
 
 def unavailable(db, run):
     """Why Reopen cannot be sent now (a WHY key), or None."""
+    if run.state in coordinator.TERMINAL or run.state == "stopping" or run.stop_requested_at is not None:
+        # remotea clears its own stop flag when the process exits, so its "a stop was requested" refusal covers only a
+        # narrow window: a run the owner stopped or cancelled (stop_requested_at is never cleared) is refused here.
+        return "stopped"
     if run.state != "needs_you" or run.state_reason != "exited":
         return "not_exited"
     if (run.sync_state or {}).get("controller") == "terminal":
@@ -72,7 +77,8 @@ def public(db, run):
     """The drawer's Reopen terminal button: {available, pending, why}. `why` is null when it is available, and for a
     run that is not waiting on an exited agent (the button is not shown at all then)."""
     why = unavailable(db, run)
-    return {"available": why is None, "pending": why == "pending", "why": WHY[why] if why and why != "not_exited" else None}
+    return {"available": why is None, "pending": why == "pending",
+            "why": WHY[why] if why and why not in ("not_exited", "stopped") else None}
 
 
 def reopen(db, owner, run_id, body, *, actor):
