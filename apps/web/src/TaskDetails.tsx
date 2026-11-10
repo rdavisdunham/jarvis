@@ -10,7 +10,11 @@ import { ReviewProps } from "./Reviews";
 import { HomePathChip } from "./HomePath";
 import { DateField } from "./DatePicker";
 import { dayInZone } from "./components";
-import type { CustomRecord } from "./structure-types";
+import type { CustomRecord, Schema } from "./structure-types";
+import { HomePicker } from "./HomePicker";
+import { PlacementNote } from "./PlacementNote";
+import { moveRecord, undoMove, type HomeRef } from "./home-picks";
+import { useUndoToast } from "./undo-toast";
 import "./details.css";
 import { z } from "zod";
 import { api } from "./api";
@@ -46,6 +50,8 @@ export function TaskDetails(p:Props){
 function StandardTaskDetails(p: Props) {
   const [customHome,setCustomHome]=useState<CustomRecord|null>(null);
   useEffect(()=>{void api<CustomRecord>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
+  const [structure,setStructure]=useState<Schema|null>(null),[moving,setMoving]=useState(false);
+  useEffect(()=>{if(customHome&&!structure)void api<Schema>("/structure").then(setStructure).catch(()=>{});},[customHome,structure]);
   const annotation=useInlineGuard();
   // Start from the loaded list so the card renders at once; the fetch below replaces it.
   const [task, setTask] = useState<Task | null>(() => p.tasks.find((t) => t.id === p.id) ?? null);
@@ -399,6 +405,21 @@ function StandardTaskDetails(p: Props) {
   const reminders = p.schedules.filter((s) => s.task_id === p.id);
   const locked = busy || p.canEdit === false;
   const home = customHome?.home.map((h) => h.title).join(" / ");
+  const homeToast = useUndoToast(async () => { setCustomHome(await api<CustomRecord>("/structure/by-core/task/" + p.id)); await reload().catch(() => {}); }, "Move undone.");
+  /** A task moves at once, subtasks along; Undo puts it back. */
+  const moveHome = (id: string | null, to?: HomeRef | null) => {
+    if (!customHome || !structure || id === customHome.parent_id) return;
+    setMoving(true);
+    void finish()
+      .then(() => moveRecord(customHome, structure.revision, id))
+      .then(async (run) => {
+        setCustomHome(await api<CustomRecord>("/structure/by-core/task/" + p.id));
+        await reload().catch(() => {});
+        homeToast.show({ message: id ? "Moved to " + (to?.title ?? "its new home") + "." : "Removed from its home.", undo: () => undoMove(run) });
+      })
+      .catch((e) => homeToast.show({ message: (e as Error).message }))
+      .finally(() => setMoving(false));
+  };
   return (
     <Dialog onBackdrop={() => close()}
         dialogRef={card}
@@ -485,7 +506,11 @@ function StandardTaskDetails(p: Props) {
             >
               <div className="prop-list">
                 {customHome && <Prop label="Main home">
-                  <button className="prop-text" title="Open the organization card with custom fields" disabled={busy} onClick={()=>void leave(()=>{p.onClose();window.dispatchEvent(new CustomEvent("eri-open-custom-record",{detail:{id:customHome.id}}));})}>{home||"Unfiled"}</button>
+                  <div className="prop-inline">
+                    {structure ? <HomePicker row={customHome} schema={structure} disabled={locked || moving} onChoose={moveHome}/> : <span className="prop-text">{customHome.home.at(-1)?.title ?? "Unfiled"}</span>}
+                    <button className="btn-icon" aria-label="Open the organization card" title="Open the organization card with custom fields" disabled={busy} onClick={()=>void leave(()=>{p.onClose();window.dispatchEvent(new CustomEvent("eri-open-custom-record",{detail:{id:customHome.id}}));})}><ExternalLink size={14}/></button>
+                  </div>
+                  <PlacementNote recordId={customHome.id} revision={customHome.revision} canEdit={!locked && !moving} onFile={(id, title) => moveHome(id, { id, title, type_id: "", path: "" })}/>
                 </Prop>}
                 <Prop label="Status">{select(
                   "status",
@@ -568,6 +593,7 @@ function StandardTaskDetails(p: Props) {
             </aside>
           </div>
         )}
+        {homeToast.element}
       </Dialog>
   );
 }

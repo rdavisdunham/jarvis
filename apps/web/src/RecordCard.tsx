@@ -5,6 +5,8 @@ import {useEffect, useRef, useState, type ReactNode} from "react";
 import { z } from "zod";
 import { SourceDetails } from "./SourceDetails";
 import { HomePicker } from "./HomePicker";
+import { moveRecord, undoMove, type HomeRef } from "./home-picks";
+import { useUndoToast } from "./undo-toast";
 import { ContentsDialog } from "./ContentsDialog";
 import type {ContentsSummary} from "./structure-types";
 import { RecordTools } from "./record-links";
@@ -71,6 +73,19 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
   const [failed,setFailed]=useState<Record<string,unknown>|null>(null);
   const [comparison,setComparison]=useState<CustomRecord|null>(null);
   const current=useRef(row);current.current=row;const flight=useRef<Promise<unknown>|null>(null);
+  const [moving,setMoving]=useState(false);
+  const refreshRow=async()=>{const next=await api<CustomRecord>("/structure/records/"+current.current.id);setRow(next);current.current=next;await onChanged();};
+  const moveToast=useUndoToast(refreshRow,"Move undone.");
+  /** Tasks and empty records move at once, with Undo; a record with contents asks what travels with it. */
+  const moveHome=(id:string|null,home?:HomeRef|null)=>{
+    if(id===row.parent_id)return;
+    const whole=(row.capabilities.includes("work")&&row.opens_as==="item")||!(contents?.direct??children.length);
+    if(!whole){setContentsAction({operation:"move",parentId:id});return;}
+    setMoving(true);
+    void finish().then(()=>moveRecord(current.current,schema.revision,id)).then(async run=>{await refreshRow();
+      moveToast.show({message:id?"Moved to "+(home?.title??"its new home")+".":"Removed from its home.",undo:()=>undoMove(run)});})
+      .catch(e=>moveToast.show({message:(e as Error).message})).finally(()=>setMoving(false));
+  };
   const [alert,setAlert]=useState<{revision:number;deadline_alert:string;alert_urgent:boolean}|null>(null);
   useEffect(()=>{if(row.task_id)void api<{revision:number;deadline_alert:string;alert_urgent:boolean}>("/tasks/"+row.task_id).then(setAlert);},[row.task_id,row.revision]);
   const alertSave=async(values:Record<string,unknown>)=>{if(!alert||!row.task_id)return;const task=await run<{revision:number;deadline_alert:string;alert_urgent:boolean}>("task.update",{task_id:row.task_id,expected_revision:alert.revision,...values});setAlert(task);setRow(await api<CustomRecord>("/structure/records/"+row.id));await onChanged();};
@@ -103,7 +118,7 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
     values:{title:row.title,body:row.body,local_notes:row.local_notes??"",parent_id:row.parent_id,status_id:row.status_id,values:row.values,archived:row.archived},beforeLeave:finish,patch:async v=>{if(!canEdit)throw new Error("Read-only workspace");await finish();return save(v);},close:onClose});
   const link=async(remove=false,relationship_id=relation,target_id=target)=>{await run("record.link",{source_id:row.id,target_id,relationship_id,expected_revision:row.revision,schema_revision:schema.revision,remove});setRow(await api<CustomRecord>("/structure/records/"+row.id));await onChanged();setTarget("");};
   useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==="Escape"&&!busy&&!e.defaultPrevented)close();};document.addEventListener("keydown",key);return()=>document.removeEventListener("keydown",key);},[busy,onClose]);
-  const locked=!canEdit||busy||!!failed;
+  const locked=!canEdit||busy||!!failed||moving;
   const childType=schema.types.find(v=>v.id==="task"&&!v.archived&&v.parent_types.includes(row.type_id))??schema.types.find(v=>!v.archived&&v.capabilities.includes("work")&&v.parent_types.includes(row.type_id));
   const fields=t.fields.filter(f=>f.visible&&!f.archived);
   const byBinding=(binding:string)=>fields.find(f=>f.binding===binding);
@@ -175,8 +190,8 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
       </div>
       <aside className="detail-props" aria-label={t.name+" properties"}>
         <div className="prop-list">
-          <Prop label="Main home"><HomePicker row={row} schema={schema} disabled={locked} onChoose={id=>{if(id!==row.parent_id)setContentsAction({operation:"move",parentId:id});}}/>
-            {row.task_id&&!OVERVIEW_TYPES.includes(row.type_id)&&<PlacementNote recordId={row.id} revision={row.revision} canEdit={!locked} onFile={id=>{if(id!==row.parent_id)setContentsAction({operation:"move",parentId:id});}}/>}</Prop>
+          <Prop label="Main home"><HomePicker row={row} schema={schema} disabled={locked} onChoose={moveHome}/>
+            {row.task_id&&!OVERVIEW_TYPES.includes(row.type_id)&&<PlacementNote recordId={row.id} revision={row.revision} canEdit={!locked} onFile={(id,title)=>moveHome(id,{id,title,type_id:"",path:""})}/>}</Prop>
           {!!t.statuses.length&&<Prop label="Status"><select aria-label="Status" value={row.status_id??""} disabled={locked} onChange={e=>void save({status_id:e.target.value||null}).catch(()=>{})}>{!t.capabilities.includes("work")&&<option value="">Empty</option>}{t.statuses.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></Prop>}
           {dueDate?<Prop label="Due" hint={due.map(f=>f.description).join(" ")}>
             <DateField label="Due date" value={val(dueDate)} today={dayInZone(browserZone())} empty="No deadline" disabled={locked}
@@ -198,5 +213,6 @@ export function RecordCard({schema,initial,choices:initialChoices,canEdit,onClos
       </aside>
     </div>
     {contentsAction&&<ContentsDialog row={row} schema={schema} {...contentsAction} onClose={()=>setContentsAction(null)} onDone={async()=>{await onChanged();if(contentsAction.operation==="archive")onClose();else{const next=await api<CustomRecord>("/structure/records/"+row.id);setRow(next);current.current=next;}}}/>}
+    {moveToast.element}
   </Dialog>;
 }
