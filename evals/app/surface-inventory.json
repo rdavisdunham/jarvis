@@ -2187,6 +2187,13 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/remotea/runs/{identity}/restart",
+      "handler": "restart",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/remotea/runs/{identity}/resume",
       "handler": "resume_run",
       "source": "apps/api/jarvis/remotea_routes.py",

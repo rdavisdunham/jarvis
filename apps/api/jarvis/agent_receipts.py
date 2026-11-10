@@ -42,7 +42,7 @@ def once(db, owner, run_id, kind, body, act, *, scope_id=None):
     finally:
         action_context.reset(token)
     receipt_run_id = run_id
-    if kind in ("start", "session"):
+    if kind in ("start", "session", "restart"):
         receipt_run_id = result.get("id", run_id)
     elif kind in ("interview", "answer"):
         receipt_run_id = result.get("run_id", run_id)

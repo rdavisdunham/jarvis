@@ -398,6 +398,19 @@ def dismiss(identity: UUID, body: control.DismissInput, user: User):
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
+@router.post("/runs/{identity}/restart")
+def restart(identity: UUID, body: control.RestartInput, user: User):
+    """Restart run (run_restart.py): continue a finished run as a new run linked to it, in `plan` or `pilot` mode.
+    Answers the new run's detail. 409 RUN_ACTIVE (data.run_id) while another run works on the task, otherwise 409
+    RESTART_UNAVAILABLE with data.reason."""
+    from . import run_restart
+
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "restart", body, lambda: run_restart.restart(
+            db, user.owner_id, user.account_id, str(identity), body, actor=actor_for(user)))
+
+
 @router.post("/runs")
 def start(body: control.StartInput, user: User):
     with session_scope() as db:

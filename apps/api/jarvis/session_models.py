@@ -299,6 +299,8 @@ class AgentRun(Base):
     # 0059: the owner hid the run from the remotea page; "task" (Run on a task) or "session" (New session).
     dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     origin: Mapped[str] = mapped_column(String(20), default="task", server_default="task")
+    # 0062: the finished run this one continues (Restart run, run_restart.py); the old run stays terminal.
+    restarted_from_run_id: Mapped[str | None] = mapped_column(ForeignKey("agent_runs.id"), index=True)
     # Hyperplan (0041): {planner: {harness, model}, reviewer: {harness, model} | null, worker: {harness, model} | null,
     # rounds, approve_final}. NULL is a classic run (one session plans and works). `tool`/`model` always describe the
     # session that owns the run now (the planner, then the worker).

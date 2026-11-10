@@ -607,6 +607,10 @@ def on_outcome(db, row, state, detail="", result=None):
             run.branch = str(facts.get("branch") or run.branch)[:200]
             run.base_branch = str(facts.get("base") or run.base_branch)[:200]
             run.base_facts = base_facts(facts) or run.base_facts or {}
+            if run.restarted_from_run_id:
+                from . import run_restart
+
+                run_restart.on_spawn(run, row, facts)  # Whether the host resumed the old conversation.
             if run.state == "stopping":
                 stop_command(db, run)  # A stop that arrived before the surface existed.
             elif mcp is not None and not mcp["configured"] and needs_plan(run):

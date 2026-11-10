@@ -219,6 +219,14 @@
         ]
        }
       },
+      "resumed": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
       "stale_workspace": {
        "required": false,
        "shape": {

@@ -124,6 +124,14 @@
      ]
     }
    },
+   "resume_session_id": {
+    "required": false,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
    "run_id": {
     "required": true,
     "shape": {

@@ -103,6 +103,15 @@ class DismissInput(Input):
     action_id: UUID | None = None
 
 
+class RestartInput(Input):
+    """Restart run (run_restart.py): `plan` sends the note to planning (required); `pilot` is a freestyle run whose
+    first message is the note (optional)."""
+    action_id: UUID | None = None  # agent_receipts.once
+    mode: Literal["plan", "pilot"]
+    note: str = Field(default="", max_length=4000)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 class FreestyleInput(Input):
     enabled: bool
     expected_revision: int | None = Field(default=None, ge=1)
@@ -629,9 +638,12 @@ def run_roles(body):
             "approve_final": bool(body.approve_final)}
 
 
-def start_run(db, owner, account_id, body, *, actor, brief="", opening=""):
+def start_run(db, owner, account_id, body, *, actor, brief="", opening="", restart=None):
     """Start one run. `brief` (swarm.py only, never from a request body) is appended to the spawn prompt. `opening`
-    (start_session only) replaces the spawn prompt of a freestyle run and marks it a session."""
+    (start_session only) replaces the spawn prompt of a freestyle run and marks it a session. `restart` (run_restart
+    only: {from, mode, note, resume_session_id, earlier}) links the run to the finished one it continues, writes the
+    restart prompt (plan: planning for the added work; pilot: the note) and asks the host to resume the old
+    conversation when `resume_session_id` is set."""
     body = body.model_copy(deep=True)
     agent_link.gate(db, owner)
     if body.harness in DISABLED_HARNESSES:
@@ -689,8 +701,9 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening=""):
     # an interview that does run only adds to them (agent_plan.plan_floor).
     planned = bool(task.success_criteria) and bool(task.verify)
     interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
-    if body.freestyle:
-        interview = False  # Freestyle talks to the agent directly: nothing to interview for or submit.
+    if body.freestyle or restart is not None:
+        # Freestyle talks to the agent directly: nothing to interview for or submit. A restart plans the added work.
+        interview = False
     # Hyperplan never executes an unreviewed plan: a task with a PRD starts in planning instead of frozen.
     planning_start = not body.freestyle and not interview
     run = AgentRun(owner_id=owner, account_id=account_id, task_id=task.id, host_id=host.id,
@@ -705,13 +718,14 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening=""):
                    sync_state={"execution_mode": "managed" if managed_start else "legacy",
                                **({"start_phase": "planning"} if planning_start else {})},
                    freestyle=bool(body.freestyle), roles=roles, plan_round=0,
-                   origin="session" if opening and body.freestyle else "task",
+                   origin=(restart["from"].origin or "task") if restart else "session" if opening and body.freestyle else "task",
+                   restarted_from_run_id=restart["from"].id if restart else None,
                    history=[{"at": now().isoformat(), "from": "queued", "to": "spawning", "reason": "start",
                              "revision": 1, "actor": actor.record()}])
     db.add(run)
     db.flush()
     verify, migration = None, None
-    manual_plan = body.interview is False and roles is None and not body.freestyle
+    manual_plan = body.interview is False and roles is None and not body.freestyle and restart is None
     if interview:
         from . import agent_prompts as prompts
 
@@ -722,8 +736,14 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening=""):
 
         note = db.get(Note, task.prd_note_id) if task.prd_note_id else None
         prd = note.content if note and note.owner_id == owner and not note.archived else ""
-        prompt = prompts.planning_start(task, coordinator.children(db, task), task.notes or "", prd,
-                                        verify_ids(db, run)[1], roles)[:PROMPT_CHARS]
+        if restart is not None:
+            prompt = prompts.restart_plan(task, coordinator.children(db, task), task.notes or "", prd,
+                                          verify_ids(db, run)[1], roles, restart["note"],
+                                          resume=bool(restart.get("resume_session_id")),
+                                          earlier=restart.get("earlier") or "")[:PROMPT_CHARS]
+        else:
+            prompt = prompts.planning_start(task, coordinator.children(db, task), task.notes or "", prd,
+                                            verify_ids(db, run)[1], roles)[:PROMPT_CHARS]
         if manual_plan:
             plan = freeze(db, owner, run, task)
             run.plan_pending = True
@@ -739,6 +759,12 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening=""):
         migration = {k: plan.migration[k] for k in ("number", "dir")} if plan.migration else None
     if opening and body.freestyle:
         prompt = session_prompt(opening)
+    if restart is not None and body.freestyle:
+        from . import agent_prompts as prompts
+
+        # Pilot: the note is the whole prompt; without one, a resumed agent just waits at its prompt.
+        prompt = prompts.restart_pilot(restart["note"], resume=bool(restart.get("resume_session_id")))
+    resume = (restart or {}).get("resume_session_id")
     if brief:
         prompt = prompt[:PROMPT_CHARS - len(brief) - 2] + "\n\n" + brief
     token = coordinator.mint_token(run, fresh=True)
@@ -756,6 +782,8 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening=""):
         **({"effort": body.effort} if body.effort else {}),
         **({"permission_profile": body.permission_profile} if body.permission_profile else {}),
         **({"execution": "managed"} if managed_start else {}),
+        # Restart run (cap spawn.resume): resume the old Claude conversation; the host reports result.resumed.
+        **({"resume_session_id": resume} if resume else {}),
     })
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return public_run(db, run)
@@ -1302,9 +1330,11 @@ def freshness_text(item, clock=None):
 
 
 def run_turns(run):
-    """Turns that belong to the run: bound to it, or recorded on its session."""
+    """Turns that belong to the run: bound to it, or recorded on its session and bound to no other run (a restarted
+    run that resumed this conversation records its own turns on the same session; run_restart.py)."""
     return select(AgentTurn).where(AgentTurn.owner_id == run.owner_id,
-                                   (AgentTurn.run_id == run.id) | (AgentTurn.session_pk == (run.session_pk or "")))
+                                   (AgentTurn.run_id == run.id) | ((AgentTurn.session_pk == (run.session_pk or ""))
+                                                                    & AgentTurn.run_id.is_(None)))
 
 
 def reason_detail(db, run):
@@ -1368,7 +1398,7 @@ def changes_info(db, run, host, session):
 
 
 def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
-    from . import agent_automation
+    from . import agent_automation, run_restart
     task = db.get(Task, run.task_id)
     host = db.get(AgentHost, run.host_id)
     session = db.get(AgentSession, run.session_pk) if run.session_pk else None
@@ -1427,6 +1457,10 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         # Merge from Eridani (run_merge.py): whether the pull request can be merged or updated now, and why not.
         "merge": run_merge.public(db, run),
         "auto_merge": run_merge.public_auto(db, run),
+        # Restart run (run_restart.py): whether this finished run can continue as a new linked run, and the links.
+        "restart": run_restart.public(db, run),
+        "restarted_from": run_restart.restarted_from(db, run),
+        "restarted_as": run_restart.restarted_as(db, run),
         "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question") or harness.get("managed_questions")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,
