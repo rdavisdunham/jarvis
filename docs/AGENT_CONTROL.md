@@ -1127,10 +1127,15 @@ The Runs badge (`runsBadge`) counts only the action groups (proposals included);
 M working".
 
 **Open terminal in remotea** (drawer header, any run with a terminal, settled ones included) posts
-`/runs/{id}/focus`; the remotea desktop app raises its window and selects the run's tab. When that cannot happen
-(`sent: false`) the drawer says why and shows where the terminal is instead (`remotea-model.ts`
-`terminalFallback`): the host's name, the worktree path and branch, and commands to copy: `cd <worktree>` and
-`remotea screen <surf>` (remotea has no interactive attach command). The other direction: a remotea tab Eridani
+`/runs/{id}/focus`; the remotea desktop app on the host raises its window and selects the run's tab. The answer shows
+right under the header (it stays in both the plan and chat views, and Dismiss clears it): "Asking remotea…" while
+waiting, then "Brought the terminal forward in remotea on <host>". That line is the only sign it worked when the page
+is open on another device. When it cannot happen (`sent: false`), the same place says why and shows where the
+terminal is (`remotea-model.ts` `terminalFallback`): the host's name, the worktree path and branch, and commands to
+copy. The first is the worker's resume command (`worker_resume_command`) when Eridani has one, which reopens the agent
+in a remotea tab; then `cd <worktree>` and `remotea screen <surf>` (remotea has no interactive attach command). The
+button's tooltip names the host, or says the run has no terminal yet when it is disabled. **Copy worker resume
+command** stays in the drawer's control row. The other direction: a remotea tab Eridani
 started shows a small ↗ button and, in its context menu, **Open in Eridani** and **Copy run link**, which open
 `<Eridani>/?view=remotea&run=<id>` (the host records Eridani's web URL on the session; see remotea's
 `docs/remotea/eridani-link.md`, "Open in Eridani, and the terminal from Eridani").

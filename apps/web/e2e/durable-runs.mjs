@@ -140,7 +140,13 @@ try {
   await page.reload();
   await expect(plan).toContainText(planText);
   await plan.getByLabel("Note for the planner (to revise)").fill("Include a repeatable benchmark.");
+  const changesRequested = page.waitForResponse(response => response.request().method() === "POST"
+    && (response.url().includes("/remotea/decisions/") || response.url().endsWith(`/remotea/runs/${run}/plan-review`)));
   await plan.getByRole("button", { name: "Request changes", exact: true }).click();
+  expect((await changesRequested).ok()).toBeTruthy();
+  // The revised plan is only accepted once the run has left plan approval (otherwise PLAN_LOCKED): wait for it,
+  // instead of racing the click's request.
+  await expect.poll(async () => { const r = await readRun(run); return r.state !== "needs_you" || r.state_reason !== "plan_approval"; }).toBe(true);
   await event(run, "plan", { prd: "Repeat the benchmark, implement the focused fix, and open a pull request." }); await refresh();
   await expect(plan).toContainText("Repeat the benchmark");
   await plan.getByText("Previous plans", { exact: true }).click();

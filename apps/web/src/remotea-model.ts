@@ -1788,7 +1788,7 @@ export type FocusResult = { sent: true; desktops?: number | null } | { sent: fal
 export const FOCUS_TEXT: Record<string, string> = {
   no_desktop: "No remotea desktop app is connected to this host right now.",
   host_offline: "The remotea server is offline.",
-  no_surface: "This run has no terminal open on the host.",
+  no_surface: "This run's terminal is not open on the host any more.",
   host_too_old: "This host's remotea server is too old to open terminals from here; update it.",
   no_answer: "The remotea server did not answer in time.",
   failed: "The remotea server could not open the terminal.",
@@ -1800,10 +1800,13 @@ export function shellWord(value: string) {
 }
 
 /** Where to find the terminal by hand when the tab could not be brought forward: the host, the worktree and branch,
- * and commands to copy (remotea has no interactive attach: `cd` into the worktree, `remotea screen` to look). */
-export function terminalFallback(run: Pick<Run, "host" | "worktree" | "branch" | "surf">, result: FocusResult | null) {
+ * and commands to copy: the worker's resume command first when Eridani has one (it reopens the agent in a remotea
+ * tab), then `cd` into the worktree and `remotea screen` to look. */
+export function terminalFallback(run: Pick<Run, "host" | "worktree" | "branch" | "surf"> & { worker_resume_command?: string | null },
+  result: FocusResult | null) {
   const reason = result && !result.sent ? result.reason : null;
   const commands: { label: string; command: string }[] = [];
+  if (run.worker_resume_command) commands.push({ label: "Reopen the agent in a remotea tab (run it on the host)", command: run.worker_resume_command });
   if (run.worktree) commands.push({ label: "Open a shell in the worktree", command: "cd " + shellWord(run.worktree) });
   if (run.surf && /^surf-[A-Za-z0-9_-]+$/.test(run.surf))
     commands.push({ label: "See the terminal's screen", command: "remotea screen " + run.surf });
@@ -1817,6 +1820,12 @@ export function terminalFallback(run: Pick<Run, "host" | "worktree" | "branch" |
 }
 
 /** The status line after a successful focus. */
+/** The Open-in-remotea button's tooltip: what it will do, or why it cannot. */
+export function focusTitle(run: Pick<Run, "host" | "surf">) {
+  if (!run.surf) return "This run has no terminal yet";
+  return "Open this run's terminal in the remotea app" + (run.host?.name ? " on " + run.host.name : "");
+}
+
 export function focusSentText(run: Pick<Run, "host">, result: FocusResult) {
   if (!result.sent) return "";
   const where = run.host?.name ? " on " + run.host.name : "";

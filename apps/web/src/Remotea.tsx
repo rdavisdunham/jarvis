@@ -27,7 +27,7 @@ import { RunStopCard } from "./RunStopCard";
 import { RunCiCard } from "./RunCiCard";
 import { RunMergePanel } from "./RunMergePanel";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
-import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
+import { focusSentText, focusTitle, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 import { dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type SavedTarget, type SessionTarget } from "./remotea-model";
@@ -747,7 +747,7 @@ export function Bubble({ entry, runId, unfolded = false }: { entry: TimelineEntr
 
 /** Where the run's terminal is, when remotea could not bring its tab forward: host, worktree, branch, and commands
  * to copy. */
-export function TerminalFallback({ run, result }: { run: Pick<Run, "host" | "worktree" | "branch" | "surf">; result: FocusResult | null }) {
+export function TerminalFallback({ run, result }: { run: Pick<Run, "host" | "worktree" | "branch" | "surf"> & { worker_resume_command?: string | null }; result: FocusResult | null }) {
   const info = terminalFallback(run, result);
   const [copied, setCopied] = useState("");
   return <div className="remotea-terminal-fallback" role="status">
@@ -803,7 +803,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
       if ("run" in result) { setRun(current => current?.id === result.run.id && current.state_revision > result.run.state_revision ? current : result.run); setError(""); setApiConnected(true); } else { setError(message(result.error)); if (result.error instanceof ApiError && result.error.code === "NETWORK") setApiConnected(false); }
     });
   }, [id]);
-  useEffect(() => { stuck.current = true; setEarlier(null); refresh(); return () => requests.current?.cancel(); }, [refresh]);
+  useEffect(() => { stuck.current = true; setEarlier(null); setFocus(null); refresh(); return () => requests.current?.cancel(); }, [refresh]);
   // The merge panel reads the host's newest CI answer: ask for a fresh one on open, and again while it can still change
   // on its own (CI running, a merge or update with the host). The server asks at most every 30 s.
   const mergeOpen = !!run && run.id === id && !!run.branch && !!run.merge && !["merged", "closed"].includes(run.merge.status);
@@ -888,7 +888,6 @@ export function RunDrawer({ id, onClose, preloaded }: {
     try {
       const result = await post<FocusResult>(`/remotea/runs/${run.id}/focus`);
       setFocus(result);
-      if (result.sent) setNotice(focusSentText(run, result));
     } catch (e) { setError(message(e)); }
     finally { setBusy(""); }
   };
@@ -998,12 +997,19 @@ export function RunDrawer({ id, onClose, preloaded }: {
           <input type="checkbox" checked={run.auto_merge.enabled} disabled={!!busy || !run.auto_merge.available}
             aria-describedby={run.auto_merge.why ? "run-auto-merge-why" : undefined} onChange={e => void autoMerge(e.target.checked)}/>Auto-merge
           {run.auto_merge.why && <span id="run-auto-merge-why" className="sr-only">{run.auto_merge.why}</span>}</label>}
-        {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title="Open terminal in Remotea"
+        {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title={focusTitle(run)}
           disabled={!!busy || !bound || !run.surf} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
         <button type="button" className="btn-icon run-drawer-close" aria-label="Close run" title="Close run" onClick={onClose}><X size={20} aria-hidden="true"/></button>
       </div>
       {run && <StageHeader run={run} status={<p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}/>}
       {run && !bound && <p role="status" className="footnote">Loading the selected run…</p>}
+      {/* What Open terminal in remotea did, right under the button: it raises the tab in the desktop app on the host,
+          so from another device this line is the only sign it worked. */}
+      {run && bound && busy === "focus" && <p role="status" className="run-focus-note">Asking remotea{run.host?.name ? " on " + run.host.name : ""} to open the terminal…</p>}
+      {run && bound && focus && <div className="run-focus-result">
+        {focus.sent ? <p role="status" className="run-focus-note">{focusSentText(run, focus)}</p> : <TerminalFallback run={run} result={focus}/>}
+        <button type="button" className="btn-icon" aria-label="Dismiss" title="Dismiss" onClick={() => setFocus(null)}><X size={14}/></button>
+      </div>}
     </header>
     <div className="remotea-chat-log run-drawer-middle" ref={log} onScroll={onScroll}>
       {run && !isSettled(run) && (run.automation?.held || pendingHold) && <p className="run-hold-explanation" role="note">{run?.automation?.held
@@ -1054,7 +1060,6 @@ export function RunDrawer({ id, onClose, preloaded }: {
           {executionModeLabel(run) && <p>{executionModeLabel(run)} · native approvals may require the terminal.</p>}
           <Facts facts={fresh} label="How current this is"/>
           {packet && run.state !== "awaiting_approval" && <ReviewPacketCard packet={packet}/>}
-          {focus && !focus.sent && <TerminalFallback run={run} result={focus}/>}
           {run.completion_policy && <p>{POLICY_TEXT[run.completion_policy] ?? run.completion_policy}</p>}
           {!!run.integration?.length && <ul>{run.integration.map(item => <li key={item.task_id}>{item.branch} · {item.reason}</li>)}</ul>}
           {!!linearOutcomes(run).length && <ul>{linearOutcomes(run).map(item => <li key={item.key}>{item.text}</li>)}</ul>}
