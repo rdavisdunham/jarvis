@@ -847,7 +847,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
     catch (e) { if (isRevisionConflict(e)) changed(); else setError(message(e)); }
     finally { setBusy(""); }
   };
-  const lifecycle = async (action: "pause" | "resume" | "cancel") => {
+  const lifecycle = async (action: "pause" | "resume" | "cancel" | "reopen") => {
     if (!run || !bound) return;
     setBusy(action); setError("");
     try {
@@ -984,7 +984,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
   // What a parked run needs from you (run_attention) and GitHub CI (run_ci.py): the stop card sits in the current stage's
   // section; the CI card does too while it has news (awaiting CI, failed), otherwise its chip line stays in Verify.
   const stopEl = run && bound && !recoveryShown(run) ? <RunStopCard run={run} disabled={off} onApprove={note => void act("approve", note ? { note } : {})}
-    onVerifyAgain={() => void act("judge")} onSendBack={note => void act("message", { text: note, mode: "queue" })}/> : null;
+    onVerifyAgain={() => void act("judge")} onSendBack={note => void act("message", { text: note, mode: "queue" })}
+    onReopen={() => void lifecycle("reopen")}/> : null;
   const ciEl = run ? <RunCiCard run={run} now={now}/> : null;
   const ciCardHere = !!run && !!ciCard(run, now);
   const decisionsHere = (cards: ReactNode) => <section className="run-drawer-decisions" aria-label="Pending decisions">{cards}</section>;

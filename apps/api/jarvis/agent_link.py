@@ -87,13 +87,17 @@ SERVER_CAPS = ["chunk", "chunking", "session.report", "session.report.parity", "
                # (UserPromptSubmit), not only on the following turn's Stop.
                "prompt",
                # The host's `remotea doctor` summary: in hello (`doctor`), and as a `doctor` frame when it changes.
-               "doctor", "decisions.durable", "commands.durable", "run.pause", "run.cleanup", "run.cleanup.handoff", "input.direct", "output.live", "role.options", "managed.sessions", "activity"]
+               "doctor", "decisions.durable", "commands.durable", "run.pause", "run.cleanup", "run.cleanup.handoff", "input.direct", "output.live", "role.options", "managed.sessions", "activity",
+               # Reopen terminal (run_reopen.py): resume a run's exited worker in place.
+               "run.reopen"]
 # Command kind -> host capability it needs.
 COMMANDS: dict[str, str] = {"automation.hold": "input.direct", "run.cleanup": "run.cleanup", "run.pause": "run.pause", "run.resume": "run.pause", "spawn": "spawn", "input": "input", "answer": "answer", "stop": "stop", "verify": "verify",
                             # Rescan worktrees and the run's session and report both now (the judge's PR evidence).
                             "worktrees.scan": "worktrees.scan",
                             # Bring the run's terminal tab to the front in the host's desktop app(s).
                             "terminal.focus": "terminal.focus",
+                            # Resume a run's exited worker in place: Reopen terminal (run_reopen.py).
+                            "run.reopen": "run.reopen",
                             # GitHub CI on the run's pull request (run_ci.py), and Merge / Update branch (run_merge.py).
                             "ci.status": "ci.status", "pr.merge": "pr.merge", "pr.update_branch": "pr.update_branch"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).

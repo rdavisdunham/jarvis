@@ -203,6 +203,9 @@ export type Run = {
   merge?: RunMerge | null;
   /** Auto-merge (run_merge.py, phase 1b): the run's toggle; offered only with a verify entry or CI. */
   auto_merge?: { enabled: boolean; available: boolean; why: string | null; tries: number; active: boolean } | null;
+  /** Reopen terminal (run_reopen.py; older Eridani: absent): resume the run's exited agent in place. `pending` while the
+   * host has not answered; `why` says what stands in the way (null when available, or when the agent has not exited). */
+  reopen?: { available: boolean; pending: boolean; why: string | null } | null;
   plan_pending?: boolean; turn_seq?: number; integration?: { task_id: string; reason: string; branch?: string }[];
   /** Freestyle: you talk to the agent directly; turns are recorded but not verified, judged or capped. */
   freestyle?: boolean;
@@ -578,7 +581,18 @@ export function stopCard(run: RunDetail) {
       reason: terminal ? "Terminal has control." : run.freestyle ? "Freestyle is on, so the judge is off."
         : !run.turn_seq ? "The agent has not finished a turn yet." : !run.plan?.criteria.length ? "The plan has no success criteria." : "" },
     sendBack: { enabled: message.enabled, reason: message.reason, label: manual ? "Describe what's wrong" : "Send back to the agent" },
+    // Reopen terminal (run_reopen.py): only while the server offers it (the agent exited, the host can resume it in
+    // place) or a reopen is on its way, then shown as pending.
+    reopen: reopenButton(run),
   };
+}
+
+/** The stop card's Reopen terminal button, or null when it is not offered. */
+export function reopenButton(run: Pick<Run, "reopen">) {
+  const r = run.reopen;
+  if (!r || !(r.available || r.pending)) return null;
+  return { enabled: r.available, label: r.pending ? "Reopening terminal…" : "Reopen terminal",
+    reason: r.pending ? r.why ?? "" : "Resume the agent's conversation in its own terminal, still bound to this run" };
 }
 
 /** The task detail's Run button: hidden unless remotea is on; disabled with a reason when no host can take it. */
@@ -809,7 +823,7 @@ export function attemptTone(a: Attempt): TimelineEntry["tone"] {
 
 export function commandTitle(c: RunCommand) {
   const what = c.kind === "input" ? (c.mode === "steer" ? "Steer" : "Message") : c.kind === "spawn" ? "Start" : c.kind === "stop" ? "Stop"
-    : c.kind === "answer" ? "Answer" : c.kind === "verify" ? "Verify" : c.kind;
+    : c.kind === "answer" ? "Answer" : c.kind === "verify" ? "Verify" : c.kind === "run.reopen" ? "Reopen terminal" : c.kind;
   const state = c.outcome?.state ?? c.status;
   const shown: Record<string, string> = { queued: "queued", sent: "sent", acked: "accepted by remotea", accepted: "accepted by remotea",
     executed: "done", failed: "failed", rejected: "refused by remotea",
@@ -956,7 +970,7 @@ export function freshnessFacts(run: Run, host?: Pick<Host, "connected" | "last_s
     }
   }
   for (const [n, c] of (run.pending_controls ?? []).entries()) {
-    const what = c.kind === "input" ? (c.mode === "steer" ? "steer" : "message") : c.kind;
+    const what = c.kind === "input" ? (c.mode === "steer" ? "steer" : "message") : c.kind === "run.reopen" ? "reopen terminal" : c.kind;
     facts.push(c.status === "uncertain"
       ? { key: "control:" + n, label: `${what} ${ago(c.at, now)}: delivery uncertain`, tone: "warn" }
       : { key: "control:" + n, label: `${what} sent ${ago(c.at, now)}, not taken by remotea yet`,

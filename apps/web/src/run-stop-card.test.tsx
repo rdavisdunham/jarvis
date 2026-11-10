@@ -113,6 +113,50 @@ describe("the three actions", () => {
   });
 });
 
+describe("Reopen terminal (run.reopen)", () => {
+  const exited = (reopen: RunDetail["reopen"]) => parked({ state_reason: "exited", reopen, verification: null,
+    attention_detail: { reason: "exited", headline: "The agent process exited.", action: "Send the agent a message to start it again, or approve the work as it is.", detail: "", last_output: [] } });
+  const buttons = (run: RunDetail, onReopen?: () => void) => {
+    const html = renderToStaticMarkup(<RunStopCard run={run} disabled={false} onApprove={() => {}} onVerifyAgain={() => {}} onSendBack={() => {}} onReopen={onReopen}/>);
+    const box = document.createElement("div");
+    box.innerHTML = html;
+    return [...box.querySelectorAll("button")];
+  };
+
+  it("is shown only when the server offers it, and as pending while the host has not answered", () => {
+    const reopen = () => {};
+    expect(buttons(exited({ available: true, pending: false, why: null }), reopen).find(b => b.textContent === "Reopen terminal")?.disabled).toBe(false);
+    const waiting = buttons(exited({ available: false, pending: true, why: "A reopen is already on its way to the host." }), reopen)
+      .find(b => b.textContent === "Reopening terminal…");
+    expect(waiting?.disabled).toBe(true);
+    expect(waiting?.title).toBe("A reopen is already on its way to the host.");
+    for (const run of [exited({ available: false, pending: false, why: "Update remotea to reopen an exited agent from here." }),
+      exited({ available: false, pending: false, why: null }), exited(undefined), exited(null), parked()]) {
+      expect(buttons(run, reopen).some(b => b.textContent?.includes("Reopen"))).toBe(false);
+    }
+    // A drawer that does not wire the action never shows it.
+    expect(buttons(exited({ available: true, pending: false, why: null })).some(b => b.textContent?.includes("Reopen"))).toBe(false);
+    expect(stopCard(exited({ available: true, pending: false, why: null }))!.reopen).toMatchObject({ enabled: true, label: "Reopen terminal" });
+  });
+
+  it("sends the reopen on click", () => {
+    const host = document.createElement("div"), onReopen = vi.fn();
+    document.body.append(host);
+    const root = createRoot(host);
+    act(() => root.render(<RunStopCard run={exited({ available: true, pending: false, why: null })} disabled={false} onApprove={() => {}}
+      onVerifyAgain={() => {}} onSendBack={() => {}} onReopen={onReopen}/>));
+    act(() => { [...host.querySelectorAll("button")].find(b => b.textContent === "Reopen terminal")!.click(); });
+    expect(onReopen).toHaveBeenCalledOnce();
+    act(() => root.unmount());
+    host.remove();
+  });
+
+  it("names the command on the timeline", async () => {
+    const { commandTitle } = await import("./remotea-model");
+    expect(commandTitle({ kind: "run.reopen", status: "queued" } as Parameters<typeof commandTitle>[0])).toBe("Reopen terminal · queued");
+  });
+});
+
 describe("the timeline records the override", () => {
   it("shows an approve_override entry with its reason and note", async () => {
     const { timeline } = await import("./remotea-model");
