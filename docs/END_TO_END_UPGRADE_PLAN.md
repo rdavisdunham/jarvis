@@ -45,7 +45,7 @@ Ordered so that each phase makes the next one safe. Widening the inputs comes af
 - Deploy remotea `origin/main` (#67 `run.reopen`, #68 `spawn.resume`) and add a check that flags when the running build is behind.
 - Finish and commit the manual-verification work sitting uncommitted on `feat/remotea-ledger`.
 - Give the five targets that fail the doctor check a working verify command. Without one, every run ends in manual verification.
-- Fix the Zoom transcript sync (PLT-2444) and backfill. Zoom transcript commits to the vault stop on 2026-10-02. Zoom deletes cloud recordings after 60 days, so early October starts becoming unrecoverable around 2026-12-01. Cause unconfirmed.
+- Fix the Zoom transcript sync (PLT-2444) and backfill. No Zoom transcript has reached the vault since 2026-10-02. Linear records two causes: an AWS storage credential failure from 2026-10-05 (storage since moved to R2), then an OpenRouter 401 "User not found" on the summary step, still failing on 2026-11-10 (PLT-2500). The fix is a credential on the Cloudflare Worker, which needs an operator with Cloudflare and OpenRouter access. Zoom deletes cloud recordings after 60 days, so early October starts becoming unrecoverable around 2026-12-01.
 - Move the judge onto its own queue; it currently shares one with memory and overview jobs.
 - Record a baseline: clicks per completed task, time from signal to task, share of tasks finished without you.
 
