@@ -9,7 +9,7 @@ type Pick = { home_id: string; title: string; type_id: string; confidence: strin
 export type PlacementData = { suggestion: Pick | null; filed: Pick | null; pending: boolean };
 
 export function PlacementNote({ recordId, revision, canEdit, onFile }:
-  { recordId: string; revision: number; canEdit: boolean; onFile: (homeId: string) => void }) {
+  { recordId: string; revision: number; canEdit: boolean; onFile: (homeId: string, title: string) => void }) {
   const [data, setData] = useState<PlacementData | null>(null);
   useEffect(() => {
     let live = true;
@@ -22,7 +22,7 @@ export function PlacementNote({ recordId, revision, canEdit, onFile }:
     return <div className="placement-note" role="status">
       <Sparkles size={13} aria-hidden="true"/>
       <span>Looks like <strong>{s.title}</strong>{s.reason ? `: ${s.reason}` : ""}</span>
-      {canEdit && <button className="text-button" onClick={() => onFile(s.home_id)}>File here</button>}
+      {canEdit && <button className="text-button" onClick={() => onFile(s.home_id, s.title)}>File here</button>}
     </div>;
   }
   if (data.filed) return <p className="footnote placement-note" title={data.filed.reason}>

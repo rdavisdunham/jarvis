@@ -31,7 +31,7 @@ try{
  expect((await request("/structure/browse?parent_id="+task.id)).items[0].type_id).toBe("task");
  await page.getByRole("button",{name:"Close record"}).click();
  await browse.getByRole("button",{name:"Details",exact:true}).click();await page.getByRole("button",{name:"Choose main home"}).click();
- await page.getByRole("button",{name:"Leave unfiled",exact:true}).click();
+ await page.getByRole("button",{name:"Remove from home",exact:true}).click();
  const move=page.getByRole("dialog",{name:"Move contents",exact:true});await expect(move).toBeVisible();
  await move.getByLabel(/Move only this record/).check();await expect(move).toContainText("2 children promoted");
  await move.getByRole("button",{name:"Move",exact:true}).click();await expect(move).toHaveCount(0);
