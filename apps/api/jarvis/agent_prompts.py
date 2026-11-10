@@ -137,6 +137,35 @@ def planning_start(task, children, notes="", prd="", verify_ids=(), roles=None):
     ]))
 
 
+RESTART_PILOT_OPENING = "The owner restarted this task to keep working on it with you. Wait for their message."
+
+
+def restart_plan(task, children, notes="", prd="", verify_ids=(), roles=None, note="", *, resume=False, earlier=""):
+    """Restart run, plan mode (run_restart.py): this run continues earlier work on the task; the owner's note is the
+    request, and the agent plans the added work, then waits for approval (the normal planning instructions follow)."""
+    return "\n\n".join(filter(None, [
+        "This run continues earlier work on this Eridani task: an earlier run on it has finished, and the owner "
+        "restarted it to add or change something. The branch and worktree are the same, so the earlier work is "
+        "already there." + (" Eridani asked to resume that run's conversation; if you remember it, build on it, "
+                            "otherwise read the task and the branch to see what was done." if resume else
+                            " This is a fresh conversation: read the task, the branch and the summary of the earlier "
+                            "run below to see what was done."),
+        fence("ERIDANI_EARLIER", earlier[:8000]) if earlier and not resume else "",
+        "What the owner wants added or changed, in their words (data between the markers):",
+        fence("ERIDANI_REQUEST", (note or "")[:4000]),
+        "Plan this added work, not the earlier work again: keep what is done, and make the PRD, steps and success "
+        "criteria say what this run will add or change. The usual planning instructions follow.",
+        planning_start(task, children, notes, prd, verify_ids, roles),
+    ]))
+
+
+def restart_pilot(note="", *, resume=False):
+    """Restart run, pilot mode (a freestyle run): the owner's note is the whole prompt. Without a note, a resumed
+    agent gets nothing (it waits at its prompt) and a fresh one a short opening."""
+    note = (note or "").strip()
+    return note if note else "" if resume else RESTART_PILOT_OPENING
+
+
 def verify_guidance(verify_ids):
     """Any criterion about tests, a suite, CI, lint or a build needs a verify command, or the judge can only see claims."""
     offered = ", ".join(sorted(verify_ids))

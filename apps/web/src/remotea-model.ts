@@ -213,6 +213,11 @@ export type Run = {
   origin?: "task" | "session";
   /** When the owner dismissed it from the remotea page. */
   dismissed_at?: string | null;
+  /** Restart run (run_restart.py; older Eridani: absent): whether this finished run can continue as a new linked run
+   * (`why` is null when it can, and for a run that has not finished), the run it continues and the run continuing it. */
+  restart?: { available: boolean; why: string | null } | null;
+  restarted_from?: { id: string; state: RunState; finished_at: string | null; mode?: "plan" | "pilot" | null; resumed?: boolean | null } | null;
+  restarted_as?: { id: string; state: RunState } | null;
   /** The full text behind the current state (the judge's notes, the proposal summary); reason_text is the one-liner. */
   reason_detail?: string;
   /** Why the run stopped for you, structured (run_attention.py): what happened, what to do, the last output lines.
@@ -375,6 +380,8 @@ export type HistoryEntry = { at: string; from?: string; to?: string; reason?: st
   round?: number; harness?: string; model?: string;
   /** `approve_override`: the approver's note (the reason they accepted the work without the policy's evidence). */
   note?: string;
+  /** `restarted` (Restart run): the mode, the linked run on either side, and whether the host resumed the conversation. */
+  mode?: string; restarted_from?: string; restarted_as?: string; resumed?: boolean;
   /** Merge from Eridani: `merged_pr` (number, base), `branch_updated` (new_head_sha), `merge_refused`/`update_refused`. */
   number?: number; base?: string; new_head_sha?: string | null };
 export type InterviewQuestion = { id: string; question: string; header?: string; options: { label: string; description?: string }[];
@@ -1115,6 +1122,10 @@ export function timeline(run: RunDetail): TimelineEntry[] {
         detail: h.event === "branch_updated" ? (h.new_head_sha ? "New head " + h.new_head_sha.slice(0, 7) : "") : h.reason ?? "", who: "eridani" });
       continue;
     }
+    if (h.event === "restarted") {
+      entries.push(restartedEntry(id, h));
+      continue;
+    }
     if (h.event === "approve_override") {
       entries.push({ id, at: h.at, kind: "state", title: "Approved by you without the completion policy's evidence",
         detail: [h.reason ? (REASON_WORDS[h.reason] ?? h.reason) : "", h.note ?? ""].filter(Boolean).join(" · "), tone: "attention", who: "you" });
@@ -1131,6 +1142,16 @@ export function timeline(run: RunDetail): TimelineEntry[] {
       tone: h.to === "needs_you" ? "attention" : h.to === "completed" ? "good" : ["failed", "stopped"].includes(h.to) ? "warn" : "plain", who: "eridani" });
   }
   return entries.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+}
+
+/** A `restarted` note: on the new run, where it came from (and whether the host resumed the conversation); on the
+ * finished run, that it continues as a new run. `text` is the start of the owner's note. */
+function restartedEntry(id: string, h: HistoryEntry): TimelineEntry {
+  const mode = h.mode === "pilot" ? "Pilot it myself" : "Plan it";
+  const resumed = h.resumed === true ? "Resumed the earlier conversation" : h.resumed === false ? "Fresh conversation" : "";
+  return { id, at: h.at, kind: "state", tone: "plain", who: "you",
+    title: (h.restarted_as ? "Restarted as a new run by you" : "Restarted from an earlier run by you") + " · " + mode,
+    detail: [h.text ?? "", h.restarted_as ? "" : resumed].filter(Boolean).join(" · ") };
 }
 
 // ---------------------------------------------------------------- older pages of the timeline (E-N5)

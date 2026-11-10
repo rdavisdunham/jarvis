@@ -26,8 +26,10 @@ import { SwarmList } from "./Swarm";
 import { RunStopCard } from "./RunStopCard";
 import { RunCiCard } from "./RunCiCard";
 import { RunMergePanel } from "./RunMergePanel";
+import { RunLineage, RunRestart } from "./RunRestart";
+import { focusTarget } from "./run-restart";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
-import { focusSentText, focusTitle, reopenButton, terminalFallback, type FocusResult } from "./remotea-model";
+import { focusSentText, reopenButton, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 import { dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type SavedTarget, type SessionTarget } from "./remotea-model";
@@ -786,6 +788,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
     return () => { window.removeEventListener("online", update); window.removeEventListener("offline", update); };
   }, []);
   const receipts = useReceipts();
+  // Restart run switches the panel to the new run; Restarted from / as open the linked run.
+  const { openRun } = useRemoteaActions();
   const [view, setView] = useRunView(id);
   const previousPlanning = useRef(preloaded ? chatByDefault(preloaded) : null);
   useEffect(() => {
@@ -894,7 +898,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
     if (!run || !bound) return;
     setBusy("focus"); setError(""); setNotice(""); setFocus(null);
     try {
-      const result = await post<FocusResult>(`/remotea/runs/${run.id}/focus`);
+      const result = await post<FocusResult>(`/remotea/runs/${focusTarget(run).id}/focus`);
       setFocus(result);
     } catch (e) { setError(message(e)); }
     finally { setBusy(""); }
@@ -1005,8 +1009,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
           <input type="checkbox" checked={run.auto_merge.enabled} disabled={!!busy || !run.auto_merge.available}
             aria-describedby={run.auto_merge.why ? "run-auto-merge-why" : undefined} onChange={e => void autoMerge(e.target.checked)}/>Auto-merge
           {run.auto_merge.why && <span id="run-auto-merge-why" className="sr-only">{run.auto_merge.why}</span>}</label>}
-        {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title={focusTitle(run)}
-          disabled={!!busy || !bound || !run.surf} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
+        {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title={focusTarget(run).title}
+          disabled={!!busy || !bound || !focusTarget(run).enabled} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
         {/* Reopen terminal (run.reopen): the agent exited; resume it in its own terminal, still bound to the run. */}
         {run && bound && reopen && <button className="btn btn-sm btn-primary run-reopen" disabled={off || !reopen.enabled} title={reopen.reason}
           onClick={() => void reopenTerminal()}><RotateCcw size={14}/>{reopen.label}</button>}
@@ -1028,6 +1032,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
         ? run.automation.recovery === "worker_starting" ? "Restoring the approved worker. Automation remains held; resume again after your message reaches the runtime." : run.automation.releasing ? "Reconciling before automation resumes. The hold remains until Remotea confirms release." : "Eridani automation is held. The worker can continue; automatic prompts, judging, reviews and handoffs wait. Explicit decision cards remain available."
         : "Message saved on this device. The automation hold is pending server confirmation."}</p>}
       {!run ? error ? <div><p role="alert" className="work-error">{error}</p><button className="btn btn-sm" onClick={refresh}>Retry loading run</button></div> : <p role="status">Loading run…</p> : <>
+        {bound && <RunLineage run={run} onOpen={openRun}/>}
         {chatOpen ? <>
           {stopEl}{ciEl}{run.state !== "awaiting_approval" && mergeEl}
           {stage === "plan" && planCard}
@@ -1062,6 +1067,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
           </StageSection>
         </div>}
         {chatOpen && isSettled(run) && <p className="remotea-chat-end">{runLabel(run.state)}{run.finished_at ? " · " + ago(run.finished_at) : ""}</p>}
+        {bound && isSettled(run) && <RunRestart run={run} disabled={!!busy} onRestarted={openRun}/>}
         <details className="run-drawer-details"><summary>Details</summary>
           <dl><dt>Task</dt><dd>{run.task?.id ?? "Standalone"}</dd><dt>Run</dt><dd>{run.id}</dd><dt>Branch</dt><dd>{run.branch || "Not reported"}</dd>
             <dt>Worktree</dt><dd>{run.worktree || "Not reported"}</dd><dt>Host</dt><dd>{run.host?.name ?? "Not reported"}</dd><dt>Turns</dt><dd>{run.turn_count}{run.turn_cap > 0 ? `/${run.turn_cap}` : ""}</dd></dl>

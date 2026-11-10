@@ -893,7 +893,7 @@ All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expi
 
 | `t` | Body | TTL |
 |---|---|---|
-| `spawn` | `attempt, harness, model?, target: {id, repo?, branch, base}, task_id, title, prompt, run_token, env {ERIDANI_*}, group` | 15 min |
+| `spawn` | `attempt, harness, model?, target: {id, repo?, branch, base}, task_id, title, prompt, run_token, env {ERIDANI_*}, group, resume_session_id?` (`resume_session_id`: only a restart, only to a host whose `hello.caps` has `spawn.resume`; the outcome's `result.resumed` says whether the host resumed; see [Restart run](#restart-run-migration-0062)) | 15 min |
 | `input` | `surf, incarnation, text, mode: queue\|steer` | 10 min |
 | `answer` | `surf, incarnation, question_id, provider_request_id, answers: [{item_id, choice_ids?, text?}]` | 10 min |
 | `stop` | `surf, incarnation, mode: interrupt\|kill` | 24 h |
@@ -1046,6 +1046,7 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `POST /runs/{id}/automation/resume {action_id, expected_automation_revision}` | yes | reconcile pending delivery and request a new explicit automation-hold revision; effective hold remains until the host confirms release |
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
 | `POST /runs/{id}/focus` | yes | "Open terminal in remotea": queues `terminal.focus` for the run's current surface and waits up to 6 s for the host's answer. `{sent: true, desktops}`, or `{sent: false, reason, detail?}` with `reason` `no_surface` (no terminal yet, or the host says it is gone), `host_offline`, `host_too_old` (the host does not advertise `terminal.focus`), `no_desktop` (no desktop app connected to the host), `no_answer` (no answer in time; a still-queued request is canceled) or `failed`. The first three are answered without queuing anything. Changes nothing on the run (no revision, no timeline entry) and takes no `action_id`: a repeat only raises the tab again |
+| `POST /runs/{id}/restart {mode: plan\|pilot, note?, expected_revision?, action_id?}` | yes | continue a finished run as a new run linked to it ([Restart run](#restart-run-migration-0062)); answers the new run's detail. `409 RUN_ACTIVE` (`data.run_id`) while another run works on the task, otherwise `409 RESTART_UNAVAILABLE` with `data.reason` |
 | `POST /runs/{id}/reopen {action_id, expected_revision}` | yes | **Reopen terminal** for a run whose agent exited: queues `run.reopen` ([Reopen terminal](#reopen-terminal-runreopen)); `409 REOPEN_UNAVAILABLE` with `data.reason` when it cannot be sent. Returns the run detail |
 | `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
 | `POST /questions/{id}/answer` | yes | |
@@ -1057,7 +1058,7 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `POST /hosts/{id}/rescan` | yes | queue a run-less `worktrees.scan`: `{op_id, queued, connected}` (`queued: false` returns the scan still waiting); 404 `NOT_FOUND` for another owner's or an unknown host, 409 `HOST_TOO_OLD` when the host lacks `worktrees.scan` |
 
 **Retrying a run action (`action_id`, migration 0035).** `message`, `stop`, `approve`, `replan`, `freestyle`,
-`verify-config`, `criteria` and `judge` accept an optional client `action_id` (a UUID). The first request acts and stores a receipt
+`verify-config`, `criteria`, `judge` and `restart` accept an optional client `action_id` (a UUID). The first request acts and stores a receipt
 (`agent_action_receipts`: owner, action id, run, route, a SHA-256 of the route, run and body without
 `action_id`, and the response) in the same transaction as the effect (`agent_receipts.once`). A repeat with the
 same `action_id` and body returns the stored response and acts no more: one `AgentCommand`, one steer
@@ -1640,6 +1641,60 @@ verify_missing | verify_infra | no_progress | turn_cap | awaiting_merge | pr_unk
 shows the toggle. A run can also start in freestyle (`POST /remotea/runs {freestyle: true}`, the Run dialog's **Start
 in freestyle**): no interview, the plan frozen from the task as written; it is the only way to start on a target
 whose agents have no Eridani tools (`MCP_UNCONFIGURED`).
+
+### Restart run (migration 0062)
+
+A finished run (`completed`, `stopped`, `capped`, `failed`) stays finished: it is the record. **Restart run** in its
+drawer (where the drawer shows how it ended) continues it as a **new run linked to it**, on the same task, branch and
+worktree, with the same target, harness, model, effort and permission profile (`run_restart.py`). The form asks "What
+do you want to add or change?" and offers two modes:
+
+- **Plan it** (`mode: plan`, note required): the note goes to planning. The spawn prompt says the run continues
+  earlier work on the task, gives the owner's note as the request (fenced like any operator text) and asks for a plan
+  for the added work, followed by the normal planning instructions (`agent_prompts.restart_plan`). The agent submits
+  a plan and the run waits for approval like any planned run. A hyperplan run keeps its reviewer, rounds and separate
+  worker (a worker identical to the planner, as a managed run synthesizes, is left to the start).
+- **Pilot it myself** (`mode: pilot`, note optional): a [freestyle](#freestyle) run (no interview, plan or judge; no
+  roles). The note is the whole prompt. Without one, a resumed agent gets an empty prompt (it waits at its prompt) and
+  a fresh one the line "The owner restarted this task to keep working on it with you. Wait for their message."
+
+`POST /remotea/runs/{id}/restart {mode, note?, expected_revision?, action_id?}` (note ≤ 4000 characters) follows the
+other run actions: `agent_receipts.once` keyed by `action_id` (the receipt is filed under the new run), actor human,
+`check_revision`. Refusals: `409 RUN_ACTIVE` with `data.run_id` while another run works on the task; otherwise `409
+RESTART_UNAVAILABLE` with `data.reason`: `not_finished`, `task_closed` (the task is cancelled, archived or a
+template), `no_target` (the run's execution target or its host is gone), `host_offline`, `target_missing` (the host no
+longer lists the target) and, for `plan`, `note_required`. Then:
+
+1. A `completed` task is reopened through the domain's `task.reopen` (command id `run-restart:<run>:<action>`), so
+   Linear and the task timeline follow; the new run's observed start moves it to In Progress as usual.
+2. `start_run` runs with the old run's settings, `interview: false` and `freestyle` for pilot, and a `restart`
+   argument that links the run (`agent_runs.restarted_from_run_id`), keeps the old run's `origin`, writes the prompt
+   above and, for a plan restart, starts in planning (never the stage C "run on the task's plan" freeze).
+3. **Resume.** For a Claude run, when the host's hello `caps` lists `spawn.resume`, the old run's session (`session_pk` →
+   `agent_sessions`) was the same harness (`claude` ↔ `claude_code`) and its provider session id is known and
+   well-formed, the spawn carries `resume_session_id` and remotea launches `claude --resume <id>` in the reused
+   worktree, with the prompt (if any) as the first message. Otherwise the spawn starts a fresh conversation and a plan
+   restart's prompt adds the old run's last plan revision (title, PRD, steps) and summary line between
+   `ERIDANI_EARLIER` markers. For a spawn that carried `resume_session_id`, the host reports `result.resumed:
+   true|false` on the `executed` outcome (false when the conversation's transcript is missing and it started fresh);
+   Eridani records it on the new run (`sync_state.restart.resumed` and the `restarted` note). Without the field the
+   host reports nothing and `resumed` stays null. A malformed id is rejected (`bad resume_session_id`); Eridani only
+   sends ids matching `agent_sessions.SESSION_ID`, a subset of what remotea accepts. An older host never gets the field.
+4. Both runs get a `restarted` timeline note: actor, `mode`, `restarted_from` (on the new run) or `restarted_as` (on
+   the old run), and `text`, the note's first 300 characters (scrubbed by redaction like other history text).
+
+A new run on a resumed conversation records its turns on the same `agent_sessions` row; `run_turns` keeps each run's
+turns apart (a session's turns bound to another run are not this run's).
+
+`public_run` (list and detail) adds: `restart: {available, why}` (`why` is null when available, and for a run that has
+not finished, where the button is not shown), `restarted_from: {id, state, finished_at, mode, resumed}` on the new run
+and `restarted_as: {id, state}` on the old run (the newest run whose `restarted_from_run_id` is this run). The drawer
+shows "Restarted from" / "Restarted as" links and hides Restart while the run that continues it is still active; on
+success it switches to the new run.
+
+Focus needs nothing on the server: `focus_terminal` uses `run.surf`, which the new run's spawn outcome sets. In the
+drawer of a finished run that was restarted, "Open terminal in remotea" raises the newest restarted run's terminal
+(`focusTarget` in `apps/web/src/run-restart.ts`), since the old run's own surface was cleaned up.
 
 ### auto_complete
 

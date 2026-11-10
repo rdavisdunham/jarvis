@@ -445,3 +445,38 @@ def test_session_recall_migration_archives_chats_from_outside_remotea(test_datab
         with admin.connect() as c:
             c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
         admin.dispose()
+
+
+def test_run_restart_migration_links_runs_and_downgrades(test_database):
+    name = 'jarvis_restart_' + uuid4().hex
+    supplied = make_url(test_database)
+    admin = create_engine(supplied.set(database='postgres'), isolation_level='AUTOCOMMIT')
+    target = supplied.set(database=name)
+    trial = None
+    with admin.connect() as c:
+        c.exec_driver_sql(f'CREATE DATABASE "{name}"')
+    try:
+        env = {**os.environ, 'JARVIS_DATABASE_URL': target.render_as_string(hide_password=False), 'JARVIS_ENV_FILE': ''}
+        def migrate(*args):
+            result = subprocess.run([sys.executable, '-m', 'alembic', *args], cwd=ROOT, env=env, capture_output=True, text=True)
+            assert result.returncode == 0, result.stdout + result.stderr
+        migrate('upgrade', '0061_session_recall')
+        trial = create_engine(target)
+        assert 'restarted_from_run_id' not in {c['name'] for c in inspect(trial).get_columns('agent_runs')}
+        migrate('upgrade', 'head')
+        migrate('check')
+        found = inspect(trial)
+        column = next(c for c in found.get_columns('agent_runs') if c['name'] == 'restarted_from_run_id')
+        assert column['nullable']
+        assert any(fk['constrained_columns'] == ['restarted_from_run_id'] and fk['referred_table'] == 'agent_runs'
+                   for fk in found.get_foreign_keys('agent_runs'))
+        assert 'ix_agent_runs_restarted_from_run_id' in {i['name'] for i in found.get_indexes('agent_runs')}
+        migrate('downgrade', '0061_session_recall')
+        assert 'restarted_from_run_id' not in {c['name'] for c in inspect(trial).get_columns('agent_runs')}
+        migrate('upgrade', 'head')
+    finally:
+        if trial:
+            trial.dispose()
+        with admin.connect() as c:
+            c.exec_driver_sql(f'DROP DATABASE "{name}" WITH (FORCE)')
+        admin.dispose()
