@@ -28,12 +28,13 @@ import { inHome, inTab, matchesQuery, rankOrder } from "./record-filters";
 import { meanings, describe, openTarget } from "./structure-types";
 import { Popover, priorityLabels, useMaxWidth } from "./ux";
 import { clockLabel, dueBucket, dueBuckets, monthDay, shortDate } from "./work-views";
+import { doLabel } from "./date-picks";
 import { shiftDate } from "./workspace";
 
 type Control = {nonce:string;type_id?:string;parent_id?:string;layout?:string;group?:string;record_id?:string;record_ids?:string[];search_id?:string;proposal_id?:string;field?:string;value?:string;status?:string;archived?:boolean;design?:boolean;section?:string};
 type SavedEntry = {id:string;name:string;revision:number;state:Record<string,unknown>};
 type Sort = "default" | "due" | "planned" | "priority" | "title";
-const sortOptions: [Sort, string][] = [["due", "Due date"], ["planned", "Planned day"], ["priority", "Priority"], ["title", "Title"], ["default", "Recently changed"]];
+const sortOptions: [Sort, string][] = [["due", "Due date"], ["planned", "Do date"], ["priority", "Priority"], ["title", "Title"], ["default", "Recently changed"]];
 const typeIcons: Record<string, LucideIcon> = {task: CircleCheck, project: FolderKanban, client: Building2, space: Layers, area: Compass, goal: Target, note: NotebookPen, person: User, actor: User};
 export const typeIcon = (typeId: string) => typeIcons[typeId] ?? Shapes;
 const TIMELINE_DAYS = 30;
@@ -199,7 +200,7 @@ export function StructureWorkspace({selecting=false,selectedIds=[],onSelecting,o
     if(due){const bucket=doneish?"none":dueBucket(due,today);
       out.push(<span key="due" className={"chip"+(bucket==="overdue"?" chip-due-overdue":bucket==="today"?" chip-due-today":"")} title="Deadline">
         <CalendarClock aria-hidden="true"/>{shortDate(due,today)}{time?" "+clockLabel(time):""}</span>);}
-    else if(planned){const label=shortDate(planned,today);out.push(<span key="planned" className={"chip"+(!doneish&&planned<today?" chip-due-overdue":"")} title="Planned day">Planned {/^(Today|Tomorrow|Yesterday)$/.test(label)?label.toLowerCase():label}</span>);}
+    else if(planned){out.push(<span key="planned" className={"chip"+(!doneish&&planned<today?" chip-due-overdue":"")} title="Do date">{doLabel(planned,today)}</span>);}
     const start=bound(r,"start_date"),target=bound(r,"target_date");
     if(start||target)out.push(<span key="range" className="chip" title="Start to target">{start?shortDate(start,today):"No start"} – {target?shortDate(target,today):"no target"}</span>);
     const priority=Number(bound(r,"priority")||0);

@@ -2,7 +2,7 @@ import type { CalendarEntry, Task } from "./types";
 export function calendarKind(event: CalendarEntry) {
   if (event.kind === "task")
     return {
-      label: event.timing === "planned" ? "Task (planned)" : "Task (deadline)",
+      label: event.timing === "planned" ? "Task (do date)" : "Task (deadline)",
       icon: "task",
       hint: "Complete the task when the work is done.",
     };

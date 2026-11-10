@@ -2536,7 +2536,7 @@ export default function App() {
                       {["priority", "due", "planned", "title", "updated"].map(
                         (v) => (
                           <option key={v} value={v}>
-                            {humanLabel(v)}
+                            {v === "planned" ? "Do date" : humanLabel(v)}
                           </option>
                         ),
                       )}

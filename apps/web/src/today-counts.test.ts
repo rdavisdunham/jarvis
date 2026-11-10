@@ -25,7 +25,7 @@ describe("Today's due counts", () => {
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(due.length);
   });
   it("words the header and the card the same way", () => {
-    expect(dueParts(dueCounts(due, TODAY))).toEqual(["2 overdue", "1 due today", "2 slipped", "1 planned for today"]);
+    expect(dueParts(dueCounts(due, TODAY))).toEqual(["2 overdue", "1 due today", "2 slipped", "1 to do today"]);
     expect(dueParts({ overdue: 16, due_today: 0, slipped: 5, planned: 0 }).join(", ")).toBe("16 overdue, 5 slipped");
     expect(dueParts({ overdue: 0, due_today: 0, slipped: 0, planned: 0 })).toEqual([]);
   });

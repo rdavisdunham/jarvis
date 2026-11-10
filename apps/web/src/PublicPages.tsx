@@ -52,7 +52,7 @@ export function PublicPages() {
         <div className="public-orbit" aria-hidden="true"><BrandMark size={96}/>
           <div className="public-preview"><div className="preview-heading"><span>An example day</span><span>Today</span></div>
             <h2>A little less to keep in your head.</h2>
-            <div className="preview-task"><span className="preview-check"><Check size={13}/></span><div>Finish the project brief<small>Work, planned today</small></div><span>10:00</span></div>
+            <div className="preview-task"><span className="preview-check"><Check size={13}/></span><div>Finish the project brief<small>Work, do today</small></div><span>10:00</span></div>
             <div className="preview-task"><span className="preview-check empty"/><div>Leave room for a walk<small>Personal, 30 minutes</small></div><span>16:30</span></div>
             <div className="preview-note"><FileText size={15}/><span>The idea that started it all<small>Linked to the project</small></span></div>
             <div className="preview-eri"><span className="eri-orb"/><span>“Move the brief to tomorrow.”<small>A request. A saved change. Room to think.</small></span><Mic size={17}/></div>

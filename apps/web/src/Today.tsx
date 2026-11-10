@@ -6,6 +6,7 @@ import type { NoteRecord } from "./Notes";
 import { notePreview } from "./note-preview";
 import { scheduledBy } from "./productivity";
 import { clockLabel, dueBucket, shortDate } from "./work-views";
+import { doLabel } from "./date-picks";
 import { shiftDate } from "./workspace";
 import { plural, priorityLabels } from "./ux";
 import { TodayReviews } from "./Reviews";
@@ -93,8 +94,7 @@ function DueChip({ task, today }: { task: Task; today: string }) {
   }
   if (task.planned_date) {
     const slipped = task.planned_date < today;
-    return <span className={"chip" + (slipped ? " chip-due-overdue" : "")} title="Planned day">
-      {slipped ? "Planned " + shortDate(task.planned_date, today).replace(/^Yesterday$/, "yesterday") : "Planned"}</span>;
+    return <span className={"chip" + (slipped ? " chip-due-overdue" : "")} title="Do date">{doLabel(task.planned_date, today)}</span>;
   }
   return null;
 }

@@ -437,7 +437,7 @@ export function Timeline({
                         <button
                           className="timeline-mark planned-mark"
                           aria-label={
-                            "Planned " + item.start + ": " + item.title
+                            "Do " + item.start + ": " + item.title
                           }
                           style={{ left: a * cell }}
                           onClick={() => onOpen(item.id)}
@@ -480,7 +480,7 @@ export function Timeline({
               open={group.title === "Unscheduled" || undefined}
             >
               <summary>
-                {group.title === "Unscheduled" ? "Unscheduled: no planned day or deadline" : group.title}
+                {group.title === "Unscheduled" ? "Unscheduled: no do date or deadline" : group.title}
                 <span>{group.rows.length}</span>
               </summary>
               <div>
@@ -489,7 +489,7 @@ export function Timeline({
                     <span>{item.title}</span>
                     <small>
                       {[item.start, item.end].filter(Boolean).join(" to ") ||
-                        "Set a planned date or deadline"}
+                        "Set a do date or deadline"}
                     </small>
                   </button>
                 ))}

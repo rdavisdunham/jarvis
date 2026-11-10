@@ -25,7 +25,7 @@ export function dueParts(counts: DueCounts): string[] {
     counts.overdue && `${counts.overdue} overdue`,
     counts.due_today && `${counts.due_today} due today`,
     counts.slipped && `${counts.slipped} slipped`,
-    counts.planned && `${counts.planned} planned for today`,
+    counts.planned && `${counts.planned} to do today`,
   ].filter((part): part is string => !!part);
 }
 

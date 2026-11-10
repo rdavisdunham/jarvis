@@ -246,7 +246,7 @@ export function CalendarDetails({
       "Priority",
       ["Normal", "Low", "Medium", "High"][task.priority] ?? task.priority,
     ]);
-    if (task.planned_date) props.push(["Planned", dateLabel(task.planned_date)]);
+    if (task.planned_date) props.push(["Do date", dateLabel(task.planned_date)]);
     if (task.due_date)
       props.push([
         "Deadline",
