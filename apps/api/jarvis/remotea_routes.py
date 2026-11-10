@@ -834,6 +834,16 @@ def retry_planning(identity: UUID, body: PauseInput, user: User):
         return receipts.once(db, user.owner_id, str(identity), "retry_planning", body, apply)
 
 
+@router.post("/runs/{identity}/reopen")
+def reopen_run(identity: UUID, body: PauseInput, user: User):
+    """Reopen terminal: ask the host to resume the run's exited worker in place (`run.reopen`, run_reopen.py)."""
+    from . import run_reopen
+    with session_scope() as db:
+        writable(db, user)
+        return receipts.once(db, user.owner_id, str(identity), "reopen", body, lambda: run_reopen.reopen(
+            db, user.owner_id, str(identity), body, actor=actor_for(user)))
+
+
 @router.post("/runs/{identity}/pause")
 def pause_run(identity: UUID, body: PauseInput, user: User):
     from . import agent_decisions

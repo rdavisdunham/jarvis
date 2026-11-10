@@ -16,7 +16,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import and_, func, not_, or_, select
 
-from . import agent_link, run_attention, run_ci, run_merge, run_summaries
+from . import agent_link, run_attention, run_ci, run_merge, run_reopen, run_summaries
 from . import agent_retention as retention
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
@@ -1357,6 +1357,10 @@ def reason_detail(db, run):
             text = result.get("gap") or result.get("summary") or ""
             if text:
                 return text[:4000]
+    if run.state == "needs_you" and run.state_reason == "exited":
+        failure = run_reopen.last_failure(run)
+        if failure is not None:
+            return f"Reopen failed: {failure}"[:300]
     for entry in reversed(run.history or []):
         if entry.get("to") == run.state:
             return (entry.get("detail") or "")[:300]
@@ -1461,6 +1465,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "restart": run_restart.public(db, run),
         "restarted_from": run_restart.restarted_from(db, run),
         "restarted_as": run_restart.restarted_as(db, run),
+        # Reopen terminal (run_reopen.py): {available, pending, why} for a run whose agent exited.
+        "reopen": run_reopen.public(db, run),
         "pending_controls": pending_controls(db, run),
         "structured_answers": bool(harness.get("question") or harness.get("managed_questions")),
         "session": {"id": session.id, "state": session.state, "since": session.state_since} if session else None,

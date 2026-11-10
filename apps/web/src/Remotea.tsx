@@ -1,5 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play, Plus, RefreshCw, Square, SquareTerminal, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, GitBranch, MonitorSmartphone, Play, Plus, RefreshCw, RotateCcw, Square, SquareTerminal, X } from "lucide-react";
 import { api, ApiError, post } from "./api";
 import { useAgentRefresh } from "./remotea-refresh";
 import { useRemotea, useRemoteaActions } from "./remotea-context";
@@ -29,7 +29,7 @@ import { RunMergePanel } from "./RunMergePanel";
 import { RunLineage, RunRestart } from "./RunRestart";
 import { focusTarget } from "./run-restart";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
-import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
+import { focusSentText, reopenButton, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 import { dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type SavedTarget, type SessionTarget } from "./remotea-model";
@@ -747,13 +747,19 @@ export function Bubble({ entry, runId, unfolded = false }: { entry: TimelineEntr
   </li>;
 }
 
-/** Where the run's terminal is, when remotea could not bring its tab forward: host, worktree, branch, and commands
- * to copy. */
-export function TerminalFallback({ run, result }: { run: Pick<Run, "host" | "worktree" | "branch" | "surf"> & { worker_resume_command?: string | null }; result: FocusResult | null }) {
+/** Where the run's terminal is, when remotea could not bring its tab forward: host, worktree, branch, Reopen terminal
+ * first when the server offers it (`onReopen`), then commands to copy. */
+export function TerminalFallback({ run, result, onReopen, disabled = false }: {
+  run: Pick<Run, "host" | "worktree" | "branch" | "surf" | "reopen"> & { worker_resume_command?: string | null }; result: FocusResult | null;
+  onReopen?: () => void; disabled?: boolean;
+}) {
   const info = terminalFallback(run, result);
   const [copied, setCopied] = useState("");
   return <div className="remotea-terminal-fallback" role="status">
     {info.message && <p><strong>{info.message}</strong></p>}
+    {info.reopen && onReopen && <div className="remotea-control-row">
+      <button className="btn btn-sm btn-primary" disabled={disabled || !info.reopen.enabled} title={info.reopen.reason}
+        onClick={onReopen}><RotateCcw size={14}/>{info.reopen.label}</button></div>}
     <p>The terminal is on <strong>{info.host}</strong>
       {info.worktree && <> in <code>{info.worktree}</code></>}{info.branch && <> on branch <code>{info.branch}</code></>}.</p>
     {info.commands.map(c => <div key={c.command} className="remotea-copy-row">
@@ -851,7 +857,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
     catch (e) { if (isRevisionConflict(e)) changed(); else setError(message(e)); }
     finally { setBusy(""); }
   };
-  const lifecycle = async (action: "pause" | "resume" | "cancel") => {
+  const lifecycle = async (action: "pause" | "resume" | "cancel" | "reopen") => {
     if (!run || !bound) return;
     setBusy(action); setError("");
     try {
@@ -862,6 +868,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
     catch (error) { if (isRevisionConflict(error)) changed(); else setError(message(error)); }
     finally { setBusy(""); }
   };
+  // Reopen terminal (run.reopen): pending until the host answers; the focus answer it replaces is cleared.
+  const reopenTerminal = async () => { setFocus(null); await lifecycle("reopen"); };
   const sendMessage = async () => {
     if (!run || !bound || run.direct_supported === false) return;
     await act("message", { text, mode: "direct" });
@@ -919,6 +927,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
     finally { setLoadingEarlier(false); }
   };
   const controls = run ? runControls(run) : null;
+  const reopen = run ? reopenButton(run) : null;
   const entries = shown ? conversationEntries(shown) : [];
   const conversationIds = new Set(entries.map(entry => entry.id));
   const diagnostics = shown ? timeline(shown).filter(entry => !conversationIds.has(entry.id)) : [];
@@ -1002,6 +1011,9 @@ export function RunDrawer({ id, onClose, preloaded }: {
           {run.auto_merge.why && <span id="run-auto-merge-why" className="sr-only">{run.auto_merge.why}</span>}</label>}
         {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title={focusTarget(run).title}
           disabled={!!busy || !bound || !focusTarget(run).enabled} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
+        {/* Reopen terminal (run.reopen): the agent exited; resume it in its own terminal, still bound to the run. */}
+        {run && bound && reopen && <button className="btn btn-sm btn-primary run-reopen" disabled={off || !reopen.enabled} title={reopen.reason}
+          onClick={() => void reopenTerminal()}><RotateCcw size={14}/>{reopen.label}</button>}
         <button type="button" className="btn-icon run-drawer-close" aria-label="Close run" title="Close run" onClick={onClose}><X size={20} aria-hidden="true"/></button>
       </div>
       {run && <StageHeader run={run} status={<p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}/>}
@@ -1010,7 +1022,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
           so from another device this line is the only sign it worked. */}
       {run && bound && busy === "focus" && <p role="status" className="run-focus-note">Asking remotea{run.host?.name ? " on " + run.host.name : ""} to open the terminal…</p>}
       {run && bound && focus && <div className="run-focus-result">
-        {focus.sent ? <p role="status" className="run-focus-note">{focusSentText(run, focus)}</p> : <TerminalFallback run={run} result={focus}/>}
+        {focus.sent ? <p role="status" className="run-focus-note">{focusSentText(run, focus)}</p>
+          : <TerminalFallback run={run} result={focus} disabled={off} onReopen={() => void reopenTerminal()}/>}
         <button type="button" className="btn-icon" aria-label="Dismiss" title="Dismiss" onClick={() => setFocus(null)}><X size={14}/></button>
       </div>}
     </header>
@@ -1086,10 +1099,10 @@ export function RunDrawer({ id, onClose, preloaded }: {
       <DeliveryReceipt receipt={displayedReceipt}/>
       <div className="remotea-control-row run-view-controls">
         <button className="btn btn-sm btn-ghost" aria-expanded={chatOpen} onClick={() => { if (!chatOpen) stuck.current = true; setView({ chat: !chatOpen }); }}>{chatOpen ? "Hide chat" : "Show chat"}</button>
-        {bound && run.worker_resume_command && <button className="btn btn-sm btn-ghost" onClick={() => {
+        {bound && run.worker_resume_command && <button className="btn btn-sm btn-ghost" title="Last resort: it opens a separate terminal that is not connected to this run" onClick={() => {
           const command = run.worker_resume_command!;
           void copyText(command).then(
-            () => setNotice("Worker resume command copied. Run it on the worker’s host."),
+            () => setNotice("Worker resume command copied. Run it on the worker’s host; it opens a separate terminal that is not connected to this run."),
             () => setError("Could not copy the worker resume command."),
           );
         }}><Copy size={14}/>Copy worker resume command</button>}

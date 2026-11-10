@@ -24,13 +24,19 @@ beforeEach(() => {
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
 
-async function open(answer: FocusResult) {
+async function open(answer: FocusResult, shown: RunDetail = run, posted: { url: string; body: Record<string, unknown> }[] = []) {
+  let current = shown;
   vi.stubGlobal("fetch", async (url: string, init: RequestInit = {}) => {
     if (String(url).endsWith("/focus") && init.method === "POST") return new Response(JSON.stringify(answer));
+    if (String(url).endsWith("/reopen") && init.method === "POST") {
+      posted.push({ url: String(url), body: JSON.parse(String(init.body)) });
+      current = { ...current, state_revision: current.state_revision + 1, reopen: { available: false, pending: true, why: "A reopen is already on its way to the host." } };
+      return new Response(JSON.stringify(current));
+    }
     if (String(url).includes("/drafts/")) return new Response(JSON.stringify({ value: null, revision: 0 }));
-    return new Response(JSON.stringify(run));
+    return new Response(JSON.stringify(current));
   });
-  await act(async () => root.render(<RunDrawer id={A} preloaded={run} onClose={() => {}}/>));
+  await act(async () => root.render(<RunDrawer id={A} preloaded={shown} onClose={() => {}}/>));
   const button = host.querySelector<HTMLButtonElement>('[aria-label="Open terminal in Remotea"]')!;
   expect(button.title).toBe("Open this run's terminal in the remotea app on DavisPC");
   await act(async () => { button.click(); await new Promise(r => setTimeout(r, 0)); });
@@ -44,10 +50,27 @@ it("says right under the button that the terminal was brought forward", async ()
   expect(host.querySelector(".run-focus-result")).toBeNull();
 });
 
-it("explains a closed terminal under the button and offers the resume command first", async () => {
+it("explains a closed terminal under the button and offers the resume command last", async () => {
   const result = await open({ sent: false, reason: "no_surface" });
   expect(result?.textContent).toContain("This run's terminal is not open on the host any more.");
   const commands = [...result!.querySelectorAll(".remotea-copy-row code")].map(c => c.textContent);
-  expect(commands[0]).toBe(run.worker_resume_command);
+  expect(commands.at(-1)).toBe(run.worker_resume_command);
   expect(host.querySelector(".run-drawer-details .remotea-terminal-fallback")).toBeNull();  // Not hidden in Details.
+});
+
+it("offers Reopen terminal under the button when the agent exited, and sends it", async () => {
+  const posted: { url: string; body: Record<string, unknown> }[] = [];
+  const exited: RunDetail = { ...run, state: "needs_you", state_reason: "exited", reopen: { available: true, pending: false, why: null } };
+  const result = await open({ sent: false, reason: "no_surface" }, exited, posted);
+  const reopen = [...result!.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Reopen terminal")!;
+  expect(reopen.disabled).toBe(false);
+  await act(async () => { reopen.click(); await new Promise(r => setTimeout(r, 0)); });
+  expect(posted).toHaveLength(1);
+  expect(posted[0].url).toContain(`/remotea/runs/${A}/reopen`);
+  expect(posted[0].body).toMatchObject({ expected_revision: 3 });
+  expect(typeof posted[0].body.action_id).toBe("string");
+  // The focus answer is cleared, and the header button shows the reopen as pending.
+  expect(host.querySelector(".run-focus-result")).toBeNull();
+  const pending = [...host.querySelectorAll<HTMLButtonElement>("header button")].find(b => b.textContent === "Reopening terminal…");
+  expect(pending?.disabled).toBe(true);
 });

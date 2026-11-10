@@ -92,7 +92,9 @@ TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer":
        # A click on Merge or Update branch: a late one would surprise more than help (run_merge.py).
        "pr.merge": timedelta(minutes=5), "pr.update_branch": timedelta(minutes=5),
        # Someone is waiting for the tab to come forward: a late one would surprise more than help.
-       "terminal.focus": timedelta(seconds=30), "run.pause": timedelta(days=36500), "run.resume": timedelta(days=36500)}
+       "terminal.focus": timedelta(seconds=30), "run.pause": timedelta(days=36500), "run.resume": timedelta(days=36500),
+       # Reopen terminal (run_reopen.py): the owner is waiting for the agent to come back; a late one would surprise.
+       "run.reopen": timedelta(minutes=5)}
 # Commands that leave no trace on the run's timeline or history (not work the run does).
 QUIET_COMMANDS = {"terminal.focus"}
 # Commands that only read from the host: sent whoever has control of the session (no ensure_eridani_control).
@@ -212,6 +214,7 @@ REASONS = {
     "plan_revise": "You sent the plan back with a note; the planner is revising it.",
     "handoff": "The plan is handed to the worker.",
     "surface_restored": "The agent's terminal is back.",
+    "reopened": "You reopened the agent's terminal; it resumed its conversation.",
     "approve": "Approved.",
     "stopped": "Stopped.",
     "verify_set": "You set the verify command; the agent's next turn is verified.",
@@ -592,6 +595,10 @@ def on_outcome(db, row, state, detail="", result=None):
         from . import run_merge
 
         return run_merge.on_outcome(db, run, row, state, detail, result or {})
+    if row.kind == "run.reopen":
+        from . import run_reopen
+
+        return run_reopen.on_outcome(db, run, row, state, detail, result)  # Never delivery_uncertain: it stays exited.
     if state == "uncertain" and run.state not in TERMINAL and run.state != "stopping":
         transition(db, run, "needs_you", reason="delivery_uncertain", detail=detail)
         return
@@ -2776,8 +2783,10 @@ def stale(db, row, run):
         return "the run settled"
     if row.kind in {"input", "answer"} and run.state == "stopping":
         return "the run is stopping"
-    if row.kind in {"input", "answer", "run.pause", "run.resume"} and row.generation != run.generation:
+    if row.kind in {"input", "answer", "run.pause", "run.resume", "run.reopen"} and row.generation != run.generation:
         return "an older generation"
+    if row.kind == "run.reopen" and (run.state != "needs_you" or run.state_reason != "exited"):
+        return "the run no longer waits on an exited agent"
     if row.kind == "spawn" and row.generation != run.generation and run.state != "spawning":
         return "an older generation"
     if row.kind in {"input", "answer"} and row.plan_revision and row.plan_revision != run.plan_revision:
@@ -2922,6 +2931,11 @@ def sweep(db, clock=None):
             transition(db, run, "needs_you", reason="spawn_expired")
         elif row.kind == "stop" and run.state == "stopping":
             run.state_reason = "stop_unconfirmed"
+        elif row.kind == "run.reopen":
+            from . import run_reopen
+
+            run_reopen.failed(run, "expired", "the host did not take the reopen in time")
+            emit(db, run.owner_id, "agent.changed", run.id)
     for question in db.scalars(select(AgentQuestion).where(AgentQuestion.status == "open", AgentQuestion.hold_until < clock)):
         question.status, question.remote_answerable = "timed_out", False
         question.detail = "The agent stopped waiting; answer in the terminal."
