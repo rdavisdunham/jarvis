@@ -27,8 +27,9 @@ import { RunStopCard } from "./RunStopCard";
 import { RunCiCard } from "./RunCiCard";
 import { RunMergePanel } from "./RunMergePanel";
 import { RunLineage, RunRestart } from "./RunRestart";
+import { focusTarget } from "./run-restart";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
-import { focusSentText, focusTitle, terminalFallback, type FocusResult } from "./remotea-model";
+import { focusSentText, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
 import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 import { dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type SavedTarget, type SessionTarget } from "./remotea-model";
@@ -889,7 +890,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
     if (!run || !bound) return;
     setBusy("focus"); setError(""); setNotice(""); setFocus(null);
     try {
-      const result = await post<FocusResult>(`/remotea/runs/${run.id}/focus`);
+      const result = await post<FocusResult>(`/remotea/runs/${focusTarget(run).id}/focus`);
       setFocus(result);
     } catch (e) { setError(message(e)); }
     finally { setBusy(""); }
@@ -999,8 +1000,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
           <input type="checkbox" checked={run.auto_merge.enabled} disabled={!!busy || !run.auto_merge.available}
             aria-describedby={run.auto_merge.why ? "run-auto-merge-why" : undefined} onChange={e => void autoMerge(e.target.checked)}/>Auto-merge
           {run.auto_merge.why && <span id="run-auto-merge-why" className="sr-only">{run.auto_merge.why}</span>}</label>}
-        {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title={focusTitle(run)}
-          disabled={!!busy || !bound || !run.surf} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
+        {run && <button className="btn-icon run-open-remotea" aria-label="Open terminal in Remotea" title={focusTarget(run).title}
+          disabled={!!busy || !bound || !focusTarget(run).enabled} onClick={() => void openTerminal()}><SquareTerminal size={17}/></button>}
         <button type="button" className="btn-icon run-drawer-close" aria-label="Close run" title="Close run" onClick={onClose}><X size={20} aria-hidden="true"/></button>
       </div>
       {run && <StageHeader run={run} status={<p className="run-drawer-status" role="status">{drawerStatus(run, pendingHold, !online ? "Offline" : !apiConnected ? "Connection unavailable" : "")}</p>}/>}

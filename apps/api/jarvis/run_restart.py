@@ -104,10 +104,11 @@ def restarted_as(db, run):
 
 
 def resume_id(db, run, host, harness):
-    """The old conversation's provider session id when the new spawn can resume it: the host advertises `spawn.resume`,
-    the old run's session was the same harness, and its id is known and well-formed. Otherwise None (fresh start)."""
-    if host is None or CAP not in ((host.caps or {}).get("caps") or []):
-        return None
+    """The old conversation's provider session id when the new spawn can resume it: a Claude run, the host advertises
+    `spawn.resume`, the old run's session was Claude's, and its id is known and well-formed (SESSION_ID is a subset of
+    the pattern remotea's resumeLine accepts). Otherwise None (fresh start)."""
+    if harness != "claude" or host is None or CAP not in ((host.caps or {}).get("caps") or []):
+        return None  # remotea resumes Claude conversations only (Codex ignores the field).
     session = db.get(AgentSession, run.session_pk) if run.session_pk else None
     if session is None or session.owner_id != run.owner_id:
         return None
@@ -213,7 +214,8 @@ def restart(db, owner, account_id, run_id, body, *, actor):
 
 def on_spawn(run, row, result):
     """The restart spawn's outcome: record the host's `resumed` on the run and its `restarted` note (run_coordinator
-    calls this for an executed spawn of a restarted run)."""
+    calls this for an executed spawn of a restarted run). remotea reports `resumed` only for a spawn that carried
+    `resume_session_id`; a missing value means no resume was attempted and is left null, never read as false."""
     info = (run.sync_state or {}).get("restart") or {}
     if not info or info.get("op_id") != row.op_id or not isinstance((result or {}).get("resumed"), bool):
         return

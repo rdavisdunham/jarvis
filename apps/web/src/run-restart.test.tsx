@@ -156,3 +156,20 @@ describe("the Restart run form", () => {
     expect(opened).toEqual([OLD]);
   });
 });
+
+describe("Open terminal in remotea after a restart", () => {
+  it("raises the restarted run's terminal instead of the finished run's closed one", async () => {
+    const { focusTarget } = await import("./run-restart");
+    const old = detail({ restarted_as: { id: NEW, state: "executing" } });
+    expect(focusTarget(old)).toMatchObject({ id: NEW, enabled: true });
+    expect(focusTarget(old).title).toContain("continues this one (Working)");
+    expect(focusTarget(detail())).toMatchObject({ id: OLD, enabled: true });
+    expect(focusTarget(detail({ surf: "" }))).toMatchObject({ id: OLD, enabled: false });
+    // A working run keeps its own terminal even if it is linked.
+    expect(focusTarget(detail({ state: "executing", restarted_as: { id: NEW, state: "executing" } })).id).toBe(OLD);
+    const html = renderToStaticMarkup(<RunDrawer id={OLD} preloaded={detail({ surf: "", restarted_as: { id: NEW, state: "planning" } })} onClose={() => {}}/>);
+    const button = html.match(/<button[^>]*aria-label="Open terminal in Remotea"[^>]*>/)![0];
+    expect(button).not.toContain("disabled");
+    expect(button).toContain("continues this one");
+  });
+});

@@ -1637,14 +1637,16 @@ longer lists the target) and, for `plan`, `note_required`. Then:
 2. `start_run` runs with the old run's settings, `interview: false` and `freestyle` for pilot, and a `restart`
    argument that links the run (`agent_runs.restarted_from_run_id`), keeps the old run's `origin`, writes the prompt
    above and, for a plan restart, starts in planning (never the stage C "run on the task's plan" freeze).
-3. **Resume.** When the host's hello `caps` lists `spawn.resume`, the old run's session (`session_pk` →
+3. **Resume.** For a Claude run, when the host's hello `caps` lists `spawn.resume`, the old run's session (`session_pk` →
    `agent_sessions`) was the same harness (`claude` ↔ `claude_code`) and its provider session id is known and
    well-formed, the spawn carries `resume_session_id` and remotea launches `claude --resume <id>` in the reused
    worktree, with the prompt (if any) as the first message. Otherwise the spawn starts a fresh conversation and a plan
    restart's prompt adds the old run's last plan revision (title, PRD, steps) and summary line between
-   `ERIDANI_EARLIER` markers. The host reports `result.resumed: true|false` on the spawn's `executed` outcome either
-   way (it falls back to fresh when the conversation's transcript is missing); Eridani records it on the new run
-   (`sync_state.restart.resumed` and the `restarted` note). An older host never gets the field.
+   `ERIDANI_EARLIER` markers. For a spawn that carried `resume_session_id`, the host reports `result.resumed:
+   true|false` on the `executed` outcome (false when the conversation's transcript is missing and it started fresh);
+   Eridani records it on the new run (`sync_state.restart.resumed` and the `restarted` note). Without the field the
+   host reports nothing and `resumed` stays null. A malformed id is rejected (`bad resume_session_id`); Eridani only
+   sends ids matching `agent_sessions.SESSION_ID`, a subset of what remotea accepts. An older host never gets the field.
 4. Both runs get a `restarted` timeline note: actor, `mode`, `restarted_from` (on the new run) or `restarted_as` (on
    the old run), and `text`, the note's first 300 characters (scrubbed by redaction like other history text).
 
@@ -1657,7 +1659,9 @@ and `restarted_as: {id, state}` on the old run (the newest run whose `restarted_
 shows "Restarted from" / "Restarted as" links and hides Restart while the run that continues it is still active; on
 success it switches to the new run.
 
-Focus needs nothing: `focus_terminal` uses `run.surf`, which the new run's spawn outcome sets.
+Focus needs nothing on the server: `focus_terminal` uses `run.surf`, which the new run's spawn outcome sets. In the
+drawer of a finished run that was restarted, "Open terminal in remotea" raises the newest restarted run's terminal
+(`focusTarget` in `apps/web/src/run-restart.ts`), since the old run's own surface was cleaned up.
 
 ### auto_complete
 

@@ -1,6 +1,6 @@
 // Restart run (docs/AGENT_CONTROL.md, "Restart run"; run_restart.py): continue a finished run as a new run linked to
 // it. "Plan it" sends the note to planning; "Pilot it myself" is a freestyle run the owner talks to directly.
-import { ago, isSettled, runLabel, TERMINAL_RUN_STATES, type Run } from "./remotea-model";
+import { ago, focusTitle, isSettled, runLabel, TERMINAL_RUN_STATES, type Run } from "./remotea-model";
 
 export type RestartMode = "plan" | "pilot";
 
@@ -47,4 +47,13 @@ export function restartLinks(run: Pick<Run, "restarted_from" | "restarted_as">):
         + [how, resumed].filter(Boolean).map(part => " · " + part).join("") } : null,
     as: as ? { id: as.id, label: "Restarted as", text: "a new run (" + runLabel(as.state) + ")" } : null,
   };
+}
+
+/** Which run "Open terminal in remotea" raises. A finished run that was restarted has no terminal of its own any more
+ * (cleanup closed it), so the button opens the newest run that continues it instead of answering no_surface. */
+export function focusTarget(run: Pick<Run, "id" | "state" | "surf" | "host" | "restarted_as">): { id: string; title: string; enabled: boolean } {
+  if (isSettled(run) && run.restarted_as) return { id: run.restarted_as.id, enabled: true,
+    title: "Open the terminal of the run that continues this one (" + runLabel(run.restarted_as.state) + ") in the remotea app"
+      + (run.host?.name ? " on " + run.host.name : "") };
+  return { id: run.id, title: focusTitle(run), enabled: !!run.surf };
 }
