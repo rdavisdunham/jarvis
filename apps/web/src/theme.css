@@ -911,6 +911,41 @@ button.chip:hover {
 }
 
 /* ---- Popovers and menus ---------------------------------------------------------------- */
+/* Floating panels (ux.tsx Popover floating): in document.body above cards and dialogs, never clipped. */
+.floating-frame {
+  position: fixed;
+  z-index: 1100;
+}
+.floating-frame > .floating-panel {
+  width: 300px;
+  max-width: calc(100vw - 32px);
+  max-height: inherit;
+  overflow: auto;
+  padding: 8px;
+  box-shadow: var(--shadow-float);
+  animation: eri-rise 0.12s ease-out;
+}
+.floating-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1099;
+  background: rgb(20 18 40 / 0.32);
+}
+.floating-layer.is-sheet .floating-frame {
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+.floating-layer.is-sheet .floating-frame > .floating-panel {
+  width: auto;
+  max-width: none;
+  max-height: 85vh;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+}
+@media (prefers-reduced-motion: reduce) {
+  .floating-frame > .floating-panel { animation: none; }
+}
 .popover {
   z-index: 70;
   min-width: 200px;

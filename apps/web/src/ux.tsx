@@ -1,4 +1,6 @@
-import { useEffect, useId, useRef, useState, type FormHTMLAttributes, type HTMLAttributes, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type FormHTMLAttributes, type HTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
+import { place } from "./floating";
 
 export const humanLabel = (value: string) => value === "owner" ? "Me" : value.replaceAll("_", " ").replace(/^./, c => c.toUpperCase());
 export const priorityLabels = ["None", "Low", "Medium", "High"];
@@ -110,6 +112,8 @@ export function useDialogFocus(options: { ref?: RefObject<HTMLElement | null>; o
       const items = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE))
         .filter(el => el.getClientRects().length && el.tabIndex >= 0);
       const active = document.activeElement as HTMLElement | null;
+      // A floating panel (Popover floating) lives in document.body above the dialog: Tab moves within it.
+      if (active?.closest(".floating-panel")) return;
       const target = trapTarget(items, active, event.shiftKey, dialog.contains(active),
         !active || active === document.body || !!active.closest(".modal-backdrop"));
       if (target) {
@@ -176,19 +180,61 @@ export function BrandMark({size = 28, className = "", title}: {size?: number; cl
   return <svg className={"brand-mark-svg " + className} width={size} height={size} viewBox="0 0 48 48" role={title?"img":undefined} aria-hidden={title?undefined:true} aria-label={title}><g transform="rotate(-5 24 24)"><path d="M12 5h22a8 8 0 0 1 8 8v20l-10 10H12a8 8 0 0 1-8-8V13a8 8 0 0 1 8-8Zm0 4a4 4 0 0 0-4 4v22a4 4 0 0 0 4 4h19V34a5 5 0 0 1 5-5h2V13a4 4 0 0 0-4-4Z" fill="#A79BDC"/><path d="M31 43v-9a5 5 0 0 1 5-5h6v4Z" fill="#8679BE"/><path d="M18 16c1.8 7 2 7.2 9 9-7 1.8-7.2 2-9 9-1.8-7-2-7.2-9-9 7-1.8 7.2-2 9-9Z" fill="#EDB2A6"/><path d="M31 12c1 4.5 1.5 5 6 6-4.5 1-5 1.5-6 6-1-4.5-1.5-5-6-6 4.5-1 5-1.5 6-6Z" fill="#A79BDC"/><path d="M32 24c.8 3.5 1.5 4.2 5 5-3.5.8-4.2 1.5-5 5-.8-3.5-1.5-4.2-5-5 3.5-.8 4.2-1.5 5-5Z" fill="#9ECBBE"/></g></svg>;
 }
 
-/** A toolbar button that toggles a floating `.popover`; closes on outside click and Escape. */
-export function Popover({label, button, className = "", panelClassName = "", children}: {label: string; button: ReactNode; className?: string; panelClassName?: string; children: (close: () => void) => ReactNode}) {
+/** A button that toggles a `.popover`; closes on outside click and Escape. `floating` renders the panel in
+ * document.body above everything (never clipped by a scrolling card or a dialog), placed by `floating.ts`: below
+ * the button or flipped above it, and a bottom sheet on phone widths. `buttonClassName` replaces the toolbar look. */
+export function Popover({label, button, className = "", panelClassName = "", buttonClassName, floating = false, disabled = false, title, children}: {
+  label: string; button: ReactNode; className?: string; panelClassName?: string; buttonClassName?: string; floating?: boolean;
+  disabled?: boolean; title?: string; children: (close: () => void) => ReactNode;
+}) {
   const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null), trigger = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const outside = (event: PointerEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
+    const outside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!root.current?.contains(target) && !panel.current?.contains(target)) setOpen(false);
+    };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [open]);
   const close = () => { setOpen(false); trigger.current?.focus(); };
-  return <div ref={root} className={"popover-anchor " + className} onKeyDown={e => { if (e.key === "Escape" && open) { e.preventDefault(); e.stopPropagation(); close(); } }}>
-    <button ref={trigger} type="button" className={"btn btn-ghost toolbar-button" + (open ? " is-open" : "")} aria-label={label} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>{button}</button>
-    {open && <div className={"popover toolbar-popover " + panelClassName} role="dialog" aria-label={label.replace(/,.*/, "")}>{children(close)}</div>}
+  const escape = (e: ReactKeyboardEvent) => { if (e.key === "Escape" && open) { e.preventDefault(); e.stopPropagation(); close(); } };
+  const body = <div ref={panel} className={"popover " + (floating ? "floating-panel " : "toolbar-popover ") + panelClassName} role="dialog" aria-label={label.replace(/,.*/, "")}>{children(close)}</div>;
+  return <div ref={root} className={"popover-anchor " + className} onKeyDown={escape}>
+    <button ref={trigger} type="button" disabled={disabled} title={title} className={(buttonClassName ?? "btn btn-ghost toolbar-button") + (open ? " is-open" : "")} aria-label={label} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(!open)}>{button}</button>
+    {open && (floating ? <Floating anchor={trigger} panel={panel}>{body}</Floating> : body)}
   </div>;
+}
+
+/** Renders `children` (the panel, holding `panel`'s ref) in document.body at the place `floating.ts` picks, and
+ * keeps it there through scrolling and resizing. Focus moves into the panel when it opens. */
+function Floating({anchor, panel, children}: {anchor: RefObject<HTMLElement | null>; panel: RefObject<HTMLDivElement | null>; children: ReactNode}) {
+  const [style, setStyle] = useState<CSSProperties>({ position: "fixed", visibility: "hidden", top: 0, left: 0 });
+  const [sheet, setSheet] = useState(false);
+  useLayoutEffect(() => {
+    const update = () => {
+      const a = anchor.current?.getBoundingClientRect(), p = panel.current;
+      if (!a || !p) return;
+      const spot = place(a, { width: p.offsetWidth, height: p.scrollHeight || p.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
+      if (spot.mode === "sheet") { setSheet(true); setStyle({ position: "fixed" }); return; }
+      setSheet(false);
+      setStyle({ position: "fixed", top: spot.top, left: spot.left, maxHeight: spot.maxHeight });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => { window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
+  }, [anchor, panel]);
+  useEffect(() => {
+    const p = panel.current;
+    if (!p || p.contains(document.activeElement)) return;
+    const first = p.querySelector<HTMLElement>("[autofocus], [data-autofocus], input, select, textarea, button, [tabindex]:not([tabindex='-1'])");
+    (first ?? p).focus({ preventScroll: true });
+  }, [panel]);
+  // Escape reaches the Popover's own handler through React's tree; a pointerdown on the backdrop is outside the panel.
+  return createPortal(<div className={"floating-layer" + (sheet ? " is-sheet" : "")}>
+    {sheet && <div className="floating-backdrop"/>}
+    <div className="floating-frame" style={sheet ? undefined : style}>{children}</div>
+  </div>, document.body);
 }
