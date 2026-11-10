@@ -1,6 +1,7 @@
 import { useBodyLock, useDialogFocus, Dialog, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
 import { RunButton } from "./RunButton";
 import { DateField } from "./DatePicker";
+import { AssigneePicker } from "./AssigneePicker";
 import { doLabel } from "./date-picks";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
@@ -411,28 +412,11 @@ export function TaskDialog({
                 ))}
             </select>
           </label>
-          <label>
-            Assignee
-            <input
-              value={draft.assignee ?? "owner"}
-              maxLength={100}
-              required
-              onChange={(e) => setDraft({ ...draft, assignee: e.target.value })}
-              list="assignee-options"
-            />
-            <datalist id="assignee-options">
-              {organization.actors.length ? (
-                organization.actors
-                  .filter((a) => !a.archived)
-                  .map((a) => <option key={a.id} value={a.name} />)
-              ) : (
-                <>
-                  <option value="owner" />
-                  <option value="Dani" />
-                </>
-              )}
-            </datalist>
-          </label>
+          <div className="capture-date">
+            <span>Assignee</span>
+            <AssigneePicker value={{ name: draft.assignee ?? "owner" }} actors={organization.actors} buttonClassName="btn btn-soft btn-sm"
+              onChange={(o) => setDraft({ ...draft, assignee: o.name })}/>
+          </div>
           <label>
             Work type
             <input

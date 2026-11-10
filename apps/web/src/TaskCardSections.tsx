@@ -23,16 +23,7 @@ const RunTask = lazy(() => import("./Remotea").then((m) => ({ default: m.RunTask
  * props; RecordCard, which Structure.tsx renders, reads them here. Each opener is called after the
  * card has closed itself.
  */
-export type TaskCardHost = {
-  tasks: Task[];
-  schedules: Schedule[];
-  openNote: (id: string) => void;
-  newNote: (task: Task) => void;
-  reminder: (schedule: Schedule | null, task: Task) => void;
-  reserveTime: (task: Task) => void;
-};
-export const TaskCardHostContext = createContext<TaskCardHost | null>(null);
-export const useTaskCardHost = () => useContext(TaskCardHostContext);
+export { TaskCardHostContext, useTaskCardHost, type TaskCardHost } from "./task-card-host";
 
 /** The remotea Run control (Remotea.tsx `RunTask`, loaded on demand). It hides itself when remotea is off. */
 export function TaskRun({ taskId, canEdit, onOpenRun }: { taskId: string; canEdit: boolean; onOpenRun?: (run: string) => void }) {

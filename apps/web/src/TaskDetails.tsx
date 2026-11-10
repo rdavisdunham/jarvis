@@ -12,6 +12,7 @@ import { DateField } from "./DatePicker";
 import { dayInZone } from "./components";
 import type { CustomRecord, Schema } from "./structure-types";
 import { HomePicker } from "./HomePicker";
+import { AssigneePicker } from "./AssigneePicker";
 import { PlacementNote } from "./PlacementNote";
 import { moveRecord, undoMove, type HomeRef } from "./home-picks";
 import { useUndoToast } from "./undo-toast";
@@ -540,7 +541,8 @@ function StandardTaskDetails(p: Props) {
                   <PriorityControl value={task.priority ?? 0} disabled={locked} onChange={(value) => void leave(() => { void save({ priority: value }).catch(() => {}); })}/>
                 </Prop>
                 <Prop label="Estimate">{text("estimate_minutes", "Estimate (minutes)", "number")}</Prop>
-                <Prop label="Assigned to">{select("assignee_id", "Assignee", p.organization.actors)}</Prop>
+                <Prop label="Assigned to"><AssigneePicker value={{ id: task.assignee_id, name: task.assignee }} actors={p.organization.actors} disabled={locked}
+                  onChange={(o) => void leave(() => { void save(o.actorId ? { assignee_id: o.actorId } : { assignee: o.name }).catch(() => {}); })}/></Prop>
                 <div className="prop-divider"/>
                 <Prop label="Deadline alert">{select("deadline_alert","Deadline alert",[{id:"default",name:"Use my setting"},{id:"on",name:"On"},{id:"off",name:"Off"}])}</Prop>
                 <Prop label="Urgent"><label className="prop-switch"><input type="checkbox" className="switch" role="switch" aria-label="Urgent alert" checked={!!task.alert_urgent} disabled={locked} onChange={e=>void save({alert_urgent:e.target.checked}).catch(()=>{})}/><small>Bypasses quiet hours</small></label></Prop>

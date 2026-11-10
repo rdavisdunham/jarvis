@@ -5,6 +5,7 @@ import {useEffect, useRef, useState, type ReactNode} from "react";
 import { z } from "zod";
 import { SourceDetails } from "./SourceDetails";
 import { HomePicker } from "./HomePicker";
+import { AssigneePicker } from "./AssigneePicker";
 import { moveRecord, undoMove, type HomeRef } from "./home-picks";
 import { useUndoToast } from "./undo-toast";
 import { ContentsDialog } from "./ContentsDialog";
@@ -49,6 +50,7 @@ function FieldValue({field,value,choices,disabled,onSave,className}:{field:Schem
   const save=()=>{focused.current=false;const next=draft===""?null:field.kind==="number"?Number(draft):draft;if(next!==value)onSave(next);};
   const events={onFocus:()=>{focused.current=true;},onBlur:save};
   if(field.kind==="long_text")return <textarea {...base} {...events} value={draft} rows={2} placeholder="Empty" onChange={e=>setDraft(e.target.value)}/>;
+  if(field.binding==="assignee")return <AssigneePicker value={{name:value?String(value):"owner"}} disabled={disabled} onChange={o=>onSave(o.name)}/>;
   if(field.kind==="date")return <DateField label={field.name} value={value?String(value):null} today={dayInZone(browserZone())} empty="Not set" disabled={disabled} buttonClassName={"prop-text"+(className?" "+className:"")} onChange={c=>{if(c.date!==(value??null))onSave(c.date);}}/>;
   const type=field.binding==="due_time"?"time":field.kind==="date"?"date":field.kind==="datetime"?"datetime-local":field.kind==="number"?"number":"text";
   const input=<input {...base} {...events} type={type} value={draft} data-empty={draft===""} placeholder={field.binding==="due_timezone"?"Time zone":"Empty"}
