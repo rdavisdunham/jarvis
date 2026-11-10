@@ -19,9 +19,14 @@ try {
     return (await response.json()).data;
   });
   await page.getByRole("button", { name: "Edit Due time fixture", exact: true }).click();
+  await page.getByRole("button", { name: "Change Due date", exact: true }).click();
   await page.getByLabel("Due date", { exact: true }).fill("2026-10-12");
-  await page.getByLabel("Due time (optional)", { exact: true }).fill("14:30");
-  await expect(page.getByLabel("Due time zone", { exact: true })).toHaveValue("America/Chicago");
+  await page.getByLabel("Due date", { exact: true }).press("Enter");
+  await page.getByRole("button", { name: "Change Due date", exact: true }).click();
+  await page.getByRole("button", { name: "Add time", exact: true }).click();
+  await page.getByLabel("Due time", { exact: true }).fill("14:30");
+  await page.getByLabel("Due time", { exact: true }).press("Enter");
+  await expect(page.getByRole("button", { name: "Change Due date", exact: true })).toContainText("2:30 pm");
   await page.setViewportSize({ width: 390, height: 844 });
   if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error("Task editor overflows on mobile");
   await page.screenshot({ path: new URL("../../../.runtime/task-time-mobile.png", import.meta.url).pathname, fullPage: true });

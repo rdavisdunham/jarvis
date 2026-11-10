@@ -28,7 +28,7 @@ def calendar(db, owner, start: date, end: date, timezone: str):
                     "kind": "task",
                     "source": task_sources[task.id],
                     "timing": "planned",
-                    "title": "Planned: " + task.title,
+                    "title": "Do: " + task.title,
                     "date": task.planned_date.isoformat(),
                     "at": None,
                     "busy": False,

@@ -157,7 +157,7 @@ export function Dialog({ as = "section", onBackdrop, onEscape, backdropClassName
 }
 export function SchedulingHelp() {
   return <details className="context-help"><summary>Dates, reminders & time blocks</summary><dl>
-    <dt>Planned day</dt><dd>When you intend to work on a task.</dd>
+    <dt>Do date</dt><dd>The day you intend to work on a task. It is not a deadline.</dd>
     <dt>Deadline</dt><dd>When it must be finished. A deadline does not send an alert.</dd>
     <dt>Reminder</dt><dd>A notification for the same task, once or on a repeating schedule.</dd>
     <dt>Time block</dt><dd>Time reserved on your calendar to do the work.</dd>
@@ -168,7 +168,7 @@ export function PlannerGuide() {
     <p>Example only: these records are never added to your workspace.</p>
     <ol><li><strong>Goal:</strong> Run a half marathon — an outcome, measured by finishing the race.</li>
       <li><strong>Project:</strong> Complete a 12-week training plan — a defined piece of work that supports the goal.</li>
-      <li><strong>Task:</strong> Run 5 km on Tuesday — one action. Plan it for Tuesday and reserve a morning time block.</li>
+      <li><strong>Task:</strong> Run 5 km on Tuesday — one action. Give it a Tuesday do date and reserve a morning time block.</li>
       <li><strong>Note:</strong> Training log — observations linked to the project and its tasks.</li></ol>
     <p>Projects can support several goals; goals can draw on several projects. One-off tasks need neither. Spaces such as Work and Personal classify records; workspaces determine who can see them.</p>
     <SchedulingHelp />

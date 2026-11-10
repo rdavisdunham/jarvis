@@ -8,6 +8,8 @@ import { Check, X, ListTodo, ExternalLink } from "lucide-react";
 import { Prop, PriorityControl } from "./RecordCard";
 import { ReviewProps } from "./Reviews";
 import { HomePathChip } from "./HomePath";
+import { DateField } from "./DatePicker";
+import { dayInZone } from "./components";
 import type { CustomRecord } from "./structure-types";
 import "./details.css";
 import { z } from "zod";
@@ -278,16 +280,6 @@ function StandardTaskDetails(p: Props) {
   // Friendly read-only presentation; editing always uses the raw value.
   const pretty = (field: keyof Task, raw: string) => {
     if (!raw) return "";
-    if (field === "planned_date" || field === "due_date") {
-      const [y, m, d] = raw.split("-").map(Number);
-      if (y && m && d)
-        return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: y === new Date().getFullYear() ? undefined : "numeric" });
-    }
-    if (field === "due_time") {
-      const [h, m] = raw.split(":").map(Number);
-      if (!Number.isNaN(h) && !Number.isNaN(m))
-        return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    }
     if (field === "estimate_minutes") return raw + " min";
     return raw;
   };
@@ -511,13 +503,14 @@ function StandardTaskDetails(p: Props) {
                   !!task.is_template,
                 )}</Prop>
                 <Prop label="Due" hint="When it must be finished. A deadline does not send an alert by itself.">
-                  <div className="prop-inline">
-                    <span className="prop-date">{text("due_date", "Due date", "date", "prop", "No deadline")}</span>
-                    {task.due_date && <span className="prop-time">{text("due_time", "Due time", "time", "prop", "Any time")}</span>}
-                    {task.due_time && <span className="prop-zone">{text("due_timezone", "Time zone")}</span>}
-                  </div>
+                  <DateField label="Due date" value={task.due_date} today={dayInZone(p.zone)} empty="No deadline" disabled={locked}
+                    time={{ value: task.due_time ?? null, zone: task.due_timezone ?? null, homeZone: p.zone }}
+                    onChange={(c) => void leave(() => { void save({ due_date: c.date ?? "", due_time: c.time ?? null, due_timezone: c.zone ?? null }).catch(() => {}); })}/>
                 </Prop>
-                <Prop label="Planned day" hint="When you intend to work on it.">{text("planned_date", "Planned date", "date", "prop", "Not planned")}</Prop>
+                <Prop label="Do date" hint="The day you intend to work on it. Not a deadline.">
+                  <DateField label="Do date" value={task.planned_date} today={dayInZone(p.zone)} empty="Not set" disabled={locked}
+                    onChange={(c) => void leave(() => { void save({ planned_date: c.date ?? "" }).catch(() => {}); })}/>
+                </Prop>
                 <Prop label="Priority">
                   <PriorityControl value={task.priority ?? 0} disabled={locked} onChange={(value) => void leave(() => { void save({ priority: value }).catch(() => {}); })}/>
                 </Prop>

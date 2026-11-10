@@ -20,7 +20,10 @@ await expect(page.locator('.task-title').filter({hasText:title})).toBeVisible();
 await page.getByRole('button',{name:'Edit '+title,exact:true}).click();
 await page.getByLabel('Notes',{exact:true}).fill('Synthetic acceptance record. Safe to archive after validation.');
 const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+// Dates open a picker; its typed field takes a date and Enter.
+await page.getByRole('button',{name:'Change Due date',exact:true}).click();
 await page.getByLabel('Due date',{exact:true}).fill(today);
+await page.getByLabel('Due date',{exact:true}).press('Enter');
 await page.locator('form.dialog select').first().selectOption('2');
 await page.getByRole('button',{name:'Save task',exact:true}).click();
 await expect(page.getByRole('dialog')).toHaveCount(0);

@@ -67,8 +67,11 @@ try {
   await dialog().getByLabel("Task", { exact: true }).fill("Review website copy");
   await dialog().getByLabel("Project", { exact: true }).selectOption({ label: "Website" });
   const today = new Date().toISOString().slice(0, 10);
-  await dialog().getByLabel("Planned date", { exact: true }).fill(today);
-  await dialog().getByLabel("Due date", { exact: true }).fill("2030-01-15");
+  for (const [label, day] of [["Do date", today], ["Due date", "2030-01-15"]]) {
+    await dialog().getByRole("button", { name: "Change " + label, exact: true }).click();
+    await page.getByLabel(label, { exact: true }).fill(day);
+    await page.getByLabel(label, { exact: true }).press("Enter");
+  }
   await dialog().getByRole("button", { name: "Save task", exact: true }).click();
   await expect(dialog()).toHaveCount(0);
   await page.getByLabel("Space filter").selectOption({ label: "Business" });

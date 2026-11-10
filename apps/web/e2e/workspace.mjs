@@ -28,8 +28,13 @@ try {
     .getByRole("dialog")
     .getByLabel("Task", { exact: true })
     .fill("Calendar acceptance");
+  await page.getByRole("button", { name: "Change Due date", exact: true }).click();
   await page.getByLabel("Due date", { exact: true }).fill(today);
-  await page.getByLabel("Due time (optional)").fill("09:45");
+  await page.getByLabel("Due date", { exact: true }).press("Enter");
+  await page.getByRole("button", { name: "Change Due date", exact: true }).click();
+  await page.getByRole("button", { name: "Add time", exact: true }).click();
+  await page.getByLabel("Due time", { exact: true }).fill("09:45");
+  await page.getByLabel("Due time", { exact: true }).press("Enter");
   await page
     .getByRole("dialog")
     .getByLabel("Project", { exact: true })
