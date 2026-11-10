@@ -581,13 +581,12 @@ export function stopCard(run: RunDetail) {
       reason: terminal ? "Terminal has control." : run.freestyle ? "Freestyle is on, so the judge is off."
         : !run.turn_seq ? "The agent has not finished a turn yet." : !run.plan?.criteria.length ? "The plan has no success criteria." : "" },
     sendBack: { enabled: message.enabled, reason: message.reason, label: manual ? "Describe what's wrong" : "Send back to the agent" },
-    // Reopen terminal (run_reopen.py): only while the server offers it (the agent exited, the host can resume it in
-    // place) or a reopen is on its way, then shown as pending.
-    reopen: reopenButton(run),
   };
 }
 
-/** The stop card's Reopen terminal button, or null when it is not offered. */
+/** The drawer's Reopen terminal button (run_reopen.py), beside Open terminal in remotea and first in its fallback: only
+ * while the server offers it (the agent exited, the host can resume it in place) or a reopen is on its way, then
+ * pending. Null when it is not offered. */
 export function reopenButton(run: Pick<Run, "reopen">) {
   const r = run.reopen;
   if (!r || !(r.available || r.pending)) return null;
@@ -1799,18 +1798,23 @@ export function shellWord(value: string) {
   return /^[A-Za-z0-9_./~:@%+=,-]+$/.test(value) ? value : "'" + value.replace(/'/g, "'\\''") + "'";
 }
 
+/** The worker resume command's label: a last resort, since it starts a terminal remotea does not bind to the run. */
+export const RESUME_COMMAND_LABEL = "Last resort: resume the agent in a separate terminal, not connected to this run (run it on the host)";
+
 /** Where to find the terminal by hand when the tab could not be brought forward: the host, the worktree and branch,
- * and commands to copy: the worker's resume command first when Eridani has one (it reopens the agent in a remotea
- * tab), then `cd` into the worktree and `remotea screen` to look. */
-export function terminalFallback(run: Pick<Run, "host" | "worktree" | "branch" | "surf"> & { worker_resume_command?: string | null },
+ * Reopen terminal (`reopen`, run.reopen: the agent resumes in its own terminal, still bound to the run) when the
+ * server offers it, and commands to copy: `cd` into the worktree, `remotea screen` to look, and last the worker's
+ * resume command when Eridani has one (it opens a separate terminal that loses the run's binding, token and verify). */
+export function terminalFallback(run: Pick<Run, "host" | "worktree" | "branch" | "surf" | "reopen"> & { worker_resume_command?: string | null },
   result: FocusResult | null) {
   const reason = result && !result.sent ? result.reason : null;
   const commands: { label: string; command: string }[] = [];
-  if (run.worker_resume_command) commands.push({ label: "Reopen the agent in a remotea tab (run it on the host)", command: run.worker_resume_command });
   if (run.worktree) commands.push({ label: "Open a shell in the worktree", command: "cd " + shellWord(run.worktree) });
   if (run.surf && /^surf-[A-Za-z0-9_-]+$/.test(run.surf))
     commands.push({ label: "See the terminal's screen", command: "remotea screen " + run.surf });
+  if (run.worker_resume_command) commands.push({ label: RESUME_COMMAND_LABEL, command: run.worker_resume_command });
   return {
+    reopen: reopenButton(run),
     message: reason ? (FOCUS_TEXT[reason] ?? FOCUS_TEXT.failed) + (result && !result.sent && result.detail ? " (" + result.detail + ")" : "") : "",
     host: run.host?.name || "the remotea host",
     worktree: run.worktree || null,

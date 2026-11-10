@@ -930,7 +930,7 @@ moves runs whose surface is missing to needs_you, marks queued/sent commands tha
 
 When a run's agent exits, the run waits in needs_you(`exited`). A terminal opened by hand with `claude --resume
 <session>` is not bound to the run in remotea (no run token, no run commands, no verified turns), so the drawer's stop
-card offers **Reopen terminal** instead: `POST /remotea/runs/{id}/reopen {action_id, expected_revision}`
+drawer offers **Reopen terminal** instead (header, beside Open terminal in remotea, and first in its fallback): `POST /remotea/runs/{id}/reopen {action_id, expected_revision}`
 (`run_reopen.py`) asks the run's host to resume the same surface in place. It is offered (`public_run.reopen`
 `{available, pending, why}`) only while the run is needs_you(`exited`) and was never asked to stop (no
 `stop_requested_at`, not stopping or ended: remotea clears its own stop flag when the process exits, so Eridani refuses
@@ -939,7 +939,7 @@ terminal control, is not mid-handoff to a new worker, its surface is not a plan 
 advertises `run.reopen`; otherwise the route refuses with `409 REOPEN_UNAVAILABLE` (`data.reason`: `stopped`, `not_exited`,
 `terminal_control`, `no_surface`, `handoff`, `reviewer`, `host_offline`, `host_too_old`, `pending`). It queues
 `run.reopen {surf, incarnation}` (the session's incarnation when it is ahead of the run's) with a 5-minute expiry and
-notes `reopen_requested` on the timeline; while it is unanswered the card shows "Reopening terminal…" and another
+notes `reopen_requested` on the timeline; while it is unanswered the drawer shows "Reopening terminal…" and another
 click is refused (`pending`; the same `action_id` returns the first result).
 
 - `executed` `{surf, incarnation}`: `run.incarnation` moves to the new incarnation, the run returns to its phase
@@ -1131,11 +1131,16 @@ M working".
 right under the header (it stays in both the plan and chat views, and Dismiss clears it): "Asking remotea…" while
 waiting, then "Brought the terminal forward in remotea on <host>". That line is the only sign it worked when the page
 is open on another device. When it cannot happen (`sent: false`), the same place says why and shows where the
-terminal is (`remotea-model.ts` `terminalFallback`): the host's name, the worktree path and branch, and commands to
-copy. The first is the worker's resume command (`worker_resume_command`) when Eridani has one, which reopens the agent
-in a remotea tab; then `cd <worktree>` and `remotea screen <surf>` (remotea has no interactive attach command). The
-button's tooltip names the host, or says the run has no terminal yet when it is disabled. **Copy worker resume
-command** stays in the drawer's control row. The other direction: a remotea tab Eridani
+terminal is (`remotea-model.ts` `terminalFallback`): the host's name, the worktree path and branch, **Reopen terminal**
+first when the run offers it (below), and commands to copy: `cd <worktree>`, `remotea screen <surf>` (remotea has no
+interactive attach command) and, last, the worker's resume command (`worker_resume_command`) when Eridani has one,
+labeled as a last resort: it starts the agent in a separate terminal that is not connected to the run (no run binding,
+token, verification or focus). The button's tooltip names the host, or says the run has no terminal yet when it is
+disabled. **Copy worker resume command** stays in the drawer's control row with the same warning.
+
+**Reopen terminal** sits beside Open terminal in remotea in the drawer header whenever `public_run.reopen` offers it
+(the agent exited and the host can resume it in place: [Reopen terminal](#reopen-terminal-runreopen)); it posts
+`/runs/{id}/reopen`, clears the focus answer, and reads "Reopening terminal…" (disabled) until the host answers. The other direction: a remotea tab Eridani
 started shows a small ↗ button and, in its context menu, **Open in Eridani** and **Copy run link**, which open
 `<Eridani>/?view=remotea&run=<id>` (the host records Eridani's web URL on the session; see remotea's
 `docs/remotea/eridani-link.md`, "Open in Eridani, and the terminal from Eridani").

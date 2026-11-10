@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { Check, SquareTerminal } from "lucide-react";
+import { Check } from "lucide-react";
 import { stopCard, type RunDetail } from "./remotea-model";
 
 /** What a parked run needs from you, first thing in the drawer: the headline and action from the run's
  * attention_detail, the last lines of output, and the three ways on (stopCard). Approve asks first, with a note
- * recorded on the override; Send back takes the note the agent gets. A run whose agent exited also offers Reopen
- * terminal when the server says it can (run.reopen), shown as pending until the host answers. */
-export function RunStopCard({ run, disabled, onApprove, onVerifyAgain, onSendBack, onReopen }: {
+ * recorded on the override; Send back takes the note the agent gets. */
+export function RunStopCard({ run, disabled, onApprove, onVerifyAgain, onSendBack }: {
   run: RunDetail; disabled: boolean; onApprove: (note: string) => void; onVerifyAgain: () => void; onSendBack: (note: string) => void;
-  onReopen?: () => void;
 }) {
   const [mode, setMode] = useState<"" | "approve" | "send">(""), [note, setNote] = useState("");
   const card = stopCard(run);
@@ -21,9 +19,7 @@ export function RunStopCard({ run, disabled, onApprove, onVerifyAgain, onSendBac
     {!!card.lines.length && <pre className="run-stop-output" aria-label="Last output">{card.lines.join("\n")}</pre>}
     {card.detail && <p className="footnote run-stop-detail">{card.detail}</p>}
     {!mode && <div className="remotea-control-row">
-      {card.reopen && onReopen && <button className="btn btn-sm btn-primary" disabled={disabled || !card.reopen.enabled} title={card.reopen.reason}
-        onClick={onReopen}><SquareTerminal size={14}/>{card.reopen.label}</button>}
-      <button className={"btn btn-sm" + (card.reopen && onReopen ? "" : " btn-primary")} disabled={disabled || !card.approve.enabled}
+      <button className="btn btn-sm btn-primary" disabled={disabled || !card.approve.enabled}
         title={card.manual ? "You checked the work: record it as verified and complete the task" : "Accept the work as complete, without the recorded evidence"}
         onClick={() => setMode("approve")}><Check size={14}/>{card.approve.label}</button>
       <button className="btn btn-sm" disabled={disabled || !card.verifyAgain.enabled} title={card.verifyAgain.reason || "Run the verification again, then judge"}
