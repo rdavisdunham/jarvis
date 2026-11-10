@@ -602,6 +602,7 @@ own short transaction.
 | down | `spawn` / `input` / `answer` / `stop` / `verify` | see **Commands** | outbox commands |
 | down | `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (outbox command, only to a host whose `hello.caps` has `worktrees.scan`) | the judge needs a PR record newer than the turn: the host rescans its worktrees and sends `worktrees.report` even if unchanged, re-reads the named session and sends its `session.report` even if its fingerprint is unchanged, then acks (`executed`). An older host never gets it; the judge waits for its own tick instead. **Rescan** on the worktree maintenance view (`POST /remotea/hosts/{id}/rescan`) sends a run-less one: `run_id: "rescan", generation: 0` (the fence is informational for this command), no `tool`/`session_id`, 2 min expiry, one waiting per host |
 | down | `terminal.focus` | `surf, run_id, generation, expires_at` (outbox command, only to a host whose `hello.caps` has `terminal.focus`) | "Open terminal in remotea": the host asks its connected desktop app(s) to bring the run's tab to the front. `executed` (`result.desktops`) when at least one app was told; `rejected` `no_desktop` when none is connected (or none understands it), `unknown_surf` when the surface is gone or not the run's. Quiet: no timeline entry or history note, never moves the run, and a queued one is rejected at reconcile (it never survives a reconnect) |
+| down | `run.reopen` | `surf, incarnation, run_id, generation, expires_at` (outbox command, only to a connected host whose `hello.caps` has `run.reopen`) | **Reopen terminal** ([Reopen terminal](#reopen-terminal-runreopen)): the host resumes the run's exited worker in place, on the same surf with its binding, secrets, MCP args and verify config, as the next incarnation (what remotea's `resumeOnBoot` does after a restart). `executed` with `result {surf, incarnation}` (the new one; a replay after the surface is already back answers the same way); `rejected` with a short `detail` (`unknown surface`, `run does not match`, `stale generation`, `not the run's worker`, `a stop was requested`, `no conversation to resume`, `resuming agents is turned off`, `the surface is still running`, `stale incarnation`); a replay answers `executed` with detail `already reopened` and the current facts; `failed` (`reopen: <reason>`, `interrupted by a server restart`) when the respawn failed (the record stays exited). Effectful (`expires_at` required), 5 min expiry |
 | down | `context.response` | `req_id, text` | |
 | up | `bye` | `reason: shutdown\|reconfigured\|probe` | Eridani closes 1000 |
 | down | `bye` | `reason: superseded\|access_revoked\|disabled\|rate_limited\|restart` | followed by close |
@@ -786,7 +787,8 @@ verdict on a quick check ([CI as the final verification](#ci-as-the-final-verifi
 - **Generation fences** (F07): steer and stop advance it; the host drops `queue` input of an older
   generation and steer/stop older than its current one; Eridani ignores turns and questions of older
   generations.
-- **needs_you reasons** (`state_reason`, shown with `reason_text`): `exited`, `surface_lost`,
+- **needs_you reasons** (`state_reason`, shown with `reason_text`): `exited` (the owner can **Reopen terminal**, below),
+  `surface_lost`,
   `host_offline` (lease gone 5 minutes; both clear themselves when the surface reports again),
   `delivery_uncertain`, `spawn_expired` (15 minutes), `wall_clock` (6 h of working time, below), `no_progress`
   (45 min), `turn_cap` (C pauses instead of `capped`), `question_timed_out`; hyperplan adds `plan_approval` and
@@ -898,6 +900,7 @@ All commands: `{t, command_id (= op_id), op_id, digest, run_id, generation, expi
 | `verify` | `attempt_id, turn_seq, plan_revision, verify_id` (stage D) | 10 min |
 | `worktrees.scan` | `branch, turn_seq, tool?, session_id?` (the judge's PR evidence, below) | 2 min |
 | `terminal.focus` | `surf` ("Open terminal in remotea", below) | 30 s |
+| `run.reopen` | `surf, incarnation` (the incarnation that exited; [Reopen terminal](#reopen-terminal-runreopen)) | 5 min |
 
 Commands are rows in `agent_commands` (status `queued`). Whichever process queues one, the host's
 socket drains it within about a second of the commit (see "Wake" under Connection lifecycle), or at
@@ -922,6 +925,30 @@ run.
 `run_id` or the spawn surf), recovers lost spawn acks, settles stopping runs whose surface is gone,
 moves runs whose surface is missing to needs_you, marks queued/sent commands that no longer apply
 `rejected` ("stale after reconcile"), sends `runs.snapshot`, and only then drains the outbox.
+
+### Reopen terminal (`run.reopen`)
+
+When a run's agent exits, the run waits in needs_you(`exited`). A terminal opened by hand with `claude --resume
+<session>` is not bound to the run in remotea (no run token, no run commands, no verified turns), so the drawer's stop
+drawer offers **Reopen terminal** instead (header, beside Open terminal in remotea, and first in its fallback): `POST /remotea/runs/{id}/reopen {action_id, expected_revision}`
+(`run_reopen.py`) asks the run's host to resume the same surface in place. It is offered (`public_run.reopen`
+`{available, pending, why}`) only while the run is needs_you(`exited`) and was never asked to stop (no
+`stop_requested_at`, not stopping or ended: remotea clears its own stop flag when the process exits, so Eridani refuses
+these itself), has a `surf` and a bound session, is not under
+terminal control, is not mid-handoff to a new worker, its surface is not a plan reviewer's, and its host is connected and
+advertises `run.reopen`; otherwise the route refuses with `409 REOPEN_UNAVAILABLE` (`data.reason`: `stopped`, `not_exited`,
+`terminal_control`, `no_surface`, `handoff`, `reviewer`, `host_offline`, `host_too_old`, `pending`). It queues
+`run.reopen {surf, incarnation}` (the session's incarnation when it is ahead of the run's) with a 5-minute expiry and
+notes `reopen_requested` on the timeline; while it is unanswered the drawer shows "Reopening terminal…" and another
+click is refused (`pending`; the same `action_id` returns the first result).
+
+- `executed` `{surf, incarnation}`: `run.incarnation` moves to the new incarnation, the run returns to its phase
+  (`phase(run)`, reason `reopened`) and `continue_safely(run, "reopened")` nudges a managed-execution run on (a legacy
+  run's agent waits at its prompt). When the new incarnation already reported its exit, the run stays exited (below).
+  A run that started stopping meanwhile gets its stop again, for the new incarnation.
+- Anything else (`rejected`, `failed`, `uncertain`, the expiry, a reconcile that finds it stale because the run moved on
+  or its generation changed): the run stays needs_you(`exited`) and the timeline gets `{event: "reopen_failed", state,
+  detail}` (≤ 300 characters); the stop card's detail reads "Reopen failed: <detail>" until the next attempt.
 
 ### Questions
 
@@ -1019,6 +1046,7 @@ HMAC-derived from the run id (`ert_…`), stored as a hash, valid 24 h and refre
 | `POST /runs/{id}/automation/resume {action_id, expected_automation_revision}` | yes | reconcile pending delivery and request a new explicit automation-hold revision; effective hold remains until the host confirms release |
 | `POST /runs/{id}/stop {mode, expected_revision?, action_id?}` | no (viewers refused) | stop stays available after remotea is turned off; the revision stays optional (emergency path) and the drawer never sends one |
 | `POST /runs/{id}/focus` | yes | "Open terminal in remotea": queues `terminal.focus` for the run's current surface and waits up to 6 s for the host's answer. `{sent: true, desktops}`, or `{sent: false, reason, detail?}` with `reason` `no_surface` (no terminal yet, or the host says it is gone), `host_offline`, `host_too_old` (the host does not advertise `terminal.focus`), `no_desktop` (no desktop app connected to the host), `no_answer` (no answer in time; a still-queued request is canceled) or `failed`. The first three are answered without queuing anything. Changes nothing on the run (no revision, no timeline entry) and takes no `action_id`: a repeat only raises the tab again |
+| `POST /runs/{id}/reopen {action_id, expected_revision}` | yes | **Reopen terminal** for a run whose agent exited: queues `run.reopen` ([Reopen terminal](#reopen-terminal-runreopen)); `409 REOPEN_UNAVAILABLE` with `data.reason` when it cannot be sent. Returns the run detail |
 | `POST /runs/{id}/approve {expected_revision, action_id?}` | yes | the revision is **required** (422 without it, `REVISION_CONFLICT` when stale): approving completes the task, so it must be the state the approver reviewed |
 | `POST /questions/{id}/answer` | yes | |
 | `POST /runs/{id}/redact` | no (owner only) | delete a settled run's content now; the skeleton stays (`409 RUN_ACTIVE` before it settles; see "Retention and redaction") |
@@ -1103,11 +1131,16 @@ M working".
 right under the header (it stays in both the plan and chat views, and Dismiss clears it): "Asking remotea…" while
 waiting, then "Brought the terminal forward in remotea on <host>". That line is the only sign it worked when the page
 is open on another device. When it cannot happen (`sent: false`), the same place says why and shows where the
-terminal is (`remotea-model.ts` `terminalFallback`): the host's name, the worktree path and branch, and commands to
-copy. The first is the worker's resume command (`worker_resume_command`) when Eridani has one, which reopens the agent
-in a remotea tab; then `cd <worktree>` and `remotea screen <surf>` (remotea has no interactive attach command). The
-button's tooltip names the host, or says the run has no terminal yet when it is disabled. **Copy worker resume
-command** stays in the drawer's control row. The other direction: a remotea tab Eridani
+terminal is (`remotea-model.ts` `terminalFallback`): the host's name, the worktree path and branch, **Reopen terminal**
+first when the run offers it (below), and commands to copy: `cd <worktree>`, `remotea screen <surf>` (remotea has no
+interactive attach command) and, last, the worker's resume command (`worker_resume_command`) when Eridani has one,
+labeled as a last resort: it starts the agent in a separate terminal that is not connected to the run (no run binding,
+token, verification or focus). The button's tooltip names the host, or says the run has no terminal yet when it is
+disabled. **Copy worker resume command** stays in the drawer's control row with the same warning.
+
+**Reopen terminal** sits beside Open terminal in remotea in the drawer header whenever `public_run.reopen` offers it
+(the agent exited and the host can resume it in place: [Reopen terminal](#reopen-terminal-runreopen)); it posts
+`/runs/{id}/reopen`, clears the focus answer, and reads "Reopening terminal…" (disabled) until the host answers. The other direction: a remotea tab Eridani
 started shows a small ↗ button and, in its context menu, **Open in Eridani** and **Copy run link**, which open
 `<Eridani>/?view=remotea&run=<id>` (the host records Eridani's web URL on the session; see remotea's
 `docs/remotea/eridani-link.md`, "Open in Eridani, and the terminal from Eridani").

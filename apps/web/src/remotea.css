@@ -253,6 +253,8 @@
 .run-focus-result { display: flex; align-items: flex-start; gap: 6px; }
 .run-focus-result > :first-child { flex: 1; min-width: 0; }
 .run-focus-note { margin: 6px 0 0; color: var(--ink-2); font-size: 13px; }
+/* Reopen terminal (run.reopen) beside Open terminal in remotea: the agent exited and the host can resume it in place. */
+.run-reopen { white-space: nowrap; flex: none; }
 .remotea-terminal-fallback { margin: 6px 0; padding: 8px 10px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 13px; }
 .remotea-terminal-fallback p { margin: 0 0 4px; }
 .remotea-terminal-fallback code { overflow-wrap: anywhere; }
