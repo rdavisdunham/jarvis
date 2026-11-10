@@ -219,7 +219,7 @@ CORE = (
 )
 
 TASK_TIMING = (
-    "planned_date is intended work; due_date/due_time is a deadline. Timed deadlines generate alerts according to the owner setting and per-task override; date-only deadlines do not. Neither reserves calendar time. "
+    "planned_date is the do date, the day the owner intends to work on it ('do it Tuesday'); due_date/due_time is a deadline. Timed deadlines generate alerts according to the owner setting and per-task override; date-only deadlines do not. Neither reserves calendar time. "
     "Use time_resolve for ambiguous, nonexistent or offset-sensitive local times before saving; "
     "ask the owner to choose if invalid/ambiguous. Confirm timed deadlines with their zone. "
 )
@@ -473,7 +473,7 @@ FIELD_HELP = {
     "note_id": "Exact authored-note UUID from note_search/note_read.",
     "due_time": "HH:MM, optionally followed by UTC offset for a repeated hour. Omit to preserve on edits.",
     "due_date": "YYYY-MM-DD deadline. Null clears deadline and its time; omission preserves on edits.",
-    "planned_date": "YYYY-MM-DD intended work date, independent of deadline and alerts.",
+    "planned_date": "YYYY-MM-DD do date: the day the owner intends to work on it, independent of deadline and alerts.",
     "evidence": "Exact contiguous quote in the current source note proving this commitment.",
     "edit_token": "Fresh token from calendar_event_read, bound to the requested event and scope.",
     "job_id": "Existing durable write job ID from its receipt; lookup does not repeat the write.",

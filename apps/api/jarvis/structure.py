@@ -1,6 +1,7 @@
 """Versioned, user-owned organization over stable task and note capabilities."""
 
 import hashlib
+from copy import deepcopy
 import json
 import math
 from uuid import NAMESPACE_URL, uuid5
@@ -222,12 +223,29 @@ def definition_entries(definition):
         yield "relationship:" + r["id"], r
 
 
+# Default field names that were later renamed; an owner who never renamed the field gets the new default.
+RENAMED_DEFAULTS = {("planned_date", "Planned day"): "Do date"}
+
+
+def renamed_defaults(definition):
+    """The definition with superseded default field names replaced, or None when nothing changes."""
+    fields = [f for t in definition["types"] for f in t["fields"]] + list(definition.get("field_library", []))
+    if not any((f.get("binding"), f.get("name")) in RENAMED_DEFAULTS for f in fields):
+        return None
+    result = deepcopy(definition)
+    for f in [f for t in result["types"] for f in t["fields"]] + list(result.get("field_library", [])):
+        f["name"] = RENAMED_DEFAULTS.get((f.get("binding"), f.get("name")), f.get("name"))
+    return result
+
+
 def ensure(db, owner):
     schema = db.get(StructureSchema, owner)
     if schema:
         if "field_library" not in schema.definition or any("opens_as" not in t or "review" not in t for t in schema.definition["types"]):
             from .field_library import upgrade
             schema.definition = upgrade(schema.definition)
+        if renamed := renamed_defaults(schema.definition):
+            schema.definition = renamed
         return schema
     advisory(db, "workspace:" + owner)
     schema = db.get(StructureSchema, owner, populate_existing=True)

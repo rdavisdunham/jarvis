@@ -1,0 +1,36 @@
+/* Date field panel (DatePicker.tsx), inside a floating panel. */
+.date-panel { width: 296px; }
+.date-picker { display: grid; gap: 10px; }
+.date-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.date-quick-pick {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 6px;
+  min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; text-align: left;
+}
+.date-quick-pick small { color: var(--ink-3); font-size: 12px; }
+.date-quick-pick:hover, .date-quick-pick:focus-visible { background: var(--sunken); }
+.date-quick-pick.is-selected { border-color: var(--violet); background: var(--violet-soft); }
+.date-month { display: flex; align-items: center; justify-content: space-between; }
+.date-month strong { font-size: 14px; font-weight: 600; }
+.date-grid { display: grid; gap: 2px; }
+.date-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.date-weekday { color: var(--ink-3); font-size: 11px; font-weight: 600; text-align: center; padding: 2px 0; }
+.date-day {
+  width: 100%; aspect-ratio: 1; max-height: 38px; border: 0; border-radius: var(--r-pill);
+  background: none; color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.date-day:hover, .date-day:focus-visible { background: var(--sunken); }
+.date-day.is-outside { color: var(--ink-3); }
+.date-day.is-today { box-shadow: inset 0 0 0 1.5px var(--violet); font-weight: 600; }
+.date-day.is-selected { background: var(--violet); color: var(--violet-ink); }
+.date-time { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.date-time-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.date-time-row input { flex: 1; max-width: 170px; }
+.date-time-actions { display: flex; align-items: center; gap: 12px; }
+.date-zone { color: var(--ink-3); font-size: 12px; }
+.date-time > .text-button { justify-self: start; }
+.date-foot { display: flex; padding-top: 6px; border-top: 1px solid var(--line); }
+.floating-layer.is-sheet .date-panel { width: auto; }
+.floating-layer.is-sheet .date-day { max-height: 44px; font-size: 15px; }
+.date-foot { justify-content: space-between; align-items: center; gap: 8px; }
+.date-typed { max-width: 160px; font-size: 13px; }

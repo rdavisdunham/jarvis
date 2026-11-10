@@ -1,0 +1,12 @@
+/* Assigned to (AssigneePicker.tsx). */
+.floating-frame > .floating-panel.assignee-panel { width: 280px; }
+.floating-layer.is-sheet .floating-frame > .floating-panel.assignee-panel { width: auto; }
+.assignee-list { display: grid; gap: 8px; }
+.assignee-list input[type=search] { width: 100%; }
+.assignee-group { padding: 6px 8px 2px; color: var(--ink-3); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.assignee-option { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 34px; padding: 0 8px; border-radius: var(--r-sm); font-size: 14px; cursor: pointer; }
+.assignee-option.is-active { background: var(--sunken); }
+.assignee-option[aria-selected=true] { font-weight: 600; }
+.assignee-option svg { color: var(--violet); }
+.assignee-trigger { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.assignee-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

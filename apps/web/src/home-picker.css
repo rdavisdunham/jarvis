@@ -1,0 +1,29 @@
+/* Main home picker (HomePicker.tsx) inside a floating panel. */
+.floating-frame > .floating-panel.home-picker { width: 380px; padding: 10px; }
+.floating-layer.is-sheet .floating-frame > .floating-panel.home-picker { width: auto; }
+.home-panel { display: grid; gap: 10px; }
+.home-panel input[type=search] { width: 100%; }
+.home-group { display: grid; gap: 2px; }
+.home-group h4 { margin: 0 0 2px; color: var(--ink-3); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.home-now { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
+.home-now .text-button { flex: none; }
+.home-choice {
+  display: grid; flex: 1; min-width: 0; gap: 1px; padding: 6px 8px; border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer;
+}
+.home-choice:hover:not(:disabled), .home-choice:focus-visible { background: var(--sunken); }
+.home-choice:disabled { cursor: not-allowed; color: var(--ink-3); }
+.home-choice-title { display: flex; align-items: center; gap: 6px; font-size: 14px; overflow-wrap: anywhere; }
+.home-choice-title svg { flex: none; color: var(--violet); }
+.home-choice small { color: var(--ink-3); font-size: 12px; overflow-wrap: anywhere; }
+.home-tree-row { display: flex; align-items: center; gap: 2px; }
+.home-tree-row.is-current .home-choice { background: var(--violet-soft); }
+.home-twisty { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); cursor: pointer; }
+.home-twisty:hover { background: var(--sunken); }
+.home-section-head { display: flex; align-items: center; gap: 4px; padding: 6px 4px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; }
+.home-section-head:hover, .home-section-head:focus-visible { background: var(--sunken); }
+.home-loading { margin: 2px 0; }
+.home-more { justify-self: start; margin: 4px 8px; }
+.home-error { color: var(--danger); font-size: 13px; margin: 0; }
+.home-trigger { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.home-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

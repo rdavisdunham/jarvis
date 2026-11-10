@@ -79,7 +79,7 @@ test("completion belongs to actionable tasks, never appointments/blocks or futur
   ).toBe(false);
   expect(
     calendarKind({ kind: "task", timing: "planned" } as CalendarEntry).label,
-  ).toContain("planned");
+  ).toContain("do date");
   expect(calendarKind({ kind: "google" } as CalendarEntry).label).toBe(
     "Google event",
   );

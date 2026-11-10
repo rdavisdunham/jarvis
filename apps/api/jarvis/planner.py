@@ -266,7 +266,7 @@ def commit(db, owner, token):
     result = {"plan_id": proposal["plan_id"], "entries": saved, "saved_count": len(saved),
               "scope": request.scope, "source": availability["source"], "google_published": False,
               "scheduling": proposal.get("scheduling"), "override_reason": request.override_reason,
-              "note": "Local blocks saved; task deadlines, planned dates and alerts are unchanged."}
+              "note": "Local blocks saved; task deadlines, do dates and alerts are unchanged."}
     # Token-level idempotency survives new client command IDs and process restarts.
     # This receipt and all blocks commit in the same database transaction.
     db.add(Command(owner_id=owner, id=receipt_id, request_hash=token_hash,

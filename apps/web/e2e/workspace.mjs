@@ -28,13 +28,20 @@ try {
     .getByRole("dialog")
     .getByLabel("Task", { exact: true })
     .fill("Calendar acceptance");
+  await page.getByRole("button", { name: "Change Due date", exact: true }).click();
   await page.getByLabel("Due date", { exact: true }).fill(today);
-  await page.getByLabel("Due time (optional)").fill("09:45");
+  await page.getByLabel("Due date", { exact: true }).press("Enter");
+  await page.getByRole("button", { name: "Change Due date", exact: true }).click();
+  await page.getByRole("button", { name: "Add time", exact: true }).click();
+  await page.getByLabel("Due time", { exact: true }).fill("09:45");
+  await page.getByLabel("Due time", { exact: true }).press("Enter");
   await page
     .getByRole("dialog")
     .getByLabel("Project", { exact: true })
     .selectOption({ label: "Workspace verification" });
-  await page.getByLabel("Assignee", { exact: true }).fill("Dani");
+  await page.getByRole("button", { name: "Change assignee", exact: true }).click();
+  await page.getByLabel("Find an assignee", { exact: true }).fill("Dani");
+  await page.getByLabel("Find an assignee", { exact: true }).press("Enter");
   await page.getByLabel("Work type", { exact: true }).fill("Planning");
   await page.getByLabel("Tags", { exact: true }).fill("calendar, test");
   await page.getByRole("button", { name: "Save task", exact: true }).click();
@@ -90,7 +97,7 @@ try {
     .locator(".agenda-row")
     .filter({ hasText: "Task deadline" })
     .click();
-  await expect(page.getByLabel("Assignee", { exact: true })).toHaveValue("Dani");
+  await expect(page.getByRole("button", { name: "Change assignee", exact: true })).toContainText("Dani");
   await expect(page.getByLabel("Tags", { exact: true })).toHaveValue(
     "calendar, test",
   );

@@ -1,5 +1,8 @@
 import { useBodyLock, useDialogFocus, Dialog, humanLabel, priorityLabels, SchedulingHelp } from "./ux";
 import { RunButton } from "./RunButton";
+import { DateField } from "./DatePicker";
+import { AssigneePicker } from "./AssigneePicker";
+import { doLabel } from "./date-picks";
 import { z } from "zod";
 import { useEditor, nullableId, choice, tagsField } from "./editor-control";
 import { HomeFields } from "./Productivity";
@@ -140,9 +143,7 @@ export function TaskRow({
         </span>
       )}
       {task.planned_date && (
-        <span className="due">
-          Planned {relativeDate(task.planned_date, today)}
-        </span>
+        <span className="due" title="Do date">{doLabel(task.planned_date, today)}</span>
       )}
       {task.due_date && (
         <button
@@ -320,8 +321,13 @@ export function TaskDialog({
             onChange={(e) => setDraft({ ...draft, title: e.target.value })}
           />
         </label>
-        <div className="capture-date"><label>Planned day<input type="date" value={draft.planned_date ?? ""} onChange={e => setDraft({...draft, planned_date: e.target.value || null})}/></label>
-          {draft.planned_date && <button type="button" className="text-button" onClick={() => setDraft({...draft, planned_date: null})}>Clear planned day</button>}</div>
+        <div className="capture-dates">
+          <div className="capture-date"><span>Do date</span><DateField label="Do date" value={draft.planned_date} today={dayInZone(timezone)} empty="Not set" buttonClassName="btn btn-soft btn-sm"
+            onChange={c => setDraft({...draft, planned_date: c.date})}/></div>
+          <div className="capture-date"><span>Due</span><DateField label="Due date" value={draft.due_date} today={dayInZone(timezone)} empty="No deadline" buttonClassName="btn btn-soft btn-sm"
+            time={{value: draft.due_time ?? null, zone: draft.due_timezone ?? null, homeZone: timezone}}
+            onChange={c => setDraft({...draft, due_date: c.date, due_time: c.time ?? null, due_timezone: c.zone ?? null})}/></div>
+        </div>
         <details className="capture-options" open={task.id !== "new" || undefined}><summary>Details & organization</summary>
         <label>
           Notes
@@ -356,36 +362,6 @@ export function TaskDialog({
               }
             />
           </label>
-          <label>
-            Due date
-            <input
-              type="date"
-              value={draft.due_date ?? ""}
-              onChange={(e) => setDraft({ ...draft, due_date: e.target.value })}
-            />
-          </label>
-          <label>
-            Due time (optional)
-            <input
-              type="time"
-              disabled={!draft.due_date}
-              value={draft.due_time?.slice(0, 5) ?? ""}
-              onChange={(e) =>
-                setDraft({ ...draft, due_time: e.target.value || null })
-              }
-            />
-          </label>
-          {draft.due_time && (
-            <label>
-              Due time zone
-              <input
-                value={draft.due_timezone ?? timezone}
-                onChange={(e) =>
-                  setDraft({ ...draft, due_timezone: e.target.value })
-                }
-              />
-            </label>
-          )}
           <label>
             Priority
             <select
@@ -436,28 +412,11 @@ export function TaskDialog({
                 ))}
             </select>
           </label>
-          <label>
-            Assignee
-            <input
-              value={draft.assignee ?? "owner"}
-              maxLength={100}
-              required
-              onChange={(e) => setDraft({ ...draft, assignee: e.target.value })}
-              list="assignee-options"
-            />
-            <datalist id="assignee-options">
-              {organization.actors.length ? (
-                organization.actors
-                  .filter((a) => !a.archived)
-                  .map((a) => <option key={a.id} value={a.name} />)
-              ) : (
-                <>
-                  <option value="owner" />
-                  <option value="Dani" />
-                </>
-              )}
-            </datalist>
-          </label>
+          <div className="capture-date">
+            <span>Assignee</span>
+            <AssigneePicker value={{ name: draft.assignee ?? "owner" }} actors={organization.actors} buttonClassName="btn btn-soft btn-sm"
+              onChange={(o) => setDraft({ ...draft, assignee: o.name })}/>
+          </div>
           <label>
             Work type
             <input

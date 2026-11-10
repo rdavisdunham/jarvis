@@ -38,7 +38,7 @@ describe("PlacementNote", () => {
     const onFile = await show({ suggestion: pick, filed: null, pending: false });
     expect(element.textContent).toContain("Looks like Transcript Intelligence: QA disputes are part of call grading.");
     await act(async () => (element.querySelector("button") as HTMLButtonElement).click());
-    expect(onFile).toHaveBeenCalledWith("ti");
+    expect(onFile).toHaveBeenCalledWith("ti", "Transcript Intelligence");
   });
 
   it("explains an automatic filing and hides the button for viewers", async () => {

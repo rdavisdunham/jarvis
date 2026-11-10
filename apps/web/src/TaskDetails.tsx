@@ -8,7 +8,14 @@ import { Check, X, ListTodo, ExternalLink } from "lucide-react";
 import { Prop, PriorityControl } from "./RecordCard";
 import { ReviewProps } from "./Reviews";
 import { HomePathChip } from "./HomePath";
-import type { CustomRecord } from "./structure-types";
+import { DateField } from "./DatePicker";
+import { dayInZone } from "./components";
+import type { CustomRecord, Schema } from "./structure-types";
+import { HomePicker } from "./HomePicker";
+import { AssigneePicker } from "./AssigneePicker";
+import { PlacementNote } from "./PlacementNote";
+import { moveRecord, undoMove, type HomeRef } from "./home-picks";
+import { useUndoToast } from "./undo-toast";
 import "./details.css";
 import { z } from "zod";
 import { api } from "./api";
@@ -44,6 +51,8 @@ export function TaskDetails(p:Props){
 function StandardTaskDetails(p: Props) {
   const [customHome,setCustomHome]=useState<CustomRecord|null>(null);
   useEffect(()=>{void api<CustomRecord>("/structure/by-core/task/"+p.id).then(setCustomHome);},[p.id]);
+  const [structure,setStructure]=useState<Schema|null>(null),[moving,setMoving]=useState(false);
+  useEffect(()=>{if(customHome&&!structure)void api<Schema>("/structure").then(setStructure).catch(()=>{});},[customHome,structure]);
   const annotation=useInlineGuard();
   // Start from the loaded list so the card renders at once; the fetch below replaces it.
   const [task, setTask] = useState<Task | null>(() => p.tasks.find((t) => t.id === p.id) ?? null);
@@ -278,16 +287,6 @@ function StandardTaskDetails(p: Props) {
   // Friendly read-only presentation; editing always uses the raw value.
   const pretty = (field: keyof Task, raw: string) => {
     if (!raw) return "";
-    if (field === "planned_date" || field === "due_date") {
-      const [y, m, d] = raw.split("-").map(Number);
-      if (y && m && d)
-        return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: y === new Date().getFullYear() ? undefined : "numeric" });
-    }
-    if (field === "due_time") {
-      const [h, m] = raw.split(":").map(Number);
-      if (!Number.isNaN(h) && !Number.isNaN(m))
-        return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    }
     if (field === "estimate_minutes") return raw + " min";
     return raw;
   };
@@ -407,6 +406,21 @@ function StandardTaskDetails(p: Props) {
   const reminders = p.schedules.filter((s) => s.task_id === p.id);
   const locked = busy || p.canEdit === false;
   const home = customHome?.home.map((h) => h.title).join(" / ");
+  const homeToast = useUndoToast(async () => { setCustomHome(await api<CustomRecord>("/structure/by-core/task/" + p.id)); await reload().catch(() => {}); }, "Move undone.");
+  /** A task moves at once, subtasks along; Undo puts it back. */
+  const moveHome = (id: string | null, to?: HomeRef | null) => {
+    if (!customHome || !structure || id === customHome.parent_id) return;
+    setMoving(true);
+    void finish()
+      .then(() => moveRecord(customHome, structure.revision, id))
+      .then(async (run) => {
+        setCustomHome(await api<CustomRecord>("/structure/by-core/task/" + p.id));
+        await reload().catch(() => {});
+        homeToast.show({ message: id ? "Moved to " + (to?.title ?? "its new home") + "." : "Removed from its home.", undo: () => undoMove(run) });
+      })
+      .catch((e) => homeToast.show({ message: (e as Error).message }))
+      .finally(() => setMoving(false));
+  };
   return (
     <Dialog onBackdrop={() => close()}
         dialogRef={card}
@@ -493,7 +507,11 @@ function StandardTaskDetails(p: Props) {
             >
               <div className="prop-list">
                 {customHome && <Prop label="Main home">
-                  <button className="prop-text" title="Open the organization card with custom fields" disabled={busy} onClick={()=>void leave(()=>{p.onClose();window.dispatchEvent(new CustomEvent("eri-open-custom-record",{detail:{id:customHome.id}}));})}>{home||"Unfiled"}</button>
+                  <div className="prop-inline">
+                    {structure ? <HomePicker row={customHome} schema={structure} disabled={locked || moving} onChoose={moveHome}/> : <span className="prop-text">{customHome.home.at(-1)?.title ?? "Unfiled"}</span>}
+                    <button className="btn-icon" aria-label="Open the organization card" title="Open the organization card with custom fields" disabled={busy} onClick={()=>void leave(()=>{p.onClose();window.dispatchEvent(new CustomEvent("eri-open-custom-record",{detail:{id:customHome.id}}));})}><ExternalLink size={14}/></button>
+                  </div>
+                  <PlacementNote recordId={customHome.id} revision={customHome.revision} canEdit={!locked && !moving} onFile={(id, title) => moveHome(id, { id, title, type_id: "", path: "" })}/>
                 </Prop>}
                 <Prop label="Status">{select(
                   "status",
@@ -511,18 +529,20 @@ function StandardTaskDetails(p: Props) {
                   !!task.is_template,
                 )}</Prop>
                 <Prop label="Due" hint="When it must be finished. A deadline does not send an alert by itself.">
-                  <div className="prop-inline">
-                    <span className="prop-date">{text("due_date", "Due date", "date", "prop", "No deadline")}</span>
-                    {task.due_date && <span className="prop-time">{text("due_time", "Due time", "time", "prop", "Any time")}</span>}
-                    {task.due_time && <span className="prop-zone">{text("due_timezone", "Time zone")}</span>}
-                  </div>
+                  <DateField label="Due date" value={task.due_date} today={dayInZone(p.zone)} empty="No deadline" disabled={locked}
+                    time={{ value: task.due_time ?? null, zone: task.due_timezone ?? null, homeZone: p.zone }}
+                    onChange={(c) => void leave(() => { void save({ due_date: c.date ?? "", due_time: c.time ?? null, due_timezone: c.zone ?? null }).catch(() => {}); })}/>
                 </Prop>
-                <Prop label="Planned day" hint="When you intend to work on it.">{text("planned_date", "Planned date", "date", "prop", "Not planned")}</Prop>
+                <Prop label="Do date" hint="The day you intend to work on it. Not a deadline.">
+                  <DateField label="Do date" value={task.planned_date} today={dayInZone(p.zone)} empty="Not set" disabled={locked}
+                    onChange={(c) => void leave(() => { void save({ planned_date: c.date ?? "" }).catch(() => {}); })}/>
+                </Prop>
                 <Prop label="Priority">
                   <PriorityControl value={task.priority ?? 0} disabled={locked} onChange={(value) => void leave(() => { void save({ priority: value }).catch(() => {}); })}/>
                 </Prop>
                 <Prop label="Estimate">{text("estimate_minutes", "Estimate (minutes)", "number")}</Prop>
-                <Prop label="Assigned to">{select("assignee_id", "Assignee", p.organization.actors)}</Prop>
+                <Prop label="Assigned to"><AssigneePicker value={{ id: task.assignee_id, name: task.assignee }} actors={p.organization.actors} disabled={locked}
+                  onChange={(o) => void leave(() => { void save(o.actorId ? { assignee_id: o.actorId } : { assignee: o.name }).catch(() => {}); })}/></Prop>
                 <div className="prop-divider"/>
                 <Prop label="Deadline alert">{select("deadline_alert","Deadline alert",[{id:"default",name:"Use my setting"},{id:"on",name:"On"},{id:"off",name:"Off"}])}</Prop>
                 <Prop label="Urgent"><label className="prop-switch"><input type="checkbox" className="switch" role="switch" aria-label="Urgent alert" checked={!!task.alert_urgent} disabled={locked} onChange={e=>void save({alert_urgent:e.target.checked}).catch(()=>{})}/><small>Bypasses quiet hours</small></label></Prop>
@@ -575,6 +595,7 @@ function StandardTaskDetails(p: Props) {
             </aside>
           </div>
         )}
+        {homeToast.element}
       </Dialog>
   );
 }

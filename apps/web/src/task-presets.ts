@@ -5,7 +5,7 @@ export const taskTabs = [
   {
     id: "today",
     label: "Today",
-    description: "Planned or due today, including overdue work.",
+    description: "To do or due today, including overdue work.",
   },
   {
     id: "inbox",
@@ -16,7 +16,7 @@ export const taskTabs = [
     id: "week",
     label: "Next 7 days",
     description:
-      "Planned or due in the next seven days, including overdue work.",
+      "To do or due in the next seven days, including overdue work.",
   },
   {
     id: "all",

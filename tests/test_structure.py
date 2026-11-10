@@ -532,3 +532,28 @@ def test_custom_type_without_in_review_falls_back_to_in_progress():
     run("task.update", {"task_id": row["task_id"], "expected_revision": revision, "status": "in_review"})
     saved = read_record(row)
     assert saved["status_id"] == "doing" and saved["status_meaning"] == "in_review"
+
+
+def test_ensure_renames_the_old_planned_day_default_but_keeps_owner_names():
+    from jarvis.structure_models import StructureSchema
+
+    def names(owner):
+        with session_scope() as db:
+            d = structure.ensure(db, owner).definition
+            return {f["name"] for t in d["types"] for f in t["fields"] + d["field_library"] if f.get("binding") == "planned_date"}
+
+    def rename(owner, name):
+        with session_scope() as db:
+            schema = structure.ensure(db, owner)
+            d = copy.deepcopy(schema.definition)
+            for f in [f for t in d["types"] for f in t["fields"]] + d["field_library"]:
+                if f.get("binding") == "planned_date":
+                    f["name"] = name
+            schema.definition = d
+
+    rename("legacy-do-date", "Planned day")
+    assert names("legacy-do-date") == {"Do date"}
+    with session_scope() as db:
+        assert structure.renamed_defaults(db.get(StructureSchema, "legacy-do-date").definition) is None  # saved once
+    rename("custom-do-date", "Focus day")
+    assert names("custom-do-date") == {"Focus day"}
