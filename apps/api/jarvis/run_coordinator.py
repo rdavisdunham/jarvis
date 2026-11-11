@@ -88,7 +88,7 @@ SELF_HEALING = {"host_offline", "surface_lost"}
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
-       "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "automation.hold": timedelta(days=36500), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2), "ci.status": timedelta(minutes=2),
+       "stop": timedelta(hours=24), "run.cleanup": timedelta(hours=24), "automation.hold": timedelta(days=36500), "verify": timedelta(minutes=10), "worktrees.scan": timedelta(minutes=2), "ci.status": timedelta(minutes=2), "run.changes": timedelta(minutes=2),
        # A click on Merge or Update branch: a late one would surprise more than help (run_merge.py).
        "pr.merge": timedelta(minutes=5), "pr.update_branch": timedelta(minutes=5),
        # Someone is waiting for the tab to come forward: a late one would surprise more than help.
@@ -98,7 +98,7 @@ TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer":
 # Commands that leave no trace on the run's timeline or history (not work the run does).
 QUIET_COMMANDS = {"terminal.focus"}
 # Commands that only read from the host: sent whoever has control of the session (no ensure_eridani_control).
-READ_COMMANDS = {"worktrees.scan", "ci.status"}
+READ_COMMANDS = {"worktrees.scan", "ci.status", "run.changes"}
 # Commands that act on GitHub, not on the agent's session: sent whoever has control of the session too (run_merge.py).
 GITHUB_COMMANDS = {"pr.merge", "pr.update_branch"}
 # A verification's deadline, then timed_out (a non-pass): the target's verify timeout as its host advertised it plus
@@ -485,7 +485,7 @@ def command(db, run, kind, body, *, ttl=None, expires_at=None, op_id=None, host_
                        plan_revision=run.plan_revision if run else 0)
     db.add(row)
     db.flush()
-    if run and kind not in QUIET_COMMANDS and kind != "ci.status":  # A CI poll every 2 min would flood the timeline.
+    if run and kind not in QUIET_COMMANDS and kind not in ("ci.status", "run.changes"):  # A CI poll every 2 min would flood the timeline.
         note(run, "command", kind=kind, op_id=op_id, **({"mode": body["mode"]} if "mode" in body else {}),
              **({"role": body["role"]} if body.get("role") else {}), **({"source": source} if source else {}))
         emit(db, run.owner_id, "agent.changed", run.id)
@@ -561,6 +561,10 @@ def on_outcome(db, row, state, detail="", result=None):
         from . import run_ci
 
         return run_ci.on_outcome(db, run, row, state, detail, result)  # Not noted: a poll every 2 minutes.
+    if row.kind == "run.changes":
+        from . import run_changes
+
+        return run_changes.on_outcome(db, run, row, state, detail, result)  # Evidence for the judge; not noted.
     role = (row.payload or {}).get("role")
     if (row.kind in ("spawn", "stop") or row.kind == "input" and state == "executed") and result and result.get("surf"):
         from . import agent_cleanup
@@ -1724,6 +1728,9 @@ def after_turn(db, run):
         if run.turn_cap and run.turn_count >= run.turn_cap:
             transition(db, run, "needs_you", reason="turn_cap")
         return
+    from . import run_changes
+
+    run_changes.request(db, run)  # What the turn changed, for the judge; it arrives while the turn is verified.
     if (plan.verify or {}).get("verify_id"):
         from . import run_ci
 
@@ -1842,6 +1849,9 @@ def judge_again(db, run, *, actor):
     any turn."""
     plan = frozen(db, run)
     note(run, "judge_again", plan_revision=run.plan_revision, actor=actor.record())
+    from . import run_changes
+
+    run_changes.request(db, run)
     if (plan.verify or {}).get("verify_id"):
         transition(db, run, "verifying", actor=actor, reason="judge_again")
         return start_verify(db, run, plan)
@@ -2775,7 +2785,7 @@ def stale(db, row, run):
     if (row.payload or {}).get("origin") == "automation" and row.kind in ("input", "spawn", "verify", "worktrees.scan"):
         if automation.held(run) or (row.payload or {}).get("automation_hold_revision", 0) != automation.state(run).get("revision", 0):
             return "automatic work was superseded by human control"
-    if row.kind == "ci.status" or row.kind in GITHUB_COMMANDS:
+    if row.kind in ("ci.status", "run.changes") or row.kind in GITHUB_COMMANDS:
         return None  # They read or act on GitHub, not the session: a settled run still merges (run_merge.py).
     if (run.sync_state or {}).get("controller") == "terminal" and row.kind not in QUIET_COMMANDS and row.kind != "worktrees.scan":
         return "the terminal owns this session"
