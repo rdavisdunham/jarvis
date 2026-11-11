@@ -2,7 +2,7 @@
 "Run summaries").
 
 Something the line reflects lands (a root turn, a question, a verdict, a state change): `touch` counts it on the run
-(`activity_seq`) and `schedule` queues one `agent_summary` job (queue jarvis-memory, like the judge), at most one per
+(`activity_seq`) and `schedule` queues one `agent_summary` job (queue jarvis-memory), at most one per
 run per DEBOUNCE. An event inside the window only counts; the worker's sweep (`queue_due`) queues the follow-up once
 the window has passed. Nothing here runs on page load or per change-feed tick.
 

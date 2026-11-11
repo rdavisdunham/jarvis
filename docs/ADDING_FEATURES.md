@@ -480,7 +480,8 @@ Tests: `tests/test_agent_runs.py::test_every_listed_transition_is_legal_and_othe
 
 - [ ] `worker.perform_job`: dispatch on `job.kind`.
 - [ ] `worker` dispatcher's `queue_name` chain: a kind not listed lands on the default `jarvis` queue;
-      memory-like work belongs in `jarvis-memory`, provider calls in their provider queue.
+      memory-like work belongs in `jarvis-memory`, provider calls in their provider queue, and the run
+      judge has its own `jarvis-judge` queue.
 - [ ] Context platform work (`jarvis/context/`): name the kind `context_<stage>` and touch neither list.
       Every kind starting with `context_` goes to the `jarvis-context` queue (concurrency
       `JARVIS_CONTEXT_QUEUE_CONCURRENCY`, default 2) and `perform_job` hands it to

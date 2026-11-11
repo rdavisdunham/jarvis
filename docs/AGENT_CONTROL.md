@@ -1358,7 +1358,8 @@ attempts carry the same tuple). The run is `verifying` until the result.
 
 ### The judge (`agent_judge.py`)
 
-Job `agent_judge` on queue `jarvis-memory`, cost feature `agent_control`, one per judge attempt.
+Job `agent_judge` on its own queue `jarvis-judge` (concurrency 2, so a verdict never waits behind memory
+or overview jobs), cost feature `agent_control`, one per judge attempt.
 Evidence: the frozen plan (PRD, steps as they stand, criteria, verify), the root turn's final response
 (last 24k characters; `truncated` flagged), the bound verify attempt with `fresh` (same tuple and not
 stale), the previous verdict's per-criterion record, and the completion policy with the PR record
@@ -1918,7 +1919,7 @@ summary job"), written by a small model (`run_summaries.py`).
   turn of the run's generation in `record_turn`, a question opened or resolved, and every `transition`, which covers
   verdicts and judge failures) and `summary_seq` (the `activity_seq` the last summary job handled).
   `summary_seq < activity_seq` means a newer line is due.
-- **Debounce.** `touch` queues one `agent_summary` job (queue `jarvis-memory`, like the judge) unless one for the run
+- **Debounce.** `touch` queues one `agent_summary` job (queue `jarvis-memory`) unless one for the run
   is pending (queued/dispatched/running/retrying, younger than 10 minutes) or one was queued in the last 30 s. An event
   inside the window only counts; the worker's maintenance scan (`run_summaries.queue_due`, every cycle) queues the
   follow-up once the window has passed. So a run gets at most one summary per ~30 s, and only after something
