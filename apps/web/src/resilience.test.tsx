@@ -45,6 +45,26 @@ describe("api outcomes", () => {
     expect(expired).not.toHaveBeenCalled();
   });
 
+  it("a request its caller cancelled is not an outage", async () => {
+    // The run drawer aborts its previous load whenever a newer one starts (remotea-model.ts latestOnly).
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) =>
+      init.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))))));
+    const pending = api("/remotea/runs/1", { signal: controller.signal }).catch((e: ApiError) => e);
+    controller.abort();
+    const error = (await pending) as ApiError;
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.code).toBe("ABORTED");
+    expect(isOutage(error)).toBe(false);
+    expect(connectivity().reachable).toBe(true);
+    // Cancelled while the body was still arriving.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ...json(200, {}), json: async () => { controller.abort(); throw new DOMException("Aborted", "AbortError"); } }));
+    const late = new AbortController();
+    const body = api("/remotea/runs/1", { signal: late.signal }).catch((e: ApiError) => e);
+    late.abort();
+    expect(((await body) as ApiError).code).toBe("ABORTED");
+    expect(connectivity().reachable).toBe(true);
+  });
   it("a 502 proxy page and a 503 are outages", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 502, json: async () => { throw new SyntaxError("html"); }, headers: new Headers() }));
     const bad = await api("/tasks").catch((e) => e);

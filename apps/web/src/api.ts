@@ -51,6 +51,13 @@ export async function api<T>(
     method, path: url, status, ms: Math.round(performance.now() - started), error,
     request_id: response?.headers?.get?.("x-request-id") ?? response?.headers?.get?.("x-railway-request-id") ?? undefined,
   });
+  // A request the caller cancelled (a newer one replaced it, or its view closed) says nothing about the
+  // connection: it must not raise the "Can't reach Eridani" banner or the reload that follows an outage.
+  const cancelled = () => !!options.signal?.aborted;
+  const aborted = () => {
+    note(0, "ABORTED");
+    return new ApiError("ABORTED", "This request was cancelled.");
+  };
   try {
     response = await fetch("/api/v1" + url, {
       credentials: "same-origin",
@@ -63,6 +70,7 @@ export async function api<T>(
       },
     });
   } catch {
+    if (cancelled()) throw aborted();
     note(0, "NETWORK");
     reportUnreachable();
     throw new ApiError(
@@ -74,6 +82,7 @@ export async function api<T>(
   try {
     value = await response.json();
   } catch {
+    if (cancelled()) throw aborted();
     note(response.status, "BAD_RESPONSE");
     // A proxy or error page instead of the API: the same as no answer.
     reportUnreachable();
