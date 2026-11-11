@@ -85,6 +85,8 @@ STATES = tuple(TRANSITIONS)
 RESUMABLE = {"needs_you", "awaiting_approval", "awaiting_ci"}
 # needs_you reasons the host itself can clear: the terminal comes back.
 SELF_HEALING = {"host_offline", "surface_lost"}
+# Phases in which the run waits on its agent's own turn, so a silent terminal means the run is stuck.
+STALLABLE = ("executing", "planning", "interviewing")
 HISTORY_LIMIT = 200
 COORDINATOR = Actor("run_judge")
 TTL = {"spawn": timedelta(minutes=15), "input": timedelta(minutes=10), "answer": timedelta(minutes=10),
@@ -156,6 +158,7 @@ REASONS = {
     "spawn_uncertain": "The host could not tell whether the agent started.",
     "wall_clock": "The run reached its wall-clock limit.",
     "no_progress": "No progress for a while.",
+    "stalled": "The agent looks stuck: its terminal has been silent while it reads as working.",
     "turn_cap": "The run reached its turn cap.",
     "question_timed_out": "The question timed out here; answer it in the terminal.",
     "no_plan": "The agent ended its planning turn without asking questions or submitting a plan.",
@@ -1021,10 +1024,16 @@ def on_status(db, row, frame, host_id=None):
     if frame.surf == run.surf and frame.incarnation > run.incarnation:
         run.incarnation = frame.incarnation
     if frame.state in ("working", "idle", "needs_you"):
-        if frame.state == "working":
+        trouble = getattr(frame, "trouble", None)
+        stalled = frame.state == "working" and trouble is not None and trouble.kind == "stalled"
+        if frame.state == "working" and not stalled:
             run.last_progress_at = now()
-        if run.state == "needs_you" and run.state_reason in SELF_HEALING:
+        if run.state == "needs_you" and (run.state_reason in SELF_HEALING or (run.state_reason == "stalled" and not stalled)):
+            # The terminal is back, or the stalled agent produced output again: the run heals itself.
             transition(db, run, phase(run), reason="surface_restored")
+        elif stalled and run.state in STALLABLE and not run.paused and not run.freestyle:
+            # remotea's watchdog: the agent reads as working but its terminal has been silent (default 15 minutes).
+            transition(db, run, "needs_you", reason="stalled", detail=trouble.detail)
         if frame.state == "needs_you" and not open_questions(db, run):
             # A permission prompt or another terminal-only question: v1 never answers it remotely.
             notify(db, run, "agent_question", "An agent is waiting for you",
