@@ -509,9 +509,10 @@ export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone
     } finally { setBusy(false); }
   };
   const choice = (on: boolean, label: string, good: boolean, onClick: () => void) =>
-    <button type="button" aria-pressed={on} className={"btn btn-sm" + (on ? " btn-primary" : good ? " btn-recommended" : "")} onClick={onClick}>{label}</button>;
+    // A choice, not an action: the selected one carries a check so tapping it again is not expected to do anything.
+    <button type="button" aria-pressed={on} className={"btn btn-sm" + (on ? " btn-primary" : good ? " btn-recommended" : "")} onClick={onClick}>{on && <Check size={14} aria-hidden="true"/>}{label}</button>;
   return <DecisionCard title="Plan review" task={run.task?.title} agent={actorChip(run)} className="remotea-plan-review">
-    <p className="footnote">The agent wants to change what you set. Accept or keep each change; nothing changes until you tap Start.</p>
+    <p className="footnote">The agent wants to change what you set. Each change starts on Accept (checked); switch any to Keep mine. Nothing changes until you tap Freeze the plan and start.</p>
     {(proposals.criteria ?? []).map(c => {
       const d = decisions[c.id] ?? { accept: true, text: c.proposed ?? "" };
       return <fieldset key={c.id} disabled={busy || run.controller === "terminal"} className={"remotea-proposal change-" + c.change}>

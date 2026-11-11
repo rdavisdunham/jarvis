@@ -177,7 +177,9 @@ describe("plan review", () => {
     expect(html).toContain("Plan review"); expect(html).toContain("compares only cmd"); expect(html).toContain("compares cmd and url");
     expect(html).toContain("You answered: compare cmd and url"); expect(html).toContain("remove this criterion");
     expect(html).toContain("Done when the pull request is merged");
-    expect(html).toMatch(/aria-pressed="true"[^>]*btn-primary[^>]*>Accept</); expect(html).toContain(">Keep mine<");
+    // The selected choice carries a check (it is a selection, not an action); the other one does not.
+    expect(html).toMatch(/aria-pressed="true"[^>]*btn-primary[^>]*><svg[^>]*>.*?<\/svg>Accept</); expect(html).toContain(">Keep mine<");
+    expect(html).toContain("Each change starts on Accept");
     expect(html).toContain("Freeze the plan and start");
     expect(renderToStaticMarkup(<PlanReview run={detail()} onDone={() => {}}/>)).toBe("");
   });
