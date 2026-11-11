@@ -36,6 +36,8 @@ ATTENTION = {
     "spawn_uncertain": ("The host could not tell whether the agent started.", "Check the terminal, then resume or stop."),
     "wall_clock": ("The run reached its wall-clock limit.", "Resume to give it more time, approve the work, or stop."),
     "no_progress": ("The agent made no progress for a while.", "Check the terminal and send the agent a note."),
+    "stalled": ("The agent looks stuck: its terminal has been silent while it reads as working.",
+                "Check the terminal; the run carries on by itself if the agent starts again, or send it a note."),
     "turn_cap": ("The run reached its turn cap.", "Approve the work as it is, or send the agent back with a note."),
     "question_timed_out": ("The agent's question timed out here.", "Answer it in the terminal."),
     "no_plan": ("The agent ended planning without questions or a plan.", "Retry planning or send the agent a note."),
