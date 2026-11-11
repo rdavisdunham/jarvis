@@ -1,6 +1,6 @@
 """The run judge: did this execution turn meet the frozen plan's success criteria?
 
-One job (`agent_judge`, queue jarvis-memory) per judge attempt, bound to (run, generation, turn_seq,
+One job (`agent_judge`, queue jarvis-judge) per judge attempt, bound to (run, generation, turn_seq,
 plan_revision). Evidence is fixed when the job starts: the frozen plan, the root turn's final
 response (flagged if truncated), the bound verification attempt and the criteria record from earlier
 verdicts, plus the plan's completion policy with the session's PR links and the host's merge report,

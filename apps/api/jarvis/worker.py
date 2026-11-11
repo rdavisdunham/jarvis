@@ -194,9 +194,11 @@ def dispatch_outbox(client, after=None):
                     if db.get(Job, row.job_id).kind in {"linear_sync", "linear_write", "linear_comment"}
                     else "jarvis-google"
                     if db.get(Job, row.job_id).kind in {"google_sync", "google_write"}
+                    # The judge gates a live run, so it does not wait behind memory and overview work.
+                    else "jarvis-judge" if job.kind == "agent_judge"
                     else "jarvis-memory"
                     if db.get(Job, row.job_id).kind
-                    in {"extract_memory", "embed_memory", "review_memory", "about_you", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_judge", "agent_summary", "agent_autolink", "record_overview", "place_by_meaning"}
+                    in {"extract_memory", "embed_memory", "review_memory", "about_you", "embed_note", "assess_field", "review_routing", "index_search", "organize_note", "summarize_session", "agent_summary", "agent_autolink", "record_overview", "place_by_meaning"}
                     else "jarvis",
                     "workflow_id": row.job_id + (":"+str(job.payload["dispatch_revision"]) if job.payload.get("dispatch_revision") else ""),
                 },
@@ -587,6 +589,7 @@ def run_supervisor(stop, lease):
     )
     Queue("jarvis", concurrency=1, worker_concurrency=1)
     Queue("jarvis-memory", concurrency=2, worker_concurrency=2)
+    Queue("jarvis-judge", concurrency=2, worker_concurrency=2)
     Queue("jarvis-google", concurrency=1, worker_concurrency=1)
     Queue("jarvis-linear", concurrency=1, worker_concurrency=1)
     Queue("jarvis-agent", concurrency=settings.agent_parallelism, worker_concurrency=settings.agent_parallelism)
