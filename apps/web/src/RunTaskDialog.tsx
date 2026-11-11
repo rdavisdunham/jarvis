@@ -96,6 +96,8 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
   const [task, setTask] = useState<{ id: string; title: string } | null>(null);
   const [draft, setDraft] = useState<RunDraft>(readDraft);
   const [need, setNeed] = useState<NeedsTarget | null>(null);
+  // The owner opened the picker on a target that already resolves ("Change"): Cancel returns to the dialog.
+  const [changing, setChanging] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   // A start refused for its roles: HOST_NO_ROLES turns the role controls off, HARNESS_UNAVAILABLE names the role.
   const [noRoles, setNoRoles] = useState(""), [roleProblem, setRoleProblem] = useState<PreflightProblem | null>(null);
@@ -182,9 +184,11 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
         <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
       </div>
     </> : <>
-      {need ? <TargetPicker key={need.task_id} need={need} saveLabel="Save"
-        onSaved={id => { const next = afterTargetSaved(draft, id); setPre(undefined); setNeed(next.need); setDraft(next.draft); }} onCancel={onClose}/> : <>
-        <p className="run-dialog-target"><FolderGit2 size={15} aria-hidden="true"/>{pre === undefined ? "Checking where it runs…" : preflightLine(pre)}</p>
+      {need ? <TargetPicker key={need.task_id + (changing ? ":change" : "")} need={need} saveLabel="Save" initialScope={changing ? "task" : undefined}
+        onSaved={id => { const next = afterTargetSaved(draft, id); setChanging(false); setPre(undefined); setNeed(next.need); setDraft(next.draft); }}
+        onCancel={changing ? () => { setChanging(false); setNeed(null); } : onClose}/> : <>
+        <p className="run-dialog-target"><FolderGit2 size={15} aria-hidden="true"/>{pre === undefined ? "Checking where it runs…" : preflightLine(pre)}
+          {pre?.target && pre.choices && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setChanging(true); setNeed(pre.choices!); }}>Change</button>}</p>
         <div className="run-dialog-row">
           <span id={heading + "-agent"}>Planner</span>
           <div className="segmented" role="group" aria-labelledby={heading + "-agent"}>

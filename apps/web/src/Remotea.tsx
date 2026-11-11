@@ -1122,11 +1122,13 @@ export function RunDrawer({ id, onClose, preloaded }: {
   </section>;
 }
 
-export function TargetPicker({ need, onSaved, onCancel, saveLabel = "Save and run" }: {
+export function TargetPicker({ need, onSaved, onCancel, saveLabel = "Save and run", initialScope }: {
   need: NeedsTarget; onSaved: (id: string) => void; onCancel: () => void; saveLabel?: string;
+  /** "task" when changing a target that already resolves: one task moving must not re-point its whole project. */
+  initialScope?: string;
 }) {
   const options = targetOptions(need);
-  const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => defaultScope(need));
+  const [key, setKey] = useState(options[0]?.key ?? ""), [scope, setScope] = useState(() => initialScope ?? defaultScope(need));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const save = async () => {
     const option = options.find(o => o.key === key);

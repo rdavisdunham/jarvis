@@ -1645,6 +1645,9 @@ export function startBody(taskId: string, draft: RunDraft) {
  * `harness_reasons` says why one cannot. */
 export type Preflight = {
   target: { id: string; name: string; repo: string; host_id?: string } | null; needs_target: boolean; need: NeedsTarget | null;
+  /** The picker's data while a target already resolves, so the dialog can offer another repository for this task
+   * (absent from an older Eridani; null while no target resolves or a run is on the task). */
+  choices?: NeedsTarget | null;
   problems: PreflightProblem[]; active_run: { id: string; state: RunState } | null;
   interview: boolean; harnesses: Record<string, boolean>;
   harness_reasons?: Record<string, string>; harness_note?: string | null;

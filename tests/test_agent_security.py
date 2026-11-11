@@ -1128,6 +1128,10 @@ def test_preflight_shows_what_run_would_do(client, host):  # noqa: F811
 
     bound = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}&execution_target_id={host.target_id}").json()
     assert bound["needs_target"] is False and bound["target"]["id"] == host.target_id and bound["problems"] == []
+    # A resolved target still carries the picker's data, so the dialog can offer another repository.
+    assert bound["choices"]["task_id"] == created["id"] and body["choices"] is None
+    assert host.target_id in {c["id"] for c in bound["choices"]["candidates"]}
+    assert {"candidates", "advertised", "records"} <= set(bound["choices"])
     other = client.get(f"/api/v1/remotea/runs/preflight?task_id={created['id']}&execution_target_id={host.target_id}&harness=opencode").json()
     assert [p["code"] for p in other["problems"]] == ["HARNESS_UNAVAILABLE"]
 
@@ -1137,6 +1141,7 @@ def test_preflight_shows_what_run_would_do(client, host):  # noqa: F811
     started = start(host, planned["id"])
     again = client.get(f"/api/v1/remotea/runs/preflight?task_id={planned['id']}").json()
     assert again["active_run"] == {"id": started["id"], "state": "spawning"}
+    assert again["choices"] is None  # Nothing to change while a run is on the task.
     with session_scope() as db:
         assert db.scalar(select(func.count()).select_from(AgentRun)) == 1  # Preflight never starts anything.
     missing = client.get("/api/v1/remotea/runs/preflight?task_id=00000000-0000-0000-0000-000000000000")
