@@ -411,15 +411,27 @@ def resolve_target(db, owner, task, explicit=None):
         if matches:
             candidates = list(matches.values())
             break
+    raise DomainError("NEEDS_TARGET", "Choose where this task's agent should run. The choice is saved.", 409,
+                      data=target_choices(db, owner, task, candidates or targets, records))
+
+
+def target_choices(db, owner, task, targets=None, records=None):
+    """The target picker's data: saved targets, what the servers advertise, and the records a choice can be
+    remembered for. resolve_target sends it with NEEDS_TARGET; preflight sends it as `choices` when a target already
+    resolves, so the Run dialog can offer another repository for this task."""
+    if targets is None:
+        targets = list(db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner)))
+    if records is None:
+        records = chain(db, owner, task)
     adverts = advertised(db, owner)
     index = advert_index(adverts)
-    raise DomainError("NEEDS_TARGET", "Choose where this task's agent should run. The choice is saved.", 409, data={
+    return {
         "task_id": task.id,
-        "candidates": [public_target(t, index) for t in candidates or targets],
+        "candidates": [public_target(t, index) for t in targets],
         "advertised": adverts,
         # type_id lets the picker default to the nearest record that is not the task itself (its project).
         "records": [{"id": r.id, "title": r.title, "type_id": r.type_id} for r in records],
-    })
+    }
 
 
 def save_target(db, owner, body):
@@ -1986,7 +1998,7 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None, *,
     """The Run dialog's view of a start before it happens: readiness_for plus the run already on the task, whether
     the interview would run (start_run's rule), which harnesses the task's target can spawn (`harness_reasons` says
     why not; `harness_note` is set while no target resolves), the target's verify and MCP readiness
-    (target_readiness), the task's title, and `roles`: whether the target's host can spawn hyperplan roles
+    (target_readiness), `choices` (the target picker's data while a target resolves), the task's title, and `roles`: whether the target's host can spawn hyperplan roles
     (`spawn.roles`; null while no target resolves). `reviewer_harness` / `worker_harness` add a HARNESS_UNAVAILABLE
     (or HOST_NO_ROLES) problem with `role` for a role the target cannot start."""
     task = owned(db, Task, task_id, owner)
@@ -2018,6 +2030,8 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None, *,
     except DomainError:
         pass
     return {**out, "task": {"id": task.id, "title": task.title},
+            # The picker's data while a target resolves: the dialog's "Change" offers another repository.
+            "choices": target_choices(db, owner, task) if out.get("target") and active is None else None,
             "active_run": {"id": active.id, "state": active.state} if active is not None else None,
             "interview": not task.prd_note_id and not planned,
             "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note, "roles": roles,

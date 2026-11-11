@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SetupLink } from "./RunTaskDialog";
-import { setupReason, type Preflight } from "./remotea-model";
+import { TargetPicker } from "./Remotea";
+import { setupReason, type NeedsTarget, type Preflight } from "./remotea-model";
 
 const pre = (values: Partial<Preflight> = {}): Preflight => ({
   target: { id: "t", name: "jarvis", repo: "/r" }, needs_target: false, need: null, problems: [], active_run: null,
@@ -37,5 +38,22 @@ describe("the Run dialog's link to the guided setup view", () => {
     expect(html).toContain('title="The remotea server is not connected."');
     expect(html).toContain("Open remotea setup");
     expect(html).toContain('type="button"');
+  });
+});
+
+describe("changing where a task runs from the Run dialog", () => {
+  const need = { task_id: "task-1", candidates: [], records: [{ id: "p1", title: "Eridani roadmap", type_id: "project" }],
+    advertised: [{ host_id: "h", host_name: "davispc", host_target: "remotea", repo: "/home/davin/remotea", worktree_root: "/wt",
+      configured: false, source: "host" as const, host_connected: true }] } as unknown as NeedsTarget;
+
+  it("defaults to the task's project when a target is first chosen", () => {
+    const html = renderToStaticMarkup(<TargetPicker need={need} onSaved={() => {}} onCancel={() => {}}/>);
+    expect(html).toMatch(/<option value="p1" selected="">Remember for Eridani roadmap<\/option>/);
+  });
+
+  it("defaults to only this task when changing a target that already resolves", () => {
+    const html = renderToStaticMarkup(<TargetPicker need={need} initialScope="task" onSaved={() => {}} onCancel={() => {}}/>);
+    expect(html).toMatch(/<option value="task" selected="">Only this task<\/option>/);
+    expect(html).not.toMatch(/<option value="p1" selected=""/);
   });
 });
