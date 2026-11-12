@@ -1907,6 +1907,20 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/remotea/auto-start",
+      "handler": "get_auto_start",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/remotea/auto-start",
+      "handler": "set_auto_start",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/remotea/decisions",
       "handler": "decisions",
       "source": "apps/api/jarvis/remotea_routes.py",
