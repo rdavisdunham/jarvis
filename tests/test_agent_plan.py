@@ -444,6 +444,20 @@ def test_criteria_that_ask_for_tests_get_the_targets_verify_by_default(verifying
         assert agent_plan.human_verify(db.get(Task, created["id"])) is None
 
 
+def test_a_plan_that_names_no_verify_keeps_the_one_eridani_chose(verifying_host):  # noqa: F811
+    """The readiness pass names the target's verify (`by: default`); a plan whose criteria do not mention tests used
+    to drop it, leaving the judge without a recorded check."""
+    chosen = {"target_id": verifying_host.target_id, "verify_id": "tests", "by": "default"}
+    created, run_id = interviewing(verifying_host)
+    with session_scope() as db:
+        db.get(Task, created["id"]).verify = chosen
+    plan = call(agent_plan.submit_plan, agent_plan.SubmitPlanInput, run_id, **PLAN)
+    assert plan["verify"] == chosen and not plan.get("proposals")
+    with session_scope() as db:
+        assert db.get(Task, created["id"]).verify == chosen
+        assert agent_plan.human_verify(db.get(Task, created["id"])) is None  # Still not a floor.
+
+
 def test_a_default_verify_among_several_is_proposed_for_review(verifying_host):  # noqa: F811
     with session_scope() as db:
         row = db.get(AgentHost, verifying_host.id)

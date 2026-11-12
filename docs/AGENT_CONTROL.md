@@ -684,6 +684,14 @@ UPDATE_FIXTURES=1 REMOTEA_CHECKOUT=… uv run --no-sync python -m pytest -q -s t
 PROTOCOL_E2E_FRAMES=/tmp/frames.json …   # also write every frame both ways (test tokens only) for review
 ```
 
+`tests/test_phase1_protocol_e2e.py` (same marker) drives two flows nobody steers beyond what the route asks: an
+`ai-assignable` task from creation through the readiness pass, auto-start, an unapproved plan, the work, the host's
+verify and the judge; and a direction check from the agent's brief through the owner's one answer to execution. Its
+agent is the same stub in scripted mode (`RemoteaHost.script`): on a planning prompt it calls `submit_plan` over the
+run-bound HTTP routes with the key and run token from its `--mcp-config`, on a work prompt it commits a file in the
+worktree. The test process plays the worker (readiness job, auto-start sweep, judge, the sweep that ends a held
+verdict), each with a scripted model. Run all five suites with `-m e2e_protocol tests/`.
+
 With `-s` it prints the remotea build it ran against, the frame count and the time. It skips, with the reason,
 when `node` or `git` is not on PATH, the checkout is missing, or its `remote-server/dist` or `node_modules` is.
 CI has no remotea checkout (the repository is private), so CI skips it; see `docs/CI.md`.
