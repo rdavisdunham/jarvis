@@ -5,9 +5,11 @@ One `task_readiness` job per task, queued when a task is created (structure.obse
 sweep for tasks created another way (Linear import, recurring tasks, notes). The job never asks the owner anything.
 It fills in only what is missing:
 
-1. Target: agent_control.resolve_target (the task's own, a saved record selection, folder rules). When none
-   resolves, the model may pick one of the saved targets from what the task is about; only a "high" confidence pick
-   is saved on the task (`readiness.target.by = "readiness"`), and the Run dialog's Change still replaces it.
+1. Target. The task's own target is final. Otherwise, in this order: a saved target the model picks from the task's
+   own words with "high" confidence (`readiness.target.by = "readiness"`), which outweighs where the task is filed;
+   agent_control.resolve_target (a saved record selection, folder rules); the repository this Linear team's earlier
+   owner-started runs all used (`by = "team"`). A pick or a team match is saved on the task, and the Run dialog's
+   Change still replaces it.
 2. Verify: the target's default verify command (`by: default`, not a human floor), so the judge gets a recorded
    result (agent_plan.pick_verify).
 3. Criteria: when the task has none, up to MAX_CRITERIA drafted from its title and notes, marked `by: agent` so
@@ -44,7 +46,7 @@ from .session_models import AgentHost, ExecutionTarget
 log = logging.getLogger(__name__)
 
 KIND = "task_readiness"
-PROMPT_VERSION = "readiness-v1"
+PROMPT_VERSION = "readiness-v2"
 ROUTES = ("auto", "direction", "plan_review", "human")
 RISKS = ("migration", "production_change", "client_visible", "spends_money")
 RISK_TEXT = {"migration": "it changes a database schema or migrates data",
@@ -70,8 +72,9 @@ SYSTEM = (
     "- migration: the task changes a database schema or migrates or backfills stored data.\n"
     "- production_change: the task changes production infrastructure, deployment configuration, secrets, access or "
     "permissions, or runs something against production data.\n"
-    "- client_visible: the task changes what a client or end user sees or receives: scoring, rubrics, pricing, "
-    "reports, published content or outgoing messages.\n"
+    "- client_visible: the task changes what an outside client of the business is given or judged by: scoring, "
+    "grading, rubrics, pricing, or the content of reports and messages sent to them. A bug fix, a performance fix, "
+    "an internal tool or an ordinary interface change is not client_visible, even inside a client's product.\n"
     "- spends_money: the task buys something or adds a paid service or a recurring cost.\n"
     "  Set each of these four to true only when the task says so or clearly implies it.\n"
     "- criteria: up to 4 short, checkable statements of what is true when the task is done, each under 200 "
@@ -170,15 +173,54 @@ def offered_verify(db, target) -> tuple[set, dict]:
     return ids, {s["id"]: s["ready"] for s in target_verify_status(item) or []}
 
 
+def same_place(a, b) -> bool:
+    """Two saved targets for the same repository on the same host (one is saved per record)."""
+    return a is not None and b is not None and (a.host_id, a.host_target) == (b.host_id, b.host_target)
+
+
+def distinct_targets(db, owner) -> list:
+    """The owner's saved targets, one per repository on a host."""
+    seen, out = set(), []
+    for target in db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner)
+                             .order_by(ExecutionTarget.name, ExecutionTarget.id)):
+        if (target.host_id, target.host_target) not in seen:
+            seen.add((target.host_id, target.host_target))
+            out.append(target)
+    return out[:MAX_TARGETS]
+
+
+def team_target(db, owner, task, targets):
+    """Where this Linear team's issues have run before, when every such run the owner started used one repository."""
+    from .session_models import AgentRun
+
+    team = (task.external or {}).get("team_id")
+    if not team:
+        return None
+    used = set(db.scalars(select(AgentRun.execution_target_id).join(Task, Task.id == AgentRun.task_id).where(
+        AgentRun.owner_id == owner, Task.owner_id == owner, Task.external["team_id"].astext == team,
+        AgentRun.execution_target_id.is_not(None), AgentRun.sync_state["auto_start"].astext.is_(None)).distinct()))
+    places = [t for t in targets if any(same_place(t, db.get(ExecutionTarget, i)) for i in used)]
+    return places[0] if len(places) == 1 else None
+
+
 def resolved_target(db, owner, task):
-    """(the target a run would use, the saved targets to choose from when none resolves)."""
+    """(the target a run would use, how it was found, the saved targets the model may choose from).
+
+    how: "task" (the task's own target: final), "filed" (a saved record selection or folder rules: where it is
+    filed, which the task's own words may outweigh), "team" (its Linear team's earlier runs) or None."""
     from .agent_control import resolve_target
 
+    targets = distinct_targets(db, owner)
+    if task.execution_target_id:
+        try:
+            return resolve_target(db, owner, task), "task", []
+        except DomainError:
+            return None, None, targets
     try:
-        return resolve_target(db, owner, task), []
+        return resolve_target(db, owner, task), "filed", targets
     except DomainError:
-        return None, list(db.scalars(select(ExecutionTarget).where(ExecutionTarget.owner_id == owner)
-                                     .order_by(ExecutionTarget.name, ExecutionTarget.id).limit(MAX_TARGETS)))
+        found = team_target(db, owner, task, targets)
+        return found, ("team" if found else None), targets
 
 
 def home_path(db, owner, task) -> str:
@@ -269,6 +311,7 @@ class Plan:
     found: list[str]
     rules: dict
     target_id: str | None
+    target_how: str | None = None
     candidates: list[dict] = field(default_factory=list)
     needs_model: bool = True
 
@@ -280,7 +323,7 @@ def prepare(db, owner, task_id) -> Plan | None:
     task = db.get(Task, task_id)
     if task is None or task.owner_id != owner or not eligible(db, task) or active_run(db, task.id):
         return None
-    target, choices = resolved_target(db, owner, task)
+    target, how, choices = resolved_target(db, owner, task)
     found, rules = labels(task), profile(db, owner)
     state = task.readiness or {}
     owner_route = state.get("route_by") == "owner" and task.run_route in ROUTES
@@ -290,11 +333,12 @@ def prepare(db, owner, task_id) -> Plan | None:
     text = {"title": clip(task.title, 500), "notes": clip(task.notes, NOTES_CHARS), "labels": found,
             "filed_under": home_path(db, owner, task),
             "linear_issue": (task.external or {}).get("identifier") or ""}
-    # The model is needed to draft criteria, to judge the route, or to choose among targets.
-    needs_model = (not task.success_criteria and label_route != "human") \
-        or not (owner_route or label_route) or (target is None and bool(candidates) and label_route != "human")
+    # The model is needed to draft criteria, to judge the route, or to choose among targets (also when the task is
+    # only filed somewhere: its own words may name another repository).
+    choosing = how != "task" and label_route != "human" and len(candidates) > (0 if target is None else 1)
+    needs_model = (not task.success_criteria and label_route != "human") or not (owner_route or label_route) or choosing
     return Plan(owner, task.id, task.revision, {k: v for k, v in text.items() if v}, found, rules,
-                target.id if target else None, candidates, needs_model)
+                target.id if target else None, how, candidates, needs_model)
 
 
 def commit(db, plan: Plan, answer: Answer | None, meta: dict, problem: str | None = None) -> dict:
@@ -308,18 +352,28 @@ def commit(db, plan: Plan, answer: Answer | None, meta: dict, problem: str | Non
         return {"outcome": "changed"}
     state = dict(task.readiness or {})
     filled, changes = [], {}
+    prior = state.get("target") or {}
     target = db.get(ExecutionTarget, plan.target_id) if plan.target_id else None
     target_by = None
-    if target is None and answer is not None and answer.target_confidence == "high":
-        picked = next((c for c in plan.candidates if c["key"] == answer.target), None)
-        target = db.get(ExecutionTarget, picked["id"]) if picked else None
-        if target is not None and target.owner_id == plan.owner and not task.execution_target_id:
-            changes["execution_target_id"], target_by = target.id, "readiness"
+    picked = None
+    if answer is not None and answer.target_confidence == "high" and plan.target_how != "task":
+        choice = next((c for c in plan.candidates if c["key"] == answer.target), None)
+        picked = db.get(ExecutionTarget, choice["id"]) if choice else None
+        if picked is not None and picked.owner_id != plan.owner:
+            picked = None
+    if not task.execution_target_id:
+        if picked is not None and not same_place(picked, target):
+            # What the task says outweighs where it is filed and what its team usually does.
+            target, target_by = picked, "readiness"
+        elif target is not None and plan.target_how == "team":
+            target_by = "team"
+        if target_by:
+            changes["execution_target_id"] = target.id
             filled.append("target")
-        else:
-            target = None
     offered, ready = offered_verify(db, target) if target is not None else (set(), {})
-    if target is not None and not task.verify:
+    stale_verify = bool(task.verify) and task.verify.get("by") == "default" and target is not None \
+        and task.verify.get("target_id") != target.id and "execution_target_id" in changes
+    if target is not None and (not task.verify or stale_verify):
         chosen = pick_verify(offered, ready)
         if chosen:
             changes["verify"] = {"target_id": target.id, "verify_id": chosen, "by": "default"}
@@ -346,7 +400,8 @@ def commit(db, plan: Plan, answer: Answer | None, meta: dict, problem: str | Non
         **{k: v for k, v in state.items() if k not in ("problem", "risks")},
         "state": ("ready" if target is not None else "needs_target") if done else "unavailable",
         "at": now().isoformat(), "prompt_version": PROMPT_VERSION, "route_by": route_by, "labels": plan.found,
-        "target": {"id": target.id, "name": target.name or target.host_target, "by": target_by or "resolved"}
+        "target": {"id": target.id, "name": target.name or target.host_target,
+                   "by": target_by or (prior.get("by") if prior.get("id") == target.id else None) or "resolved"}
         if target is not None else None,
         "filled": sorted({*state.get("filled", []), *filled}),
         **({"risks": [n for n in RISKS if getattr(answer, n)], "agent_runnable": answer.agent_runnable,
@@ -445,7 +500,9 @@ def sweep(db):
         Task.owner_id.in_(owners), Task.archived.is_(False), Task.is_template.is_(False),
         Task.is_quick_list.is_(False), Task.status.in_(OPEN),
         or_(state.is_(None) & (Task.created_at > now() - _hours(24 * SWEEP_DAYS)), state == "stale",
-            (state == "unavailable") & (Task.readiness["at"].astext < retry)))
+            (state == "unavailable") & (Task.readiness["at"].astext < retry),
+            # Decided by an earlier version of the pass: look again (owner-chosen routes and criteria are kept).
+            state.in_(("ready", "needs_target")) & (Task.readiness["prompt_version"].astext != PROMPT_VERSION)))
         .order_by(Task.created_at.desc()).limit(SWEEP_BATCH))
     for task in rows:
         if queue_for(db, task.owner_id, task.id) is None:
