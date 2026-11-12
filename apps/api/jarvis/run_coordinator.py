@@ -1285,6 +1285,16 @@ def conclude_planning(db, run, plan, *, actor=None):
                 emit(db, run.owner_id, "agent.changed", run.id)
                 return
             return begin_execution(db, run, actor=actor)
+        from . import run_direction
+
+        if run_direction.approves(db, run, plan):
+            # Direction check: the owner already answered the brief once; the revised plan starts (run_direction.py).
+            plan.approval_status, plan.approved_at = "approved", now()
+            note(run, "plan_approved", plan_revision=run.plan_revision, actor={"kind": "direction_check"})
+            if run.paused or not run.surf:
+                emit(db, run.owner_id, "agent.changed", run.id)
+                return
+            return begin_execution(db, run, actor=actor)
         if run.state != "needs_you":
             transition(db, run, "needs_you", reason="plan_approval",
                        detail=f"Plan revision {plan.revision if plan else run.plan_revision} after {run.plan_round} "
@@ -1683,6 +1693,9 @@ def approve_plan(db, run, *, actor):
     if plan is None or plan.approval_status != "pending":
         raise DomainError("DECISION_CLOSED", "This plan is no longer awaiting approval.", 409)
     plan.approval_status, plan.approved_at = "approved", now()
+    from . import run_direction
+
+    run_direction.accept(db, run)
     note(run, "plan_approved", plan_revision=run.plan_revision, actor=actor.record())
     if run.paused or not run.surf:
         emit(db, run.owner_id, "agent.changed", run.id)
@@ -1702,6 +1715,9 @@ def revise_plan(db, run, note_text, *, actor):
     run.plan_pending = False
     if (run.sync_state or {}).get("planning_turn_pending"):
         run.sync_state = {**(run.sync_state or {}), "planning_continuation_pending": True}
+    from . import run_direction
+
+    run_direction.answer(db, run, note_text)
     note(run, "plan_revise", plan_revision=run.plan_revision, actor=actor.record())
     transition(db, run, "planning", actor=actor, reason="plan_revise")
     say(db, run, prompts.plan_revise(note_text), "plan_critique", actor=actor)

@@ -57,6 +57,10 @@
 .task-route label { display: grid; gap: 2px; font-size: 12px; color: var(--ink-3); }
 .task-route select { min-height: 32px; max-width: 100%; }
 .task-route small { flex-basis: 100%; color: var(--ink-3); }
+.run-direction-brief { display: grid; gap: 6px; margin: 4px 0 8px; }
+.run-direction-brief p, .run-direction-brief div { margin: 0; }
+.run-direction-brief span { display: block; font-size: 12px; color: var(--ink-3); }
+.run-direction-brief ol { margin: 2px 0 0; padding-left: 20px; }
 .auto-start-options { display: grid; gap: 8px; padding: 0 0 8px 12px; font-size: 13px; }
 .auto-start-options fieldset { display: grid; gap: 4px; border: 0; padding: 0; margin: 0; }
 .auto-start-options legend { padding: 0; color: var(--ink-3); }

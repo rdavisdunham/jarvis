@@ -569,14 +569,24 @@ export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDo
     } finally { setBusy(""); }
   };
   const plan = run.plan, reviews = run.reviews ?? [], worker = run.roles?.worker;
-  return <DecisionCard title={awaiting ? "Final plan" : "Latest plan"} label="Final plan approval" task={awaiting ? run.task?.title : undefined} agent={awaiting ? actorChip(run) : undefined} className={"remotea-plan-approval" + (awaiting ? "" : " is-reference")} receipt={receipts.filter(r => r.url.includes(decision ? encodeURIComponent(decision.id) : `/runs/${run.id}/plan-review`)).at(-1)}>
+  // Direction check: the agent's brief leads, and one answer from the owner is all it takes.
+  const brief = run.direction?.brief ?? null, direction = awaiting && !!run.direction?.open;
+  return <DecisionCard title={direction ? "Direction check" : awaiting ? "Final plan" : "Latest plan"} label={direction ? "Direction check" : "Final plan approval"} task={awaiting ? run.task?.title : undefined} agent={awaiting ? actorChip(run) : undefined} className={"remotea-plan-approval" + (awaiting ? "" : " is-reference")} receipt={receipts.filter(r => r.url.includes(decision ? encodeURIComponent(decision.id) : `/runs/${run.id}/plan-review`)).at(-1)}>
     {run.paused && run.plan?.approval_status === "approved" && <p role="status">Plan approved · paused. Resume when you are ready to start.</p>}
-    <p className="footnote">{!awaiting ? "The latest submitted plan remains available as work continues. " : ""}{reviews.length ? `Reviewed ${reviews.length} time${reviews.length === 1 ? "" : "s"}. ` : ""}{awaiting ? "Approve to start the work" : ""}
-      {awaiting && worker ? ` with ${modelLabel(worker.harness, worker.model)} in a fresh session` : ""}{awaiting ? ", or send it back to the planner with a note." : ""}</p>
+    {brief && (direction || run.direction?.answer) && <div className="run-direction-brief">
+      <p><span>How it reads the task</span>{brief.reading}</p>
+      <p><span>Approach</span>{brief.approach}</p>
+      {brief.leaves_alone && <p><span>Leaves alone</span>{brief.leaves_alone}</p>}
+      {!!brief.questions.length && <div><span>Its questions</span><ol>{brief.questions.map((q, i) => <li key={i}>{q}</li>)}</ol></div>}
+      {run.direction?.answer && <p><span>Your answer</span>{run.direction.answer}</p>}
+    </div>}
+    {direction && <p className="footnote">Accept to start the work. Or answer once below: the agent revises its plan and starts without asking again.</p>}
+    {!direction && <p className="footnote">{!awaiting ? "The latest submitted plan remains available as work continues. " : ""}{reviews.length ? `Reviewed ${reviews.length} time${reviews.length === 1 ? "" : "s"}. ` : ""}{awaiting ? "Approve to start the work" : ""}
+      {awaiting && worker ? ` with ${modelLabel(worker.harness, worker.model)} in a fresh session` : ""}{awaiting ? ", or send it back to the planner with a note." : ""}</p>}
     {plan ? <div className="run-plan-expanded">
       <p><strong>{plan.title}</strong> <small>revision {plan.revision}</small></p>
-      {plan.prd_text && <details open><summary>Plan</summary><p className="remotea-plan-text">{plan.prd_text}</p></details>}
-      {!!plan.steps.length && <details open={awaiting}><summary>Steps · {plan.steps.length}</summary><StepList steps={plan.steps} compact/></details>}
+      {plan.prd_text && <details open={!direction}><summary>Plan</summary><p className="remotea-plan-text">{plan.prd_text}</p></details>}
+      {!!plan.steps.length && <details open={awaiting && !direction}><summary>Steps · {plan.steps.length}</summary><StepList steps={plan.steps} compact/></details>}
       {!!plan.criteria.length && <details open><summary>Success criteria · {plan.criteria.length}</summary>
         <ul>{plan.criteria.map(c => <li key={c.id}>{c.text}{c.kind === "verify" && <small> · needs {c.verify_id} to pass</small>}</li>)}</ul></details>}
     {!!run.plan_history?.filter(p => p.revision !== plan?.revision).length && <details className="run-plan-history"><summary>Previous plans</summary>
@@ -588,11 +598,11 @@ export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDo
     </details>}
     {!!reviews.length && <ul className="remotea-review-history" aria-label="Review history">{reviews.map(r => <li key={r.id}>{reviewTitle(r)}</li>)}</ul>}
     </div> : <p className="footnote">The plan is still loading.</p>}
-    {awaiting && <><label className="remotea-proposal-new"><span>Note for the planner (to revise)</span>
+    {awaiting && <><label className="remotea-proposal-new"><span>{direction ? "Your answer or a different direction" : "Note for the planner (to revise)"}</span>
       <textarea rows={3} maxLength={4000} value={note} disabled={!!busy || run.controller === "terminal"} onChange={e => setNote(e.target.value)}/></label>
     <div className="remotea-control-row">
-      <button className="btn btn-sm" disabled={!!busy || !note.trim() || run.controller === "terminal"} onClick={() => void send("revise")}>{busy === "revise" ? "Sending…" : "Request changes"}</button>
-      <button className="btn btn-sm btn-primary" disabled={!!busy || run.controller === "terminal"} onClick={() => void send("approve")}><Check size={14}/>{busy === "approve" ? "Approving…" : "Approve"}</button>
+      <button className="btn btn-sm" disabled={!!busy || !note.trim() || run.controller === "terminal"} onClick={() => void send("revise")}>{busy === "revise" ? "Sending…" : direction ? "Send answer" : "Request changes"}</button>
+      <button className="btn btn-sm btn-primary" disabled={!!busy || run.controller === "terminal"} onClick={() => void send("approve")}><Check size={14}/>{busy === "approve" ? "Starting…" : direction ? "Accept" : "Approve"}</button>
     </div>
     </>}
     {error && <p role="alert" className="work-error">{error}</p>}

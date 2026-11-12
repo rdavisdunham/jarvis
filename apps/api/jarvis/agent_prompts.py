@@ -71,6 +71,17 @@ def planner_note(roles):
     return " ".join(parts)
 
 
+DIRECTION = ("This task takes a direction check, not a full plan review. In submit_plan also send `brief`: reading "
+             "(one or two sentences: how you read the task), approach (how you will do it), leaves_alone (what you "
+             "will not touch) and questions (up to three open questions whose answer would change your approach; "
+             "none is fine). The owner answers the brief once. Your revised plan then starts without another "
+             "approval, so put every question in the brief now.")
+
+
+def direction_note(task):
+    return DIRECTION if getattr(task, "run_route", None) == "direction" else ""
+
+
 def interview(task, children, notes="", roles=None):
     """The spawn prompt for a task without a PRD."""
     return "\n\n".join(filter(None, [
@@ -82,6 +93,7 @@ def interview(task, children, notes="", roles=None):
         "Submit the questions with task_interview and stop. Do not change any code yet. If you already have "
         "everything you need, call submit_plan instead and stop.",
         planner_note(roles),
+        direction_note(task),
         TOOLS,
         FLOOR,
     ]))
@@ -132,6 +144,7 @@ def planning_start(task, children, notes="", prd="", verify_ids=(), roles=None):
         "criteria and call submit_plan (expected_plan_revision from task_plan), then stop. Do not change any code.",
         PHASES,
         verify_guidance(verify_ids),
+        direction_note(task),
         TOOLS,
         FLOOR,
     ]))

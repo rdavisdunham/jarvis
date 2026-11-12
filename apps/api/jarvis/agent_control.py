@@ -194,6 +194,12 @@ class TargetInput(Input):
 # ---------------------------------------------------------------- execution targets
 
 
+def direction_public(db, run):
+    from .run_direction import public
+
+    return public(db, run)
+
+
 def readiness_drafted(task):
     from .readiness import drafted
 
@@ -1453,6 +1459,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "origin": run.origin or "task", "dismissed_at": run.dismissed_at,
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
+        # Direction check (run_direction.py): the agent's brief, the owner's one answer, and whether it is open.
+        "direction": direction_public(db, run),
         # Started by auto-start (auto_start.py), not by the owner.
         "auto_started": bool((run.sync_state or {}).get("auto_start")),
         # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): null roles is a classic run. `actor` is who acts
