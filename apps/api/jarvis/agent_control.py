@@ -194,6 +194,12 @@ class TargetInput(Input):
 # ---------------------------------------------------------------- execution targets
 
 
+def readiness_drafted(task):
+    from .readiness import drafted
+
+    return drafted(task)
+
+
 def chain(db, owner, task):
     """The task's record and its ancestors, nearest first."""
     from .structure import parent_chain
@@ -711,7 +717,8 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening="", resta
     branch = branch_for(db, owner, task)
     # A task whose criteria and verify a human already wrote skips the interview unless asked for (stage F, M1);
     # an interview that does run only adds to them (agent_plan.plan_floor).
-    planned = bool(task.success_criteria) and bool(task.verify)
+    # Criteria the readiness pass drafted are not the owner's plan: the interview still runs by default.
+    planned = bool(task.success_criteria) and bool(task.verify) and not readiness_drafted(task)
     interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
     if body.freestyle or restart is not None:
         # Freestyle talks to the agent directly: nothing to interview for or submit. A restart plans the added work.
@@ -2004,7 +2011,8 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None, *,
     task = owned(db, Task, task_id, owner)
     out = readiness_for(db, owner, task, harness, execution_target_id)
     active = coordinator_active(db, task.id)
-    planned = bool(task.success_criteria) and bool(task.verify)
+    # Criteria the readiness pass drafted are not the owner's plan: the interview still runs by default.
+    planned = bool(task.success_criteria) and bool(task.verify) and not readiness_drafted(task)
     harnesses, reasons, note = target_capabilities(db, owner, task, execution_target_id)
     roles = None
     try:

@@ -1399,6 +1399,9 @@ def observe_core(db, owner, tool, result, command_id, arguments=None):
         db.flush()
         from .placement import queue_for
         queue_for(db, owner, row)  # Still unfiled after any rule: placement by meaning, in the background.
+        if kind == "task":
+            from .readiness import queue_for as queue_readiness
+            queue_readiness(db, owner, core.id)  # Target, verify, draft criteria and a route, in the background.
     remember_core(db, row)
     if kind == "task":
         result.update(serial(core))

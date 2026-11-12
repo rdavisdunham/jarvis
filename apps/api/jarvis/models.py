@@ -182,6 +182,10 @@ class Task(Base):
     completion_policy_explicit: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     execution_target_id: Mapped[str | None] = mapped_column(ForeignKey("execution_targets.id"))
     plan_revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # How much of the owner a run on this task needs: auto | direction | plan_review | human; null until the
+    # readiness pass (readiness.py) or the owner decides. `readiness` is what the pass found and filled in.
+    run_route: Mapped[str | None] = mapped_column(String(20))
+    readiness: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 
 
 class Command(Base):

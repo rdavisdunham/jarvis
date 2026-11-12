@@ -751,6 +751,50 @@ drawer groups consecutive steps that share one and numbers them 1a, 1b, 2a; `ren
 prefix on each step line. Changing a phase restamps the step like any other edit; steps saved before phases
 existed have no key and are treated as "" (not restamped).
 
+## Readiness and routes (migration 0063)
+
+`readiness.py` prepares a task for a run without asking the owner anything, and says how much of the owner the run
+needs. It is phase 1 of `docs/END_TO_END_UPGRADE_PLAN.md`. One `task_readiness` job per task (queue
+`jarvis-memory`, cost feature `task_readiness`, Luna, strict JSON), only for owners with remotea turned on.
+
+**When it runs.** On `task.create` (`structure.observe_core`); from the supervisor sweep for tasks created another
+way (Linear import, recurring tasks, notes) in the last 30 days, 5 per cycle; again when Linear changes the task's
+labels, when placement by meaning files a task that had no repository, when the owner clears the route, and on
+"Check again". A task with an active run is skipped. A failed model call is retried after 6 hours.
+
+**What it fills in, only where the task has nothing:**
+
+| Field | How |
+|---|---|
+| Target | `resolve_target` first. When none resolves, the model may pick one of the saved targets from the task's text; only a `high` confidence pick is saved as `task.execution_target_id` (`readiness.target.by = "readiness"`). The Run dialog's Change replaces it. |
+| Verify | The target's default verify id (`pick_verify`), `by: default`: not a human floor. |
+| Criteria | Up to 4 drafted from the title and notes, `by: agent`: the planner may replace them and they are never the owner's floor. While they are still the draft, a run interviews by default as before (`readiness.drafted`). |
+| Route | `tasks.run_route`, below. |
+
+**Routes** (`auto`, `direction`, `plan_review`, `human`), first match wins:
+
+1. a human-only label → `human`;
+2. the model says no coding agent could do it → `human`;
+3. it changes a schema or migrates data, changes production, changes what a client sees, or spends money →
+   `plan_review`;
+4. an ai-assignable label, a target and a verify command → `auto`;
+5. otherwise → `direction`.
+
+Labels are the task's tags and its Linear labels, matched case-insensitively against the owner setting
+`run_routes` (`{"auto_labels": [...], "human_labels": [...]}`; defaults `ai-assignable` and `human-only`), so no
+label name is built in. There is no settings screen for it yet. Whether the target has CI is not checked yet.
+
+A route the owner sets (`task.update` with `run_route`; the select on the task's Run control) is recorded as
+`readiness.route_by = "owner"` and never replaced; setting it to null hands it back. The pass writes without
+changing `task.revision` (it bumps `plan_revision` when it writes plan fields), so it cannot refuse the save of
+someone editing the task.
+
+**The route does not act yet.** Nothing starts a run or skips plan approval because of it; auto-start and the
+direction brief are the next steps of the plan.
+
+Browser routes: `GET /api/v1/remotea/tasks/{id}/readiness` (route, who chose it, reasons, what was filled in,
+whether a pass is pending) and `POST` on the same path (look again).
+
 ## Runs (stage C, migration 0028)
 
 A **run** is Eridani driving one agent on one task through remotea. Tables: `execution_targets`,

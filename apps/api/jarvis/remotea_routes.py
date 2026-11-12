@@ -419,6 +419,26 @@ def start(body: control.StartInput, user: User):
             db, user.owner_id, user.account_id, body, actor=actor_for(user)))
 
 
+@router.get("/tasks/{task_id}/readiness")
+def task_readiness(task_id: UUID, user: User):
+    """The task's route (auto, direction, plan_review, human), who chose it and what the readiness pass found."""
+    from . import readiness
+
+    with session_scope() as db:
+        gated(db, user)
+        return readiness.read(db, user.owner_id, str(task_id))
+
+
+@router.post("/tasks/{task_id}/readiness")
+def task_readiness_again(task_id: UUID, user: User):
+    """Run the readiness pass on this task again. A route the owner chose is kept."""
+    from . import readiness
+
+    with session_scope() as db:
+        writable(db, user)
+        return readiness.recheck(db, user.owner_id, str(task_id))
+
+
 @router.get("/runs/preflight")
 def preflight(task_id: UUID, user: User, harness: str = Query("claude", max_length=20), execution_target_id: UUID | None = None,
               reviewer_harness: str | None = Query(None, max_length=20), worker_harness: str | None = Query(None, max_length=20)):

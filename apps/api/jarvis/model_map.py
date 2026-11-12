@@ -113,6 +113,8 @@ JOBS = {
             "Client and project overviews"),
         Job("place_by_meaning", "placement_by_meaning", "placement.ask", "extraction",
             "Filing new tasks by meaning"),
+        Job("task_readiness", "task_readiness", "readiness.ask", "extraction",
+            "Preparing new tasks for agent runs (route, draft criteria, repository)"),
         Job("memory_extraction", "memory_learning", "memory_learning.process", "extraction",
             "Memory fact extraction"),
         Job("about_you", "about_you", "about_you.ask", "extraction",
