@@ -217,6 +217,33 @@ def set_auto_complete(body: AutoCompleteInput, user: User):
         return state(db, user)
 
 
+@router.get("/auto-start")
+def get_auto_start(user: User):
+    """Auto-start settings (auto_start.py): the switch, the repositories it may use, its caps, and today's count."""
+    from . import auto_start
+
+    with session_scope() as db:
+        gated(db, user)
+        return auto_start.public(db, user.owner_id)
+
+
+@router.put("/auto-start")
+def set_auto_start(body: dict, user: User):
+    """Off by default: tasks on the Auto route start their own run in the chosen repositories."""
+    from pydantic import ValidationError
+
+    from . import auto_start
+
+    try:
+        value = auto_start.Settings.model_validate(body)
+    except ValidationError as exc:
+        raise DomainError("INVALID_ARGUMENT", "Check the auto-start settings.",
+                          data=exc.errors(include_url=False, include_context=False)) from exc
+    with session_scope() as db:
+        gated(db, user)
+        return auto_start.save(db, user.owner_id, value)
+
+
 @router.post("/auto-merge")
 def set_auto_merge(body: AutoCompleteInput, user: User):
     """Default for new runs (off): a run with a real check (a verify entry or CI) merges its pull request by itself."""

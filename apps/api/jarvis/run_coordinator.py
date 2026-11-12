@@ -1275,6 +1275,16 @@ def conclude_planning(db, run, plan, *, actor=None):
             transition(db, run, "needs_you", reason="plan_review", detail=proposal_summary(plan.proposals))
         return
     if plan is not None and plan.approval_status != "approved" and not run.freestyle:
+        from . import auto_start
+
+        if auto_start.approves(db, run, plan):
+            # An auto-started run on the Auto route: the plan goes ahead without the owner (auto_start.py).
+            plan.approval_status, plan.approved_at = "approved", now()
+            note(run, "plan_approved", plan_revision=run.plan_revision, actor={"kind": "auto_start"})
+            if run.paused or not run.surf:  # As approve_plan: execution starts when the run can take input.
+                emit(db, run.owner_id, "agent.changed", run.id)
+                return
+            return begin_execution(db, run, actor=actor)
         if run.state != "needs_you":
             transition(db, run, "needs_you", reason="plan_approval",
                        detail=f"Plan revision {plan.revision if plan else run.plan_revision} after {run.plan_round} "

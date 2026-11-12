@@ -28,6 +28,7 @@ import { RunCiCard } from "./RunCiCard";
 import { RunMergePanel } from "./RunMergePanel";
 import { RunLineage, RunRestart } from "./RunRestart";
 import { TaskRoute } from "./TaskRoute";
+import { AutoStartSettings } from "./AutoStartSettings";
 import { focusTarget } from "./run-restart";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, reopenButton, terminalFallback, type FocusResult } from "./remotea-model";
@@ -299,6 +300,7 @@ export function RemoteaSettings({ readOnly, onChanged }: { readOnly: boolean; on
         <input type="checkbox" checked={!!status.auto_merge} disabled={busy || readOnly}
           onChange={e => void change("/remotea/auto-merge", { enabled: e.target.checked })}/>
       </SettingRow>
+      <AutoStartSettings readOnly={readOnly}/>
       <SettingRow as="label" label="Agent questions break quiet hours"
         hint="Off by default: an agent's question waits for your quiet hours to end like any other notification. On makes it urgent.">
         <input type="checkbox" checked={!!status.quiet_bypass} disabled={busy || readOnly}
@@ -1081,6 +1083,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
           <Facts facts={fresh} label="How current this is"/>
           {packet && run.state !== "awaiting_approval" && <ReviewPacketCard packet={packet}/>}
           {run.completion_policy && <p>{POLICY_TEXT[run.completion_policy] ?? run.completion_policy}</p>}
+          {run.auto_started && <p>Started by itself: this task needed nothing from you.</p>}
           {!!run.integration?.length && <ul>{run.integration.map(item => <li key={item.task_id}>{item.branch} · {item.reason}</li>)}</ul>}
           {!!linearOutcomes(run).length && <ul>{linearOutcomes(run).map(item => <li key={item.key}>{item.text}</li>)}</ul>}
           {!isSettled(run) && <label className="remotea-toggle"><input type="checkbox" checked={!!run.freestyle} disabled={off || run.state === "stopping"}

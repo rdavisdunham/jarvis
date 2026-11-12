@@ -657,6 +657,8 @@ def _submit_plan(db, bot, body):
     revision = (run.plan_revision or 0) + 1
     note = db.get(Note, prd_id)
     previous = coordinator.frozen(db, run)
+    # Kept apart from the reserved number (none without a migrations folder): auto-start stops for the owner on it.
+    run.sync_state = {**(run.sync_state or {}), "plan_declares_migration": bool(body.migration)}
     if body.migration:
         migration = numbers.reserve(db, run)
     else:
