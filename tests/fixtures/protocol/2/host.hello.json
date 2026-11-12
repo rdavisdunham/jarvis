@@ -169,6 +169,38 @@
            ]
           }
          },
+         "conformance": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "conformance_at": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "conformance_message": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "conformance_step": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
          "context": {
           "required": true,
           "shape": {
@@ -195,6 +227,14 @@
            },
            "types": [
             "array"
+           ]
+          }
+         },
+         "launcher_version": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
            ]
           }
          },
@@ -304,6 +344,22 @@
            ]
           }
          },
+         "conformance": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
+         "conformance_message": {
+          "required": true,
+          "shape": {
+           "types": [
+            "string"
+           ]
+          }
+         },
          "context": {
           "required": true,
           "shape": {
@@ -338,6 +394,14 @@
            },
            "types": [
             "array"
+           ]
+          }
+         },
+         "launcher_version": {
+          "required": true,
+          "shape": {
+           "types": [
+            "null"
            ]
           }
          },
@@ -479,22 +543,6 @@
            ]
           }
          },
-         "managed": {
-          "required": true,
-          "shape": {
-           "types": [
-            "boolean"
-           ]
-          }
-         },
-         "managed_questions": {
-          "required": true,
-          "shape": {
-           "types": [
-            "array"
-           ]
-          }
-         },
          "observe": {
           "required": true,
           "shape": {
@@ -548,6 +596,22 @@
           "shape": {
            "types": [
             "null"
+           ]
+          }
+         },
+         "managed": {
+          "required": false,
+          "shape": {
+           "types": [
+            "boolean"
+           ]
+          }
+         },
+         "managed_questions": {
+          "required": false,
+          "shape": {
+           "types": [
+            "array"
            ]
           }
          }
@@ -674,6 +738,46 @@
            "required": true,
            "shape": {
             "keys": {
+             "conformance": {
+              "required": true,
+              "shape": {
+               "types": [
+                "string"
+               ]
+              }
+             },
+             "conformance_at": {
+              "required": true,
+              "shape": {
+               "types": [
+                "string"
+               ]
+              }
+             },
+             "conformance_message": {
+              "required": true,
+              "shape": {
+               "types": [
+                "string"
+               ]
+              }
+             },
+             "conformance_step": {
+              "required": true,
+              "shape": {
+               "types": [
+                "string"
+               ]
+              }
+             },
+             "launcher_version": {
+              "required": true,
+              "shape": {
+               "types": [
+                "string"
+               ]
+              }
+             },
              "managed": {
               "required": true,
               "shape": {

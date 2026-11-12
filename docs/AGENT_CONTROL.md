@@ -1652,6 +1652,10 @@ clock. Then:
   the run entered `awaiting_ci`): `needs_you(ci_timeout)` with a specific headline (`run_ci.timeout_text`: "CI on
   1a2b3c4 was still running after 1 h 30 min (Frontend and browser).", "No pull request for … so CI never ran.", "The
   host could not read CI …: gh: not logged in."), pushed with that headline.
+- **The host cannot read CI at all**: three `ci.status` reads in a row that fail (`ERROR_POLLS`; `gh` not signed in,
+  no GitHub remote) end the wait after about six minutes instead of the whole window (`run_ci.unreadable`). After a
+  met verdict the run goes to `needs_you(ci_unavailable)` with the host's error as the detail; a turn that CI was
+  verifying falls back to the local check (`ci_absent_local`). One read that works starts the count again.
 
 **Green CI un-parks a run**, as a late local pass does. While a run with a verify command sits in
 `needs_you(verify_infra)` (its local check could not run), `ci_timeout` or `ci_unavailable` on a host that reports CI,

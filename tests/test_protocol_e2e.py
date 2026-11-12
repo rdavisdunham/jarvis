@@ -21,6 +21,7 @@ from types import SimpleNamespace
 
 import pytest
 from jarvis import agent_judge as judge
+from jarvis import run_ci
 from jarvis.config import get_settings
 from jarvis.db import session_scope
 from jarvis.domain import execute
@@ -86,6 +87,11 @@ def run_state(run_id):
         row = db.get(AgentRun, run_id)
         return SimpleNamespace(state=row.state, reason=row.state_reason, revision=row.state_revision,
                                turn_count=row.turn_count, generation=row.generation)
+
+
+def ci_errors(run_id):
+    with session_scope() as db:
+        return ((db.get(AgentRun, run_id).sync_state or {}).get("ci") or {}).get("errors") or 0
 
 
 def command_status(op_id):
@@ -314,9 +320,26 @@ def drive(eri, proxy, host):
     assert assistant and GAP in (assistant[0]["prompt"] or ""), detail["turns"]
 
     # 8. Met: awaiting approval; the approval stops the agent and completes the run and the task.
+    # The host reports GitHub CI (`ci.status`), so the met verdict first waits for the pull request's checks. This
+    # sandboxed host cannot ask GitHub at all (no GitHub remote, gh not signed in): after three failed reads the
+    # wait ends and the run needs you, with the host's error (run_ci.unreadable). The worker's sweep asks every two
+    # minutes; here the test asks again at once.
     judge_once(run_id, verdict("met"))
+    seen_ci = set()
+    for attempt in range(run_ci.ERROR_POLLS):
+        asked = proxy.wait("eridani", "ci.status", lambda f: f["run_id"] == run_id and f["op_id"] not in seen_ci,
+                           timeout=STEP)["frame"]
+        seen_ci.add(asked["op_id"])
+        failed = proxy.wait("host", "command.outcome", lambda f, op=asked["op_id"]: f["command_id"] == op, timeout=STEP)["frame"]
+        assert failed["state"] == "failed" and "gh" in failed["detail"], failed
+        until(lambda n=attempt + 1: ci_errors(run_id) in (n, 0), STEP, "the failed CI read to be recorded")
+        if attempt + 1 < run_ci.ERROR_POLLS:
+            assert run_state(run_id).state == "awaiting_ci"
+            with session_scope() as db:
+                run_ci.request(db, db.get(AgentRun, run_id, with_for_update=True))
+    until(lambda: run_state(run_id).state == "needs_you", STEP, "the unreadable CI to stop the wait")
     current = run_state(run_id)
-    assert (current.state, current.reason) == ("awaiting_approval", "judge_met")
+    assert (current.state, current.reason) == ("needs_you", "ci_unavailable")
     eri.post(f"/api/v1/remotea/runs/{run_id}/approve", {"expected_revision": current.revision})
     stop = proxy.wait("eridani", "stop", lambda f: f["run_id"] == run_id, timeout=STEP)["frame"]
     stopped = proxy.wait("host", "command.outcome", lambda f: f["command_id"] == stop["op_id"], timeout=STEP)["frame"]

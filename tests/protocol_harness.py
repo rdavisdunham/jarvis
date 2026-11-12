@@ -357,6 +357,8 @@ const args = process.argv.slice(2);
 if (args[0] === '--version') { process.stdout.write('2.1.999 (Claude Code)\n'); process.exit(0); }
 // This legacy fixture has no structured catalog transport and must not treat a probe as a task.
 if (args.includes('--input-format')) process.exit(0);
+// remotea's conformance probe reads `--help` (remotea PR #51). Listing no managed flag keeps this launcher legacy.
+if (args.includes('--help')) { process.stdout.write('Usage: claude [options] [prompt]\n'); process.exit(0); }
 const log = (entry) => fs.appendFileSync(LOG, JSON.stringify({ pid: process.pid, ...entry }) + '\n');
 const sid = crypto.randomUUID();
 const prompt = !args.includes('--resume') && args.length && !args[args.length - 1].startsWith('-') ? args[args.length - 1] : '';
@@ -415,6 +417,9 @@ process.stdin.on('data', (data) => {
   }
 });
 """
+
+# The managed fakes in the other protocol suites report these versions; see their host.env.
+MANAGED_FORCE = {"REMOTEA_MANAGED_CODEX_FORCE": "0.166.0", "REMOTEA_MANAGED_CLAUDE_FORCE": "2.1.317"}
 
 VERIFY = """#!/bin/sh
 echo "verify $(pwd)" >> '__LOG__'

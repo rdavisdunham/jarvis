@@ -27,6 +27,14 @@
      ]
     }
    },
+   "detail": {
+    "required": false,
+    "shape": {
+     "types": [
+      "string"
+     ]
+    }
+   },
    "digest": {
     "required": true,
     "shape": {
@@ -60,7 +68,7 @@
     }
    },
    "result": {
-    "required": true,
+    "required": false,
     "shape": {
      "keys": {
       "adopted": {
@@ -177,11 +185,35 @@
         ]
        }
       },
+      "files": {
+       "required": false,
+       "shape": {
+        "types": [
+         "array"
+        ]
+       }
+      },
+      "files_total": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
       "generation": {
        "required": false,
        "shape": {
         "types": [
          "integer"
+        ]
+       }
+      },
+      "head": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
         ]
        }
       },
@@ -219,7 +251,23 @@
         ]
        }
       },
-      "resumed": {
+      "patch": {
+       "required": false,
+       "shape": {
+        "types": [
+         "string"
+        ]
+       }
+      },
+      "patch_chars": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
+      "patch_truncated": {
        "required": false,
        "shape": {
         "types": [
@@ -259,11 +307,43 @@
         ]
        }
       },
+      "uncommitted": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
+      },
+      "untracked": {
+       "required": false,
+       "shape": {
+        "types": [
+         "array"
+        ]
+       }
+      },
+      "untracked_total": {
+       "required": false,
+       "shape": {
+        "types": [
+         "integer"
+        ]
+       }
+      },
       "worktree": {
        "required": false,
        "shape": {
         "types": [
          "string"
+        ]
+       }
+      },
+      "resumed": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
         ]
        }
       }

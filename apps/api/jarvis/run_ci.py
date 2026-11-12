@@ -57,6 +57,8 @@ PUSH_PROMPTS = 2  # "Push and open the pull request" at most this often per run;
 # A pull request whose checks are absent on this many consecutive polls (~4 min) has no CI: workflows register their
 # checks within seconds of a push, so this is a repository without CI, not a slow start.
 ABSENT_POLLS = 2
+# This many failed reads in a row (the host could not ask GitHub at all) end the wait early: unreadable().
+ERROR_POLLS = 3
 # Fail fast: a check that failed while others still run is a failure now. If the host has no log for it yet, wait at
 # most this many more polls for one before sending the gap without it.
 LOG_WAITS = 2
@@ -134,7 +136,7 @@ def verify_by_ci(db, run, plan, actor=None):
     """After a turn (run_coordinator.after_turn), instead of the full local check: wait for CI on the PR head; green
     goes to the judge, red sends the agent the failed jobs, no CI after all runs the local check (no_ci)."""
     coordinator.transition(db, run, "awaiting_ci", actor=actor, reason="ci_verify")
-    save(run, since=now().isoformat(), turn_seq=run.turn_seq, error=None, absent_polls=0, verify_turn=tuple_key(run))
+    save(run, since=now().isoformat(), turn_seq=run.turn_seq, error=None, errors=0, absent_polls=0, verify_turn=tuple_key(run))
     request(db, run)
     return run
 
@@ -282,6 +284,17 @@ def record(db, run, tuple_, facts, clock):
     return attempt
 
 
+def unreadable(db, run, error):
+    """The host answered ERROR_POLLS reads in a row with an error (gh not signed in, no GitHub remote): waiting the
+    whole CI window would only delay the same news. A turn CI was verifying falls back to the local check; a met
+    verdict stops for the owner with the host's error."""
+    save(run, errors=0)
+    if verifying(run):
+        return no_ci(db, run, {}, f"the host could not read CI: {error}")
+    return coordinator.transition(db, run, "needs_you", actor=coordinator.judge_actor(run), reason="ci_unavailable",
+                                  detail=f"The host could not read GitHub CI: {error}"[:300])
+
+
 def ci_state(run):
     return dict((run.sync_state or {}).get("ci") or {})
 
@@ -310,7 +323,7 @@ def gate(db, run, plan, actor):
         return coordinator.transition(db, run, "needs_you", actor=actor, reason="ci_unavailable",
                                       detail="The host does not report GitHub CI (no ci.status capability).")
     coordinator.transition(db, run, "awaiting_ci", actor=actor, reason="ci_pending")
-    save(run, since=now().isoformat(), turn_seq=run.turn_seq, error=None)
+    save(run, since=now().isoformat(), turn_seq=run.turn_seq, error=None, errors=0)
     request(db, run)
     return run
 
@@ -411,14 +424,17 @@ def on_outcome(db, run, row, state, detail="", result=None):
     that run still awaits CI for the same tuple the question was asked for."""
     clock = now()
     if state != "executed":
-        save(run, error=(detail or state)[:300], answered_at=clock.isoformat())
+        errors = (ci_state(run).get("errors") or 0) + 1
+        save(run, error=(detail or state)[:300], answered_at=clock.isoformat(), errors=errors)
         emit(db, run.owner_id, "agent.changed", run.id)
+        if errors >= ERROR_POLLS and run.state == "awaiting_ci" and not run.paused and not automation.blocked(run):
+            unreadable(db, run, (detail or state)[:300])
         return None
     payload = row.payload or {}
     tuple_ = (row.generation, payload.get("turn_seq", run.turn_seq), payload.get("plan_revision", run.plan_revision))
     facts = parse(result, ((run.sync_state or {}).get("merge") or {}).get("stale_heads") or ())
     attempt = record(db, run, tuple_, facts, clock)
-    save(run, error=None, answered_at=clock.isoformat())
+    save(run, error=None, answered_at=clock.isoformat(), errors=0)
     emit(db, run.owner_id, "agent.changed", run.id)
     from . import run_merge
 

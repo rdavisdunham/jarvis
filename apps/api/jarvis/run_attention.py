@@ -61,7 +61,8 @@ ATTENTION = {
                    "Check it, then approve or send the agent back to open it."),
     # GitHub CI as the final verification (run_ci.py). ci_timeout's headline is the specific wait (run_ci.timeout_text).
     "ci_unavailable": ("The criteria are met, but the host cannot report GitHub CI.",
-                       "Update remotea to a build with ci.status, or check CI yourself and approve."),
+                       "Fix what the host reports (sign in to GitHub's CLI there, or update remotea), or check CI "
+                       "yourself and approve."),
     # The ruleset's last rung (run_ci.py): no local check on the target and no CI on the pull request.
     "verify_manual": ("Needs your verification: the target has no verify command and the pull request has no CI checks.",
                       "Check the work yourself, then approve it as verified, or describe what is wrong and send the agent back."),
