@@ -57,6 +57,12 @@
 .task-route label { display: grid; gap: 2px; font-size: 12px; color: var(--ink-3); }
 .task-route select { min-height: 32px; max-width: 100%; }
 .task-route small { flex-basis: 100%; color: var(--ink-3); }
+.auto-start-options { display: grid; gap: 8px; padding: 0 0 8px 12px; font-size: 13px; }
+.auto-start-options fieldset { display: grid; gap: 4px; border: 0; padding: 0; margin: 0; }
+.auto-start-options legend { padding: 0; color: var(--ink-3); }
+.auto-start-options label { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.auto-start-options input[type="number"] { width: 72px; min-height: 32px; }
+.auto-start-options small { color: var(--ink-3); }
 .remotea-timeline { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .remotea-timeline li { border-left: 3px solid var(--line); padding: 2px 0 2px 10px; min-width: 0; }
 .remotea-timeline li.tone-good { border-color: var(--done); }

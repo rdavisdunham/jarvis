@@ -224,6 +224,8 @@ export type Run = {
    * Present on needs_you and capped runs; null otherwise (older Eridani: absent). */
   attention_detail?: AttentionDetail | null;
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
+  /** Started by auto-start, not by the owner. */
+  auto_started?: boolean;
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */
   base?: RunBase | null;
   linear?: Partial<Record<"in_progress" | "in_review" | "done" | "comment", LinearOutcome>>;

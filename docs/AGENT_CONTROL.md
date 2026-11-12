@@ -789,11 +789,42 @@ A route the owner sets (`task.update` with `run_route`; the select on the task's
 changing `task.revision` (it bumps `plan_revision` when it writes plan fields), so it cannot refuse the save of
 someone editing the task.
 
-**The route does not act yet.** Nothing starts a run or skips plan approval because of it; auto-start and the
-direction brief are the next steps of the plan.
+**What acts on the route.** `auto` tasks can start their own run when the owner turns auto-start on (next
+section). The other routes do not change behaviour yet; the direction brief is the next step of the plan.
 
 Browser routes: `GET /api/v1/remotea/tasks/{id}/readiness` (route, who chose it, reasons, what was filled in,
 whether a pass is pending) and `POST` on the same path (look again).
+
+## Auto-start
+
+`auto_start.py`: a task on the `auto` route starts its own run. Off by default. The owner turns it on and names the
+repositories it may use in Settings → Connections → remotea (owner setting `remotea_auto_start`:
+`{enabled, targets, daily_cap, host_cap, harness}`; `GET`/`PUT /api/v1/remotea/auto-start`). With the switch on and
+no repository named, nothing starts.
+
+The supervisor sweep (`auto_start.sweep`) starts one run per task when all of these hold:
+
+- the task is `open`, its route is `auto`, the readiness pass left it `ready`, and it has criteria;
+- its resolved target is on the owner's list, the host is connected, and fewer than `host_cap` (default 2) runs are
+  working on that host (`swarm.host_load`);
+- no run is active on the task and auto-start never started one for it (`task.readiness.auto_start.run_id`);
+- fewer than `daily_cap` (default 5) runs were auto-started for the owner in the last 24 hours.
+
+An offline or full host is not an attempt. A start the normal path refuses (`start_run` raising) is recorded on the
+task (`readiness.auto_start.error`) and retried after 30 minutes, 3 times in all.
+
+**What differs in an auto-started run** (`start_run(..., auto=True)`, `sync_state.auto_start`, `auto_started` on the
+run): there is no interview, and the agent plans from the task. When it submits the plan, `conclude_planning` approves
+it without the owner (`auto_start.approves`, history `plan_approved` by `auto_start`) unless one of these holds, in
+which case the run stops at `needs_you(plan_approval)` as usual:
+
+- the plan declares a migration (`sync_state.plan_declares_migration`, set by `submit_plan`);
+- the plan proposes changing something a human set (the existing `plan_review` stop comes first);
+- the task is no longer on the `auto` route, or auto-start has been turned off.
+
+Everything after the plan is unchanged: verify, the judge, CI, then the owner's approval, or the existing
+`remotea_auto_complete` and `remotea_auto_merge` settings. Moving a task off the `auto` route is the per-task way to
+keep it from starting.
 
 ## Runs (stage C, migration 0028)
 

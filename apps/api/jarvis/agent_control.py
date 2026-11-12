@@ -656,12 +656,13 @@ def run_roles(body):
             "approve_final": bool(body.approve_final)}
 
 
-def start_run(db, owner, account_id, body, *, actor, brief="", opening="", restart=None):
+def start_run(db, owner, account_id, body, *, actor, brief="", opening="", restart=None, auto=False):
     """Start one run. `brief` (swarm.py only, never from a request body) is appended to the spawn prompt. `opening`
     (start_session only) replaces the spawn prompt of a freestyle run and marks it a session. `restart` (run_restart
     only: {from, mode, note, resume_session_id, earlier}) links the run to the finished one it continues, writes the
     restart prompt (plan: planning for the added work; pilot: the note) and asks the host to resume the old
-    conversation when `resume_session_id` is set."""
+    conversation when `resume_session_id` is set. `auto` (auto_start.py only): nobody is there to interview or to
+    approve a ready-made plan, so the agent plans first and the run is marked auto-started."""
     body = body.model_copy(deep=True)
     agent_link.gate(db, owner)
     if body.harness in DISABLED_HARNESSES:
@@ -720,8 +721,9 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening="", resta
     # Criteria the readiness pass drafted are not the owner's plan: the interview still runs by default.
     planned = bool(task.success_criteria) and bool(task.verify) and not readiness_drafted(task)
     interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
-    if body.freestyle or restart is not None:
+    if body.freestyle or restart is not None or auto:
         # Freestyle talks to the agent directly: nothing to interview for or submit. A restart plans the added work.
+        # An auto-started run has nobody to interview: the agent plans from the task.
         interview = False
     # Hyperplan never executes an unreviewed plan: a task with a PRD starts in planning instead of frozen.
     planning_start = not body.freestyle and not interview
@@ -735,7 +737,8 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening="", resta
                    worktree="", completion_policy="pr_open" if target.repo and not task.completion_policy_explicit
                    else task.completion_policy or "code_ready",
                    sync_state={"execution_mode": "managed" if managed_start else "legacy",
-                               **({"start_phase": "planning"} if planning_start else {})},
+                               **({"start_phase": "planning"} if planning_start else {}),
+                               **({"auto_start": now().isoformat()} if auto else {})},
                    freestyle=bool(body.freestyle), roles=roles, plan_round=0,
                    origin=(restart["from"].origin or "task") if restart else "session" if opening and body.freestyle else "task",
                    restarted_from_run_id=restart["from"].id if restart else None,
@@ -1450,6 +1453,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "origin": run.origin or "task", "dismissed_at": run.dismissed_at,
         "integration": (run.sync_state or {}).get("integration") or [],
         "completion_policy": run.completion_policy,
+        # Started by auto-start (auto_start.py), not by the owner.
+        "auto_started": bool((run.sync_state or {}).get("auto_start")),
         # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): null roles is a classic run. `actor` is who acts
         # on the run now ({role: planner|reviewer|worker|agent, harness, model}); `reviews` the rounds so far.
         "roles": run.roles, "plan_round": run.plan_round, "reviews": coordinator.public_reviews(db, run) if run.roles else [],

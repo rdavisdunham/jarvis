@@ -484,6 +484,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
     from .swarm import sweep as sweep_swarms
     from .task_archive import sweep as sweep_task_archive
     from .readiness import sweep as sweep_readiness
+    from .auto_start import sweep as sweep_auto_start
     from .search_index import backfill as search_backfill
     from .work_intake import flush_voice
 
@@ -497,7 +498,7 @@ def supervisor_cycle(client, iteration, *, dispatch=True):
         ("record_reviews", queue_due_record_reviews), ("agent_runs", sweep_runs), ("agent_swarms", sweep_swarms),
         ("task_archive", sweep_task_archive),
         ("agent_autolink", queue_autolink), ("agent_summaries", queue_due_summaries),
-        ("task_readiness", sweep_readiness),
+        ("task_readiness", sweep_readiness), ("auto_start", sweep_auto_start),
     ):
         isolated(name, in_session, scan_fn)
     for model, queue in ((GoogleIdentity, queue_sync), (LinearConnection, linear_queue_sync)):
