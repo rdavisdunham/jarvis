@@ -1,7 +1,8 @@
 /**
  * Can this tab reach the Eridani API? An outage (no network, or the proxy/API answering 5xx) is not a
  * sign-out: the signed-in UI stays and a banner says "Can't reach Eridani" while this module probes with
- * backoff. api.ts reports every request's outcome here; a real 401 is handled separately (session expiry).
+ * backoff. api.ts reports every request's outcome here, and a failed
+ * request is confirmed by one probe before it counts; a real 401 is handled separately (session expiry).
  */
 export type Connectivity = {
   reachable: boolean;
@@ -21,6 +22,10 @@ const listeners = new Set<(state: Connectivity) => void>();
 let timer: ReturnType<typeof setTimeout> | null = null;
 let probing = false;
 let probe: () => Promise<boolean> = defaultProbe;
+// A failed request is checked against the probe before it counts as an outage (reportFailure).
+export const CONFIRM_MS = 5000;
+let confirming = false;
+let generation = 0;
 
 async function defaultProbe() {
   try {
@@ -62,11 +67,34 @@ export function reportReachable() {
   set({ reachable: true, nextProbeAt: null, attempts: 0 });
 }
 
-/** A request failed at the network or got a 5xx / non-API answer from the proxy. */
+/** The API is down: a failed request that the probe confirmed (reportFailure). */
 export function reportUnreachable() {
   if (!state.reachable) return;
   set({ reachable: false, nextProbeAt: null, attempts: 0 });
   schedule();
+}
+
+/**
+ * One request failed at the network or got a 5xx. That alone is not an outage: a single dropped request
+ * or one failing endpoint must not raise the banner and the full reload that follows recovery. Ask the
+ * probe first, and declare the outage only when it also fails (or gives no answer within CONFIRM_MS).
+ */
+export async function reportFailure() {
+  if (!state.reachable || confirming) return;
+  confirming = true;
+  const started = generation;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let up = false;
+  try {
+    up = await Promise.race([
+      probe(),
+      new Promise<boolean>((resolve) => { timeout = setTimeout(() => resolve(false), CONFIRM_MS); }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+    if (started === generation) confirming = false;
+  }
+  if (started === generation && !up) reportUnreachable();
 }
 
 /** Probe now (the banner's Retry button, or the backoff timer). */
@@ -91,6 +119,8 @@ export function resetConnectivity(replacement: () => Promise<boolean> = defaultP
   if (timer) clearTimeout(timer);
   timer = null;
   probing = false;
+  confirming = false;
+  generation += 1;
   probe = replacement;
   state = { reachable: true, nextProbeAt: null, attempts: 0 };
 }

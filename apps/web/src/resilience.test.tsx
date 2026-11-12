@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError, isOutage, SESSION_EXPIRED } from "./api";
-import { backoff, connectivity, probeNow, reportReachable, reportUnreachable, resetConnectivity } from "./connectivity";
+import { backoff, CONFIRM_MS, connectivity, probeNow, reportReachable, reportUnreachable, resetConnectivity } from "./connectivity";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { OutageBanner } from "./Outage";
 import { captureError } from "./monitoring";
@@ -41,7 +41,7 @@ describe("api outcomes", () => {
     const error = await api("/bootstrap").catch((e) => e);
     window.removeEventListener(SESSION_EXPIRED, expired);
     expect(isOutage(error)).toBe(true);
-    expect(connectivity().reachable).toBe(false);
+    await vi.waitFor(() => expect(connectivity().reachable).toBe(false));
     expect(expired).not.toHaveBeenCalled();
   });
 
@@ -74,6 +74,29 @@ describe("api outcomes", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(503, { error: { code: "MAINTENANCE", message: "Updating" } })));
     const maintenance = await api("/tasks").catch((e) => e);
     expect(isOutage(maintenance)).toBe(true);
+    await vi.waitFor(() => expect(connectivity().reachable).toBe(false));
+  });
+
+  it("one failed request is not an outage while the API still answers the probe", async () => {
+    const probe = vi.fn(async () => true);
+    resetConnectivity(probe);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const dropped = await api("/tasks").catch((e) => e);
+    expect(isOutage(dropped)).toBe(true);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(500, { error: { code: "INTERNAL", message: "Broken" } })));
+    await api("/tasks").catch(() => {});
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+    expect(connectivity().reachable).toBe(true);
+  });
+
+  it("a probe that never answers confirms the outage", async () => {
+    vi.useFakeTimers();
+    resetConnectivity(() => new Promise<boolean>(() => {}));
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    await api("/tasks").catch(() => {});
+    await vi.advanceTimersByTimeAsync(CONFIRM_MS - 1);
+    expect(connectivity().reachable).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
     expect(connectivity().reachable).toBe(false);
   });
 
@@ -159,7 +182,7 @@ describe("connectivity backoff", () => {
 
   it("App keeps the outage apart from sign-in and refreshes after it", () => {
     expect(appSource).toContain("if (!boot && bootOutage) return <OutageScreen/>;");
-    expect(appSource).toMatch(/if \(isOutage\(e\)\) \{[\s\S]*?setBootOutage\(true\)/);
+    expect(appSource).toMatch(/if \(isOutage\(e\)\) \{[\s\S]*?reportUnreachable\(\);\s*setBootOutage\(true\)/);
     expect(appSource).toContain("<OutageBanner/>");
     expect(appSource).toContain("window.addEventListener(SESSION_EXPIRED, expired)");
   });
