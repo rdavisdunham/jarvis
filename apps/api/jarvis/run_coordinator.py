@@ -179,7 +179,7 @@ REASONS = {
     "awaiting_merge": "The criteria are met; merge the pull request to finish.",
     "pr_unknown": "The criteria are met, but Eridani has no current record of the pull request: check it, then approve or message the agent.",
     "merged": "The pull request merged; confirming the result.",
-    "ci_unavailable": "The criteria are met on the quick check, but the host cannot report GitHub CI, the final verification: update remotea, or approve.",
+    "ci_unavailable": "The criteria are met on the quick check, but the host cannot report GitHub CI, the final verification: fix the host (GitHub's CLI signed in, remotea current), or approve.",
     "ci_timeout": "The criteria are met on the quick check, but GitHub CI did not finish on the pull request in time: check it, then approve or message the agent.",
     "ci_failed_again": "GitHub CI failed again on the same commit; the agent did not push a fix.",
     "merge_blocked": "Auto-merge stopped: GitHub would not merge the pull request.",

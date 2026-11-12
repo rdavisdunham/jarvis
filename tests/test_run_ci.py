@@ -232,6 +232,22 @@ def test_a_host_that_cannot_read_ci_says_why_on_the_timeout(ci_host):
     assert "could not read CI" in control_detail(run_id) and "gh: not logged in" in control_detail(run_id)
 
 
+def test_three_failed_reads_in_a_row_stop_the_wait_and_say_why(ci_host):
+    run_id = planned(ci_host)
+    met(ci_host, run_id)
+    assert report(run_id, "failed", "gh: not logged in") == ("awaiting_ci", "ci_pending")
+    assert report(run_id, "failed", "gh: not logged in") == ("awaiting_ci", "ci_pending")
+    assert report(run_id, pr_url="https://github.com/o/r/pull/1", checks=checks("pending")) == ("awaiting_ci", "ci_pending")
+    for _ in range(2):  # A read that worked starts the count again.
+        assert report(run_id, "failed", "gh: not logged in") == ("awaiting_ci", "ci_pending")
+    assert report(run_id, "failed", "gh: not logged in") == ("needs_you", "ci_unavailable")
+    with session_scope() as db:
+        shown = control.public_run(db, db.get(AgentRun, run_id))["attention_detail"]
+    assert shown["detail"] == "The host could not read GitHub CI: gh: not logged in" and "sign in" in shown["action"]
+    # Green CI later still clears it, as for any run parked on ci_unavailable.
+    assert report(run_id, pr_url="https://github.com/o/r/pull/1", checks=checks("pass"))[0] == "awaiting_approval"
+
+
 def test_a_host_without_ci_status_parks_the_run(verifying_host, monkeypatch):  # noqa: F811
     monkeypatch.setattr(run_ci, "quick_ids", lambda: {"tests"})
     run_id = planned(verifying_host)

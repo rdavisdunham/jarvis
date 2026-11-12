@@ -117,7 +117,7 @@
         }
        },
        "automation_hold": {
-        "required": false,
+        "required": true,
         "shape": {
          "types": [
           "boolean"
@@ -125,7 +125,7 @@
         }
        },
        "automation_hold_revision": {
-        "required": false,
+        "required": true,
         "shape": {
          "types": [
           "integer"

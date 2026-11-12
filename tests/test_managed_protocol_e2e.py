@@ -8,7 +8,7 @@ import pytest
 from jarvis.db import session_scope
 from jarvis.domain import execute
 from jarvis.session_models import AgentSession, AgentTurn
-from protocol_harness import LinkProxy, RemoteaHost, missing, remotea_checkout, until
+from protocol_harness import MANAGED_FORCE, LinkProxy, RemoteaHost, missing, remotea_checkout, until
 from sqlalchemy import select
 from test_protocol_e2e import stack as stack  # noqa: F401
 
@@ -69,7 +69,9 @@ def test_paused_question_survives_real_host_restart_and_receipt_replay(stack):
         "slug": "gpt-6.1-sol", "display_name": "GPT-6.1 Sol", "default": True,
         "supported_reasoning_levels": [{"effort": "low"}, {"effort": "high"}], "default_reasoning_level": "low"}]}))
     original_env = host.env
-    host.env = lambda: {**original_env(), "PATH": str(host.bin) + os.pathsep + "/usr/bin:/bin"}
+    # These fakes speak the managed transports but not remotea's conformance probe (remotea PR #51): admit their
+    # versions without one, as an operator would with a launcher they trust.
+    host.env = lambda: {**original_env(), "PATH": str(host.bin) + os.pathsep + "/usr/bin:/bin", **MANAGED_FORCE}
     host.start()
     connected = until(lambda: next((h for h in eri.get("/api/v1/remotea/status")["hosts"] if h["connected"]), None),
                       45, "managed host connected")
