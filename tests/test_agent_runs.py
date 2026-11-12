@@ -416,6 +416,34 @@ def test_expiry_sweep_and_limits(host):
     assert state(slow["id"]) == ("needs_you", "no_progress")
 
 
+def test_a_stalled_agent_needs_you_and_heals_when_it_moves_again(host):
+    run_id = start(host, task("Silent")["id"])["id"]
+    attached(host, run_id)
+
+    def status(**extra):
+        with session_scope() as db:
+            run = db.get(AgentRun, run_id)
+            coordinator.on_status(db, db.get(AgentSession, run.session_pk), agent_link.Status(
+                surf=run.surf, incarnation=run.incarnation, state="working", since=now(), **extra), host_id=host.id)
+
+    status()
+    assert state(run_id)[0] == "executing"
+    with session_scope() as db:
+        progress = db.get(AgentRun, run_id).last_progress_at
+    status(trouble={"kind": "stalled", "since": 1, "detail": "no activity for 15 min"})
+    assert state(run_id) == ("needs_you", "stalled")
+    with session_scope() as db:
+        run = db.get(AgentRun, run_id)
+        assert run.last_progress_at == progress  # A stalled frame is not progress.
+        assert run.history[-1]["detail"] == "no activity for 15 min"
+    status(trouble={"kind": "stalled", "since": 1})  # Repeated while still silent: nothing changes.
+    assert state(run_id) == ("needs_you", "stalled")
+    status()  # Output again: the run carries on by itself.
+    assert state(run_id) == ("executing", "surface_restored")
+    status(trouble={"kind": "rate_limited"})  # A kind this version does not act on is ignored.
+    assert state(run_id) == ("executing", "surface_restored")
+
+
 def test_turns_count_only_the_current_generation_and_hit_the_cap(host):
     result = start(host, task(turn_cap=2)["id"])
     attached(host, result["id"])

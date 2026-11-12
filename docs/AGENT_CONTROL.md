@@ -791,7 +791,8 @@ verdict on a quick check ([CI as the final verification](#ci-as-the-final-verifi
   `surface_lost`,
   `host_offline` (lease gone 5 minutes; both clear themselves when the surface reports again),
   `delivery_uncertain`, `spawn_expired` (15 minutes), `wall_clock` (6 h of working time, below), `no_progress`
-  (45 min), `turn_cap` (C pauses instead of `capped`), `question_timed_out`; hyperplan adds `plan_approval` and
+  (45 min), `stalled` (remotea's watchdog put `trouble: {kind: "stalled"}` on a `working` status frame: the terminal
+  was silent for the host's `stallMinutes`, default 15; it clears itself on the next frame without it), `turn_cap` (C pauses instead of `capped`), `question_timed_out`; hyperplan adds `plan_approval` and
   `host_busy` (see [Hyperplan and roles](#hyperplan-and-roles-migration-0041)). Pushes: `agent_stuck` on needs_you,
   `agent_question` on a question, `agent_done` on awaiting_approval; each opens
   `/?view=remotea&run=<id>`.

@@ -372,6 +372,12 @@ class Surface(Frame):
         return self
 
 
+class Trouble(Frame):
+    """What is wrong with a session that still reads as working (remotea's watchdog): today only `stalled`."""
+    kind: str = Field(max_length=20)
+    detail: str = Field(default="", max_length=200)
+
+
 class Status(Surface):
     REDACT: ClassVar[tuple[str, ...]] = ("reason",)
     state: Literal[STATES]
@@ -383,6 +389,7 @@ class Status(Surface):
     paused: bool | None = None
     pause_reason: Literal["permission_denied", "receipt_uncertain"] | None = None
     attention: dict | None = None
+    trouble: Trouble | None = None
     run_id: str | None = Field(default=None, max_length=36)
     generation: int | None = Field(default=None, ge=0)
 
