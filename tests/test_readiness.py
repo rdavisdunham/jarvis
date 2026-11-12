@@ -281,3 +281,19 @@ def test_decisions_from_an_older_version_of_the_pass_are_looked_at_again(on, hos
     assert row.run_route == "direction" and row.readiness["prompt_version"] == readiness.PROMPT_VERSION
     assert [c["text"] for c in row.success_criteria] == ["Renamed"]  # Criteria are drafted once.
     assert "ordinary interface change is not client_visible" in readiness.SYSTEM
+
+
+def test_choosing_a_repository_makes_the_pass_look_again(on, host):
+    offer_verify(host)
+    made = task("Rename a helper")
+    readiness.process(jobs()[-1], model=answer(target="none"))
+    row = saved(made["id"])
+    assert row.readiness["state"] == "needs_target" and row.verify is None
+    run("task.update", task_id=made["id"], expected_revision=row.revision, execution_target_id=host.target_id)
+    assert saved(made["id"]).readiness["state"] == "stale"
+    with session_scope() as db:
+        readiness.sweep(db)
+    readiness.process(jobs()[-1], model=answer(target="none"))
+    row = saved(made["id"])
+    assert row.readiness["state"] == "ready" and row.verify["verify_id"] == "quick"
+    assert "no repository is chosen" not in row.readiness["reasons"][0]

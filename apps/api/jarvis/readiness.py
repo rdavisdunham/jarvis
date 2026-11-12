@@ -468,6 +468,11 @@ def owner_chose(task, changes):
     if "success_criteria" in changes and "criteria" in (state.get("filled") or []):
         state["filled"] = [name for name in state["filled"] if name != "criteria"]
         changes["readiness"] = state
+    if "execution_target_id" in changes and changes["execution_target_id"] != task.execution_target_id \
+            and state.get("state") in ("needs_target", "ready"):
+        # The repository changed under what the pass found (its verify command, "no repository is chosen").
+        state["state"] = "stale"
+        changes["readiness"] = state
     if "run_route" not in changes:
         return
     state.pop("reasons", None)

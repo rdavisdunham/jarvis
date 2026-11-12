@@ -339,7 +339,7 @@ export function MigrationRow({ item, readOnly, busy, onSave }: {
     <label className="field"><span className="field-label-text">{label}</span>
       <input name={name} value={draft[name]} placeholder={placeholder} disabled={readOnly || busy}
         inputMode={name === "override" ? "numeric" : undefined} onChange={e => setDraft(d => ({ ...d, [name]: e.target.value }))}/></label>;
-  return <SettingRow label={`Migrations · ${item.host_target}`} hint={migrationSummary(item)}>
+  return <SettingRow className="remotea-migration-row" label={`Migrations · ${item.host_target}`} hint={migrationSummary(item)}>
     <span className="remotea-migration-form">
       {field("dir", "Folder", item.host_dir ?? "migrations/versions")}
       {field("pattern", "File pattern", "^(\\d{4})_")}

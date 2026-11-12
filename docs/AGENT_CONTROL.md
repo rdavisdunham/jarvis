@@ -692,6 +692,19 @@ run-bound HTTP routes with the key and run token from its `--mcp-config`, on a w
 worktree. The test process plays the worker (readiness job, auto-start sweep, judge, the sweep that ends a held
 verdict), each with a scripted model. Run all five suites with `-m e2e_protocol tests/`.
 
+**In the browser.** `scripts/validate_full_stack.py` boots the same real pieces for Chromium: a disposable migrated
+database, the API with a stand-in for the worker (`tests/fixtures/full_stack_acceptance.py`: scripted readiness and
+judge models, the supervisor's sweeps), and a remotea server with the scripted agent. `apps/web/e2e/full-stack.mjs`
+then drives the web app: the route on a task and changing it, a run started from the Run dialog that stops on the
+direction check and continues after one answer, and auto-start switched on in Settings followed by a labelled task
+that runs by itself. Screenshots and `evidence.json` land in `artifacts/full-stack/`.
+
+```sh
+npm --prefix apps/web run build
+export JARVIS_ENV_FILE="" JARVIS_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:54432/postgres
+REMOTEA_CHECKOUT=~/remotea/server PYTHONPATH=apps/api:. uv run --no-sync python scripts/validate_full_stack.py
+```
+
 With `-s` it prints the remotea build it ran against, the frame count and the time. It skips, with the reason,
 when `node` or `git` is not on PATH, the checkout is missing, or its `remote-server/dist` or `node_modules` is.
 CI has no remotea checkout (the repository is private), so CI skips it; see `docs/CI.md`.
