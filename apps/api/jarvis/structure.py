@@ -1305,6 +1305,9 @@ def mutate(db, owner, tool, args, command_id):
     if tool == "record.create":
         from .placement import queue_for
         queue_for(db, owner, row)  # Still unfiled after any rule: placement by meaning, in the background.
+        if row.task_id:
+            from .readiness import queue_for as queue_readiness
+            queue_readiness(db, owner, row.task_id)  # Tasks created as records get the readiness pass at once too.
     emit(db, owner, "record.changed", row.id, row.revision)
     return data(db, row, schema)
 

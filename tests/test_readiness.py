@@ -207,3 +207,77 @@ def test_the_sweep_finds_tasks_created_without_the_hook_and_skips_when_remotea_i
     with session_scope() as db:
         assert db.scalar(select(AgentHost.id)) and readiness.sweep(db) is None
     assert len(jobs()) == 1
+
+
+def other_target(host, name="remotea"):
+    with session_scope() as db:
+        row = ExecutionTarget(owner_id=OWNER, host_id=host.id, host_target=name, name=name,
+                              repo=f"/home/davin/{name}", worktree_root="/home/davin/wt", launch={}, verify=[{"id": "quick"}])
+        db.add(row)
+        db.flush()
+        return row.id
+
+
+def test_what_the_task_says_outweighs_where_it_is_filed(on, host):
+    from test_organization_foundation import create
+
+    offer_verify(host)
+    remotea = other_target(host)
+    project = create("project", "Eridani roadmap")
+    with session_scope() as db:  # The project's saved repository, and a second saved copy of it for another record.
+        db.get(ExecutionTarget, host.target_id).record_id = project["id"]
+        db.add(ExecutionTarget(owner_id=OWNER, host_id=host.id, host_target="jarvis", name="jarvis",
+                               repo="/home/davin/jarvis", worktree_root="/home/davin/wt", launch={}, verify=[]))
+    filed = create("task", "remotea: add an inactivity watchdog", parent_id=project["id"])
+    sent = []
+    readiness.process(jobs()[-1], model=answer(sent, target="r2", target_confidence="high"))
+    names = [c["name"] for c in sent[0][1]["candidate_repositories"]]
+    assert names == ["jarvis", "remotea"]  # One entry per repository, however many times it is saved.
+    row = saved(filed["task_id"])
+    assert row.execution_target_id == remotea and row.readiness["target"] == {"id": remotea, "name": "remotea", "by": "readiness"}
+    assert row.verify == {"target_id": remotea, "verify_id": "quick", "by": "default"}
+    # A task that does not name another repository stays where it is filed, and nothing is pinned on it.
+    plain = create("task", "Tidy the settings page", parent_id=project["id"])
+    readiness.process(jobs()[-1], model=answer(target="none"))
+    row = saved(plain["task_id"])
+    assert row.execution_target_id is None and row.readiness["target"]["by"] == "resolved"
+    assert row.readiness["target"]["name"] == "jarvis" and row.verify["target_id"] == host.target_id
+
+
+def test_a_linear_teams_earlier_runs_choose_the_repository(on, host):
+    remotea = other_target(host)
+    earlier = task("ABCD-1 earlier issue", execution_target_id=remotea)
+    with session_scope() as db:
+        db.get(Task, earlier["id"]).external = {"provider": "linear", "team_id": "team-abcd", "identifier": "ABCD-1"}
+    start(host, earlier["id"], execution_target_id=remotea)
+    made = task("Fix the importer")
+    with session_scope() as db:
+        db.get(Task, made["id"]).external = {"provider": "linear", "team_id": "team-abcd", "identifier": "ABCD-2"}
+    readiness.process(jobs()[-1], model=answer(target="none"))
+    row = saved(made["id"])
+    assert row.execution_target_id == remotea and row.readiness["target"]["by"] == "team"
+    assert row.readiness["state"] == "ready" and "target" in row.readiness["filled"]
+    other = task("Another team's issue")
+    with session_scope() as db:
+        db.get(Task, other["id"]).external = {"provider": "linear", "team_id": "team-plt", "identifier": "PLT-1"}
+    readiness.process(jobs()[-1], model=answer(target="none"))
+    assert saved(other["id"]).execution_target_id is None and saved(other["id"]).readiness["state"] == "needs_target"
+
+
+def test_decisions_from_an_older_version_of_the_pass_are_looked_at_again(on, host):
+    made = task("Rename a helper", execution_target_id=host.target_id)
+    readiness.process(jobs()[-1], model=answer(client_visible=True, criteria=["Renamed"]))
+    assert saved(made["id"]).run_route == "plan_review"
+    with session_scope() as db:
+        readiness.sweep(db)
+    assert len(jobs()) == 1  # Current version: nothing to redo.
+    with session_scope() as db:
+        row = db.get(Task, made["id"])
+        row.readiness = {**row.readiness, "prompt_version": "readiness-v1"}
+    with session_scope() as db:
+        readiness.sweep(db)
+    readiness.process(jobs()[-1], model=answer(criteria=["Something else"]))
+    row = saved(made["id"])
+    assert row.run_route == "direction" and row.readiness["prompt_version"] == readiness.PROMPT_VERSION
+    assert [c["text"] for c in row.success_criteria] == ["Renamed"]  # Criteria are drafted once.
+    assert "ordinary interface change is not client_visible" in readiness.SYSTEM
