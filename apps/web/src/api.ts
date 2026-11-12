@@ -1,5 +1,5 @@
 import { recordRequest } from "./bug-report";
-import { reportReachable, reportUnreachable } from "./connectivity";
+import { reportFailure, reportReachable } from "./connectivity";
 let csrf = "";
 let device = "";
 let persistenceScope: string | null = null;
@@ -72,7 +72,7 @@ export async function api<T>(
   } catch {
     if (cancelled()) throw aborted();
     note(0, "NETWORK");
-    reportUnreachable();
+    void reportFailure();
     throw new ApiError(
       "NETWORK",
       "Connection lost. Your request may have saved. Retry the same request to check.",
@@ -85,7 +85,7 @@ export async function api<T>(
     if (cancelled()) throw aborted();
     note(response.status, "BAD_RESPONSE");
     // A proxy or error page instead of the API: the same as no answer.
-    reportUnreachable();
+    void reportFailure();
     throw new ApiError(
       "NETWORK",
       "Eridani is reconnecting. Retry the same request to check whether it saved.",
@@ -93,7 +93,7 @@ export async function api<T>(
       response.status,
     );
   }
-  if (response.status >= 500) reportUnreachable();
+  if (response.status >= 500) void reportFailure();
   else reportReachable();
   note(response.status, response.ok ? undefined : value?.error?.code ?? "ERROR");
   if (

@@ -108,7 +108,7 @@ import {
   X,
 } from "lucide-react";
 import { api, ApiError, command, isOutage, post, SESSION_EXPIRED, setCsrf, setDevice } from "./api";
-import { backoff } from "./connectivity";
+import { backoff, reportUnreachable } from "./connectivity";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { startMonitoring } from "./monitoring";
 import { OutageBanner, OutageScreen, useReachable } from "./Outage";
@@ -745,7 +745,10 @@ export default function App() {
     } catch (e) {
       if (isOutage(e)) {
         // Not a sign-out: keep the session and retry once the API answers (effect below).
+        // The first load has no page to disturb, so it declares the outage itself rather than waiting on
+        // the probe; the probe then drives the retry even when it passes while the load keeps failing.
         bootFailures.current += 1;
+        reportUnreachable();
         setBootOutage(true);
       } else {
         setBootOutage(false);
