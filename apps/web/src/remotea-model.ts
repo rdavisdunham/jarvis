@@ -224,6 +224,9 @@ export type Run = {
    * Present on needs_you and capped runs; null otherwise (older Eridani: absent). */
   attention_detail?: AttentionDetail | null;
   completion_policy?: "code_ready" | "pr_open" | "pr_merged" | string;
+  /** Direction check (run_direction.py): the agent's brief, the owner's one answer, and whether it is still open. */
+  direction?: { brief: { reading: string; approach: string; leaves_alone: string; questions: string[] } | null;
+    answer: string | null; answered_at: string | null; accepted_at: string | null; open: boolean } | null;
   /** Started by auto-start, not by the owner. */
   auto_started?: boolean;
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */

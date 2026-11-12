@@ -790,7 +790,8 @@ changing `task.revision` (it bumps `plan_revision` when it writes plan fields), 
 someone editing the task.
 
 **What acts on the route.** `auto` tasks can start their own run when the owner turns auto-start on (next
-section). The other routes do not change behaviour yet; the direction brief is the next step of the plan.
+section). `direction` tasks take the direction check (the section after). `plan_review` keeps today's plan approval,
+and `human` does not change a run.
 
 Browser routes: `GET /api/v1/remotea/tasks/{id}/readiness` (route, who chose it, reasons, what was filled in,
 whether a pass is pending) and `POST` on the same path (look again).
@@ -825,6 +826,26 @@ which case the run stops at `needs_you(plan_approval)` as usual:
 Everything after the plan is unchanged: verify, the judge, CI, then the owner's approval, or the existing
 `remotea_auto_complete` and `remotea_auto_merge` settings. Moving a task off the `auto` route is the per-task way to
 keep it from starting.
+
+## Direction check
+
+`run_direction.py`: on the `direction` route the owner answers the agent's brief once, then the plan starts.
+
+- The planning prompts tell the agent to send `brief` with `submit_plan` when the task's route is `direction`
+  (`agent_prompts.direction_note`): `reading`, `approach`, `leaves_alone` (each up to 400 characters) and up to
+  three `questions`.
+- The run stops at `needs_you(plan_approval)` as before; no new state or reason. The run carries
+  `direction: {brief, answer, answered_at, accepted_at, open}` and the plan card leads with the brief while `open`
+  ("Direction check": Accept, or Send answer).
+- Accept is `approve_plan`. An answer is `revise_plan` with the owner's text: the planner revises, and when it
+  submits again `conclude_planning` approves the plan without a second stop (`run_direction.approves`, history
+  `plan_approved` by `direction_check`). It still stops when the revised plan declares a migration or proposes
+  changing something a human set.
+- The judge receives the brief and the owner's answer as `direction`: context, never evidence (`judge-v7`).
+- Runs with a reviewer (hyperplan), freestyle runs, and runs whose task has another route or none are unchanged. A
+  brief sent by an agent nobody asked is stored and has no effect.
+
+Because the stop is still `plan_approval`, Dani, the decision queue and notifications treat it as a plan approval.
 
 ## Runs (stage C, migration 0028)
 

@@ -32,13 +32,14 @@ from sqlalchemy import select
 from . import run_coordinator as coordinator
 from . import agent_automation as automation
 from . import run_changes
+from . import run_direction
 from .cost_features import feature
 from .db import session_scope
 from .domain import DomainError
 from .models import Job, now
 from .session_models import AgentAttempt, AgentHost, AgentRun, AgentSession, AgentTurn
 
-PROMPT_VERSION = "judge-v6"
+PROMPT_VERSION = "judge-v7"
 POLICIES = ("code_ready", "pr_open", "pr_merged")
 RETRIES = 2
 TURN_CHARS = 24_000
@@ -61,6 +62,9 @@ SYSTEM = (
     "shown. When `changes.patch_truncated` is true the patch is cut, so a change you cannot find in it may still "
     "exist: that is unclear, not missing. When `changes.available` is false the change could not be read "
     "(`changes.reason`): it says nothing about the work, so judge on the other evidence as before. "
+    "`direction`, when present, is context and never evidence that work was done: the agent's brief before it "
+    "started and the owner's answer to it. When the changes plainly go against the owner's answer, say so in the "
+    "reason. "
     "For each criterion give status met only when that evidence shows it; point to it. A criterion the evidence "
     "cannot show either way is unclear. When `verify.infra` is true the verification could not run on the host "
     "(`verify.category`, `verify.action`): it says nothing about the code, so never blame the code for it. "
@@ -416,6 +420,7 @@ def evidence_for(db, attempt):
         "verify": verify_evidence(verify, attempt),
         "ci": ci_evidence(db, attempt),
         "changes": run_changes.evidence(db, run, attempt),
+        **({"direction": direction} if (direction := run_direction.evidence(run)) else {}),
         "criteria_record": (earlier.result or {}).get("criteria", []) if earlier else [],
         # Fresh means reported after the turn arrived here; without a turn row, after the judge attempt was made.
         "completion": completion_evidence(db, run, plan, since=turn.created_at if turn else attempt.created_at),

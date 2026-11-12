@@ -15,6 +15,8 @@ from sqlalchemy import select
 
 from . import agent_sessions as sessions
 from . import migration_numbers as numbers
+from . import run_direction
+from .run_direction import Brief
 from . import run_coordinator as coordinator
 from .agent_actor import Actor, acting
 from .domain import PLAN_ID, DomainError, advisory, emit, encode, execute, owned
@@ -127,6 +129,8 @@ class SubmitPlanInput(Input):
     expected_plan_revision: int = Field(ge=0)
     # Hyperplan: answers to the last review's findings (stored on that review as `resolutions`).
     review_resolutions: list[ReviewResolution] | None = Field(default=None, max_length=100)
+    # Direction check (run_direction.py): the agent's short read of the task, for the owner to answer once.
+    brief: Brief | None = None
 
 
 class ReviewFinding(BaseModel):
@@ -425,8 +429,9 @@ def answer_interview(db, owner, interview_id, body, *, actor):
     row.answers = clean_answers(row.questions, body.answers)
     row.status, row.answered_at, row.answered_via, row.updated_at = "answered", now(), actor.kind, now()
     coordinator.transition(db, run, "planning", actor=actor, reason="interview_answered")
-    command = coordinator.say(db, run, prompts.planning(row, verify_ids(db, run)[1], round=run.plan_round, roles=run.roles),
-                              "interview_answers", actor=actor)
+    text = prompts.planning(row, verify_ids(db, run)[1], round=run.plan_round, roles=run.roles)
+    note = prompts.direction_note(db.get(Task, run.task_id)) if run_direction.on_route(db, run) else ""
+    command = coordinator.say(db, run, text + ("\n\n" + note if note else ""), "interview_answers", actor=actor)
     row.answer_op_id = command.op_id
     return public_interview(row)
 
@@ -671,6 +676,7 @@ def _submit_plan(db, bot, body):
                         completion_policy=task.completion_policy or "code_ready", required_children=[c.id for c in kids],
                         proposals=proposals, migration=migration))
     run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
+    run_direction.remember(run, body.brief, revision)
     if (run.sync_state or {}).get("execution_mode") != "managed":
         run.sync_state = {**(run.sync_state or {}), "planning_turn_pending": True,
                           "planning_turn_generation": run.generation}

@@ -229,6 +229,20 @@ describe("the final-plan approval", () => {
     expect(renderToStaticMarkup(<PlanApproval run={{ ...waiting, state: "planning" }} onDone={() => {}}/>)).toContain("Latest plan");
   });
 
+  it("leads with the agent's brief on a direction check: Accept, or one answer", () => {
+    const brief = { reading: "Rename the helper everywhere.", approach: "One mechanical rename.", leaves_alone: "The public API.", questions: ["Rename the flag too?"] };
+    const open = { brief, answer: null, answered_at: null, accepted_at: null, open: true };
+    const html = renderToStaticMarkup(<PlanApproval run={{ ...waiting, reviews: [], direction: open }} onDone={() => {}}/>);
+    for (const text of ["Direction check", "How it reads the task", "Rename the helper everywhere.", "Leaves alone", "Rename the flag too?",
+      "Accept to start the work. Or answer once below", "Your answer or a different direction"]) expect(html).toContain(text);
+    expect(html).toMatch(/<button class="btn btn-sm" disabled="">Send answer<\/button>/);
+    expect(html).toMatch(/<button class="btn btn-sm btn-primary">.*Accept<\/button>/);
+    expect(html).not.toContain("Final plan");
+    // Answered: a later stop on the same run is an ordinary plan approval that still shows what was said.
+    const answered = renderToStaticMarkup(<PlanApproval run={{ ...waiting, reviews: [], direction: { ...open, open: false, answer: "Yes, keep an alias." } }} onDone={() => {}}/>);
+    for (const text of ["Final plan", "Your answer", "Yes, keep an alias.", "Approve"]) expect(answered).toContain(text);
+  });
+
   it("posts approve, or revise with the note, at the revision the reader saw", () => {
     expect(planApprovalBody("approve", "ignored", 9)).toEqual({ action: "approve", expected_revision: 9 });
     expect(planApprovalBody("revise", "  Split step 2.  ", 9)).toEqual({ action: "revise", note: "Split step 2.", expected_revision: 9 });
