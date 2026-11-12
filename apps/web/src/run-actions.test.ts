@@ -1,9 +1,12 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ApiError, postAction } from "./api";
+import { resetConnectivity } from "./connectivity";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-afterEach(() => vi.unstubAllGlobals());
+// A lost response is checked against the health probe; keep that request out of the fake fetch.
+beforeEach(() => resetConnectivity(async () => true));
+afterEach(() => { vi.unstubAllGlobals(); resetConnectivity(); });
 
 function fakeFetch(failures: number, status = 200) {
   const bodies: { action_id: string; text?: string }[] = [];
