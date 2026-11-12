@@ -12,7 +12,7 @@ from jarvis.db import session_scope
 from jarvis.domain import execute
 from jarvis.models import Task
 from jarvis.session_models import AgentRun, AgentSession, AgentTurn
-from protocol_harness import LinkProxy, RemoteaHost, missing, remotea_checkout, until
+from protocol_harness import MANAGED_FORCE, LinkProxy, RemoteaHost, missing, remotea_checkout, until
 from sqlalchemy import select
 from test_protocol_e2e import stack  # noqa: F401 - fixture imported for pytest discovery
 
@@ -98,7 +98,9 @@ def test_separate_planner_closes_only_after_real_worker_attachment(stack):  # no
          "supported_reasoning_levels": [{"effort": "low"}], "default_reasoning_level": "low"}
         for model in (PLANNER_MODEL, WORKER_MODEL)]}))
     original_env = host.env
-    host.env = lambda: {**original_env(), "PATH": str(host.bin) + os.pathsep + "/usr/bin:/bin"}
+    # These fakes speak the managed transports but not remotea's conformance probe (remotea PR #51): admit their
+    # versions without one, as an operator would with a launcher they trust.
+    host.env = lambda: {**original_env(), "PATH": str(host.bin) + os.pathsep + "/usr/bin:/bin", **MANAGED_FORCE}
     host.start()
     connected = until(lambda: next((h for h in eri.get("/api/v1/remotea/status")["hosts"] if h["connected"]), None),
                       45, "handoff-capable isolated host connected")
