@@ -136,6 +136,8 @@ class TaskChanges(Args):
     turn_cap: int | None = Field(default=None, ge=0, le=100)
     completion_policy: Literal["code_ready", "pr_open", "pr_merged"] | None = None
     execution_target_id: str | None = Field(default=None, max_length=36)
+    # How much of the owner a run needs (readiness.py); null hands the choice back to the readiness pass.
+    run_route: Literal["auto", "direction", "plan_review", "human"] | None = None
 
 
 class TaskUpdate(TaskChanges):
@@ -823,6 +825,9 @@ def mutate(db, owner, tool, args, command_id):
         from .task_plan import normalize as normalize_plan
 
         normalize_plan(db, owner, task, changes)
+        from .readiness import owner_chose
+
+        owner_chose(task, changes)
         from .agent_actor import gate as run_gate
 
         run_gate(db, owner, task, changes)

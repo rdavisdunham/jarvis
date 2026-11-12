@@ -276,6 +276,9 @@ def commit(db, plan: Plan, choice: Choice, meta: dict) -> dict:
         row.updated_at = now()
         project_parent(db, row)
         remember_core(db, row)
+        task = db.get(Task, row.task_id)
+        if task is not None and (task.readiness or {}).get("state") == "needs_target":
+            task.readiness = {**task.readiness, "state": "stale"}  # Its new Home may name a repository.
     emit(db, plan.owner, "record.changed", row.id, row.revision)
     return {"outcome": "filed" if automatic else "suggested", "home_id": home.id, "confidence": choice.confidence}
 

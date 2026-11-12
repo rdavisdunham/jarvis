@@ -225,7 +225,8 @@ def fingerprint(data):
                               ("steps",[]),("prd_note_id",None),("success_criteria",[]),("verify",None),
                               ("turn_cap", Task.__table__.c.turn_cap.default.arg),
                               ("execution_target_id",None),("plan_revision",0),
-                              ("completion_policy","code_ready"),("completion_policy_explicit",False)):
+                              ("completion_policy","code_ready"),("completion_policy_explicit",False),
+                              ("run_route",None),("readiness",{})):
             if row.get(field)==default:row.pop(field,None)
     return hashlib.sha256(json.dumps(baseline, sort_keys=True).encode()).hexdigest()
 

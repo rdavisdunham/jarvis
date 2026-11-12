@@ -219,8 +219,11 @@ def link_for_task(db, owner, task_id):
 
 
 def external_state(db, link):
+    from .readiness import labels, labels_changed
+
     task = db.get(Task, link.task_id)
     snapshot = link.snapshot or {}
+    before = labels(task)
     task.external = {
         "provider": "linear",
         "local_archived": bool((task.external or {}).get("local_archived")),
@@ -238,6 +241,7 @@ def external_state(db, link):
         # Set when a Linear read finished the task (apply_remote); a status change made here clears it.
         "finished_via": (task.external or {}).get("finished_via"),
     }
+    labels_changed(task, before)  # A label such as ai-assignable or human-only changes the task's route.
     emit(db, link.owner_id, "task.changed", task.id, task.revision)
 
 

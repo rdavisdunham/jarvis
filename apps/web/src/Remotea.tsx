@@ -27,6 +27,7 @@ import { RunStopCard } from "./RunStopCard";
 import { RunCiCard } from "./RunCiCard";
 import { RunMergePanel } from "./RunMergePanel";
 import { RunLineage, RunRestart } from "./RunRestart";
+import { TaskRoute } from "./TaskRoute";
 import { focusTarget } from "./run-restart";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, reopenButton, terminalFallback, type FocusResult } from "./remotea-model";
@@ -1181,5 +1182,6 @@ export function RunTask({ taskId, canEdit, onOpenRun }: { taskId: string; canEdi
         <Play size={14}/>{button.label}</button>
       {button.reason && <small>{button.reason}</small>}
     </div>
+    <TaskRoute taskId={taskId} canEdit={canEdit}/>
   </section>;
 }

@@ -2355,6 +2355,20 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/remotea/tasks/{task_id}/readiness",
+      "handler": "task_readiness",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/tasks/{task_id}/readiness",
+      "handler": "task_readiness_again",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/remotea/unmerged",
       "handler": "unmerged",
       "source": "apps/api/jarvis/remotea_routes.py",

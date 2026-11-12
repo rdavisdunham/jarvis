@@ -28,6 +28,10 @@ def test_dani_migration_preserves_ids_assignments_history_and_collisions(test_da
             assert result.returncode == 0, result.stdout + result.stderr
         migrate("upgrade", "0045_durable_runs")
         trial = create_engine(target)
+        # The current Task model writes columns that a later migration adds (0063). Lend them to the old schema for
+        # the inserts, then take them back so the migration under test still adds them itself.
+        with trial.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE tasks ADD COLUMN run_route varchar(20), ADD COLUMN readiness jsonb")
         with Session(trial) as db, db.begin():
             db.add_all([
                 Actor(id="default", owner_id="personal", name="Eri", kind="agent", revision=3),
@@ -45,6 +49,8 @@ def test_dani_migration_preserves_ids_assignments_history_and_collisions(test_da
                      archived=True, status="completed", revision=6),
                 Task(id="person-task", owner_id="other", title="Person", assignee_id="old-person", assignee="Eri"),
             ])
+        with trial.begin() as connection:
+            connection.exec_driver_sql("ALTER TABLE tasks DROP COLUMN run_route, DROP COLUMN readiness")
         migrate("upgrade", "head")
         migrate("upgrade", "head")
         migrate("check")
