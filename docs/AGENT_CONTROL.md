@@ -1493,6 +1493,16 @@ local verify entry is a quick pre-push check (`scripts/verify-quick.sh`, [above]
 and a green GitHub CI run on the pull request head is what completes a run. Code:
 [`run_ci.py`](../apps/api/jarvis/run_ci.py).
 
+**What the run changed** ([`run_changes.py`](../apps/api/jarvis/run_changes.py)). After every execution turn that
+will be judged (and on Judge again), Eridani asks a host whose hello caps list `run.changes` for the change: the
+files with lines added and removed, the untracked files, and the patch of the worktree against the point where the
+branch left its base (lock files left out, secrets redacted, at most 60,000 characters). The answer is stored as an
+attempt of kind `changes` for the turn; it never moves the run and is not on the timeline. The judge's evidence
+carries it as `changes` (the first 100 files and 30,000 characters of the patch, `patch_truncated` when cut), or
+`{available: false, reason}` when the host does not offer it, has not answered, or could not read it; the prompt
+(`judge-v6`) tells the judge that an unavailable or cut patch says nothing about the work. When no verification
+runs between the turn and the judge, the judge job waits up to 20 seconds for an answer that is on its way.
+
 **The ruleset (Davis, 2026-11-05; revised 2026-11-07: CI is preferred wherever it exists).** Per plan, under
 completion policy `code_ready` or `pr_open`:
 

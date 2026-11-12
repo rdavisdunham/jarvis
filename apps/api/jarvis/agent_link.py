@@ -99,7 +99,9 @@ COMMANDS: dict[str, str] = {"automation.hold": "input.direct", "run.cleanup": "r
                             # Resume a run's exited worker in place: Reopen terminal (run_reopen.py).
                             "run.reopen": "run.reopen",
                             # GitHub CI on the run's pull request (run_ci.py), and Merge / Update branch (run_merge.py).
-                            "ci.status": "ci.status", "pr.merge": "pr.merge", "pr.update_branch": "pr.update_branch"}
+                            "ci.status": "ci.status", "pr.merge": "pr.merge", "pr.update_branch": "pr.update_branch",
+                            # What the run changed, for the judge (run_changes.py).
+                            "run.changes": "run.changes"}
 RESEND = timedelta(seconds=60)  # A sent command without an ack goes out again (same op_id and digest).
 # Refusals the host should resend later (ack retry:true); any other refusal is permanent.
 RETRYABLE = {"RATE_LIMITED", "UNKNOWN_SURFACE", "STALE_EPOCH"}
