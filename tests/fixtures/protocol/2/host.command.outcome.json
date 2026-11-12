@@ -338,6 +338,14 @@
          "string"
         ]
        }
+      },
+      "resumed": {
+       "required": false,
+       "shape": {
+        "types": [
+         "boolean"
+        ]
+       }
       }
      },
      "types": [
