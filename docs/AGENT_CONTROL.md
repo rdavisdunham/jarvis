@@ -765,16 +765,17 @@ existed have no key and are treated as "" (not restamped).
 needs. It is phase 1 of `docs/END_TO_END_UPGRADE_PLAN.md`. One `task_readiness` job per task (queue
 `jarvis-memory`, cost feature `task_readiness`, Luna, strict JSON), only for owners with remotea turned on.
 
-**When it runs.** On `task.create` (`structure.observe_core`); from the supervisor sweep for tasks created another
+**When it runs.** On `task.create` (`structure.observe_core`) and `record.create` of a task; from the supervisor sweep for tasks created another
 way (Linear import, recurring tasks, notes) in the last 30 days, 5 per cycle; again when Linear changes the task's
 labels, when placement by meaning files a task that had no repository, when the owner clears the route, and on
-"Check again". A task with an active run is skipped. A failed model call is retried after 6 hours.
+"Check again". A task with an active run is skipped. A failed model call is retried after 6 hours. Decisions made by an
+older `PROMPT_VERSION` are looked at again by the sweep (routes the owner chose and existing criteria are kept).
 
 **What it fills in, only where the task has nothing:**
 
 | Field | How |
 |---|---|
-| Target | `resolve_target` first. When none resolves, the model may pick one of the saved targets from the task's text; only a `high` confidence pick is saved as `task.execution_target_id` (`readiness.target.by = "readiness"`). The Run dialog's Change replaces it. |
+| Target | The task's own target is final. Otherwise: a saved target the model picks from the task's own words with `high` confidence (`by: readiness`) outweighs where the task is filed; then `resolve_target` (a saved record selection, folder rules; `by: resolved`, nothing saved on the task); then the repository every earlier owner-started run of this Linear team used (`by: team`). A pick or a team match is saved as `task.execution_target_id`; the Run dialog's Change replaces it. Saved targets are offered once per repository on a host. |
 | Verify | The target's default verify id (`pick_verify`), `by: default`: not a human floor. |
 | Criteria | Up to 4 drafted from the title and notes, `by: agent`: the planner may replace them and they are never the owner's floor. While they are still the draft, a run interviews by default as before (`readiness.drafted`). |
 | Route | `tasks.run_route`, below. |

@@ -13,4 +13,6 @@ test("the route note says why, what was filled in, and when it is still looking"
   expect(routeNote({ ...base, route: "plan_review", route_by: "readiness", state: "ready", reasons: ["Needs your plan review because it spends money."],
     filled: ["criteria", "target", "verify"], target: { id: "x", name: "acme", by: "readiness" } }))
     .toBe("Needs your plan review because it spends money. Filled in for you: draft success criteria, a repository, a verify command (acme).");
+  expect(routeNote({ ...base, route: "direction", route_by: "readiness", state: "ready", reasons: ["Why."], filled: ["target"],
+    target: { id: "x", name: "acme", by: "team" } })).toBe("Why. Filled in for you: a repository (acme, where this team's issues have run before).");
 });

@@ -6,7 +6,7 @@ export type Route = "auto" | "direction" | "plan_review" | "human";
 export type TaskReadiness = {
   task_id: string; revision: number; route: Route | null; route_by: "owner" | "readiness" | null; reasons: string[];
   state: "ready" | "needs_target" | "unavailable" | "skipped" | "stale" | null;
-  target: { id: string; name: string; by: "resolved" | "readiness" } | null; filled: string[]; risks: string[]; pending: boolean;
+  target: { id: string; name: string; by: "resolved" | "readiness" | "team" } | null; filled: string[]; risks: string[]; pending: boolean;
 };
 
 export const ROUTE_OPTIONS: { value: Route; label: string }[] = [
@@ -26,7 +26,7 @@ export function routeNote(r: TaskReadiness): string {
   else if (r.state === "unavailable") parts.push("Could not work this out yet; it will be tried again.");
   else if (!r.route) parts.push("Not looked at yet.");
   const filled = r.filled.map(name => FILLED[name]).filter(Boolean);
-  if (filled.length) parts.push("Filled in for you: " + filled.join(", ") + (r.target?.by === "readiness" ? ` (${r.target.name})` : "") + ".");
+  if (filled.length) parts.push("Filled in for you: " + filled.join(", ") + (r.target && r.target.by !== "resolved" ? ` (${r.target.name}${r.target.by === "team" ? ", where this team's issues have run before" : ""})` : "") + ".");
   return parts.join(" ");
 }
 
