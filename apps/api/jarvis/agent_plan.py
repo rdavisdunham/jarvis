@@ -629,6 +629,11 @@ def _submit_plan(db, bot, body):
         verify = {**body.verify.model_dump(), "by": "agent"}
     if human_verify(task):
         verify = task.verify  # The floor (see plan_floor); a verify criterion must name the human's verify.
+    if verify is None and (task.verify or {}).get("by") == "default" and task.verify.get("verify_id") in offered \
+            and task.verify.get("target_id") in targets:
+        # A plan that names no verify keeps the one Eridani already chose for this target (the readiness pass, or an
+        # earlier plan), so the judge still gets a recorded result. Still `by: default`: not a human floor.
+        verify = dict(task.verify)
     verify, default_proposal = default_verify(db, run, body.success_criteria, verify)
     for criterion in body.success_criteria:
         if criterion.kind == "verify" and (not verify or criterion.verify_id != verify["verify_id"]):

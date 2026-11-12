@@ -353,6 +353,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const HOOK = __HOOK__;
 const LOG = __LOG__;
+// Scripted mode (RemoteaHost.script): when this file exists the stub plans by itself. A prompt that asks for a plan
+// ("Do not change any code" / "Do not start the work") makes it read the task and call submit_plan over the
+// run-bound HTTP routes, with a direction brief when the prompt asks for one; any other prompt is work.
+const SCRIPT = __SCRIPT__;
 const args = process.argv.slice(2);
 if (args[0] === '--version') { process.stdout.write('2.1.999 (Claude Code)\n'); process.exit(0); }
 // This legacy fixture has no structured catalog transport and must not treat a probe as a task.
@@ -374,6 +378,27 @@ function hook(event, payload) {
     process.stdout.write(`STUB HOOK ${event} FAILED: ${err.message}\n`);
   }
 }
+function session(path, body) {
+  const at = args.indexOf('--mcp-config');
+  const server = JSON.parse(fs.readFileSync(args[at + 1], 'utf8')).mcpServers.eridani;
+  const out = execFileSync('curl', ['-sS', '-X', 'POST', new URL(server.url).origin + '/api/v1/external/agents/session/' + path,
+    '-H', 'Content-Type: application/json', '-H', 'Authorization: ' + server.headers.Authorization, '--data-binary', '@-'],
+    { input: JSON.stringify({ run_token: server.headers['X-Eridani-Run-Token'] || process.env.ERIDANI_RUN_TOKEN, ...body }), timeout: 20000 });
+  return JSON.parse(out.toString());
+}
+function submitPlan(prompt) {
+  const script = JSON.parse(fs.readFileSync(SCRIPT, 'utf8'));
+  const current = session('plan', {});
+  const body = { submission_id: crypto.randomUUID(), expected_plan_revision: current.plan_revision || 0,
+    prd: script.prd || 'Scripted plan: make the change the task asks for.',
+    steps: [{ title: 'Make the change', phase: 'Fix' }], success_criteria: [{ text: script.criterion || 'The change is made' }],
+    ...(script.migration ? { migration: true } : {}) };
+  if (prompt.includes('`brief`')) body.brief = script.brief || { reading: 'Make the change the task names.', approach: 'One small edit.',
+    leaves_alone: 'Everything else.', questions: ['Anything to avoid?'] };
+  const out = session('submit_plan', body);
+  log({ plan: out.plan_revision || null, brief: !!body.brief, reply: out.plan_revision ? undefined : out });
+  return `Stub plan submitted (revision ${out.plan_revision}).`;
+}
 let turns = 0;
 function turn(prompt) {
   turns += 1;
@@ -381,8 +406,19 @@ function turn(prompt) {
   log({ prompt, turn: turns });
   hook('UserPromptSubmit', { prompt, prompt_id: promptId });
   process.stdout.write(`STUB TURN ${turns}\n`);
-  hook('Stop', { prompt_id: promptId, stop_hook_active: false,
-                 last_assistant_message: `Stub turn ${turns}: made the change; the tests pass.` });
+  let said = `Stub turn ${turns}: made the change; the tests pass.`;
+  if (fs.existsSync(SCRIPT) && /Do not change any code|Do not start the work/.test(prompt)) {
+    try { said = submitPlan(prompt); } catch (err) { said = `STUB PLAN FAILED: ${err.message}`; log({ plan_error: err.message }); }
+  } else if (fs.existsSync(SCRIPT)) {
+    // Work: a real commit in the run's worktree, so the host has changes to report.
+    try {
+      fs.writeFileSync(`stub-change-${turns}.txt`, `scripted change ${turns}\n`);
+      execFileSync('git', ['add', '-A']);
+      execFileSync('git', ['-c', 'user.name=stub', '-c', 'user.email=stub@example.invalid', 'commit', '-q', '-m', `Scripted change ${turns}`]);
+      log({ commit: turns });
+    } catch (err) { log({ commit_error: err.message }); }
+  }
+  hook('Stop', { prompt_id: promptId, stop_hook_active: false, last_assistant_message: said });
 }
 const bye = (code, why) => { log({ exit: code, why }); process.exit(code); };
 process.on('SIGINT', () => bye(130, 'SIGINT'));
@@ -460,7 +496,8 @@ class RemoteaHost:
         self.node = node
         self.stub = self.bin / "claude"
         self.stub.write_text(STUB.replace("__NODE__", node).replace("__HOOK__", json.dumps(str(hook_helper(self.checkout))))
-                             .replace("__LOG__", json.dumps(str(self.stub_log))))
+                             .replace("__LOG__", json.dumps(str(self.stub_log)))
+                             .replace("__SCRIPT__", json.dumps(str(root / "script.json"))))
         self.stub.chmod(0o755)
         self.verify = self.bin / "fake-verify"
         self.verify.write_text(VERIFY.replace("__LOG__", str(self.verify_log)))
@@ -485,6 +522,10 @@ class RemoteaHost:
         token.write_text(link_key + "\n")
         token.chmod(0o600)
         self.proc = None
+
+    def script(self, **values):
+        """Turn the stub's scripted mode on: it submits a plan (and a brief, when asked) by itself. See STUB."""
+        (self.config.parent / "script.json").write_text(json.dumps(values))
 
     def write(self, name, data):
         path = self.config / name
