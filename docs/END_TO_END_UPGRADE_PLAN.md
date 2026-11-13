@@ -62,6 +62,37 @@ Done when: remotea runs what is merged, all eight targets pass verify readiness,
 
 Done when: an `ai-assignable` Linear issue in a ready target reaches an open PR with no click from you.
 
+### Phase 1b: talk it through, then plan, then work
+
+Asked for by Davis on 2026-11-13. Not built yet.
+
+**What exists today.** Before a plan, the agent can ask one form of up to 12 questions (the interview), or on the direction route send a brief with up to three. Both are a single round: the agent asks, you answer once, it plans. There is no back-and-forth about the task itself, and nothing that helps decide *what* to build before deciding *how*.
+
+**What is wanted.** A run that opens as a conversation about the task: you and the agent go back and forth, it reads the code as it goes, and only when you say so does it write the plan. The flow to follow is the Compound Engineering one Brainforge already uses (the `compound-engineering` plugin is installed on the host under the brainforge marketplace):
+
+| CE skill | What it does | Closest thing in Eridani today |
+|---|---|---|
+| `ce-ideate` | Generates and ranks ideas for a topic, before any one is picked | Nothing |
+| `ce-brainstorm` | Dialogue about *what* to build; ends in a right-sized requirements document | The interview (one round, a form) |
+| `ce-plan` | *How* to build it: a structured plan from the requirements document | `submit_plan` (PRD, steps, criteria) |
+| `ce-work` | Executes the plan | The execution turns, verify and the judge |
+| `ce-compound` | Writes down what was learned so the next run starts ahead | Nothing per repository |
+
+It does not have to be those skills exactly. The first step is to look into them properly, then choose between:
+
+1. **Run the skills as they are.** The planning agent is told to use `ce-brainstorm` and `ce-plan`; Eridani carries the conversation (each agent question becomes a message you answer in the app or by voice) and takes the resulting requirements and plan documents as the PRD and plan. Least to build, and it is the flow Brainforge people already know. It ties the flow to Claude Code and to the plugin being installed on the host.
+2. **Build the same shape into Eridani.** A "talk first" stage before planning that works with any harness, borrowing the skills' structure (what before how, a requirements document as the hand-over, a learnings step at the end). More to build; not locked to one plugin, which matters for people outside Brainforge.
+
+Likely answer: 1 where the plugin is present, with 2's stage as the general mechanism underneath, so the conversation works either way.
+
+To settle while looking into it:
+- Which route gets the conversation. Probably a fourth choice beside Auto, Direction and Plan review ("Talk it through first"), and what Dani offers when a task is too vague to plan.
+- Where the conversation happens: the run's page, and voice through Dani, as one thread.
+- What ends it: you say "plan it", or the agent proposes it has enough and you agree.
+- Whether the learnings step (`ce-compound`) writes into the repository, into Eridani, or both.
+
+Done when: you can open a vague task, talk it through with the agent over several turns, and end with a plan you did not have to write.
+
 ### Phase 2: one queue
 
 - Merge meeting review, Questions, direction briefs, plan approvals, run questions, PRs ready for review and drafts awaiting send into a single "Needs you" list.
