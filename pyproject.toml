@@ -45,6 +45,7 @@ asyncio_mode = "auto"
 faulthandler_timeout = 300
 markers = [
   "e2e_protocol: the real remotea server against the real Eridani app (skips without node and a built remotea checkout)",
+  "real_agent: a real Claude Code session through the real stack; spends tokens, runs only with ERIDANI_REAL_AGENT=1",
 ]
 [tool.ruff]
 line-length = 110

@@ -194,6 +194,11 @@ class TargetInput(Input):
 # ---------------------------------------------------------------- execution targets
 
 
+def direction_first(task, roles) -> bool:
+    """Does a run of this task take the direction check (run_direction.on_route, before the run exists)?"""
+    return task.run_route == "direction" and not (roles or {}).get("reviewer")
+
+
 def direction_public(db, run):
     from .run_direction import public
 
@@ -727,6 +732,10 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening="", resta
     # Criteria the readiness pass drafted are not the owner's plan: the interview still runs by default.
     planned = bool(task.success_criteria) and bool(task.verify) and not readiness_drafted(task)
     interview = (not task.prd_note_id and not planned) if body.interview is None else body.interview
+    if body.interview is None and direction_first(task, roles):
+        # "Your direction first": the brief that comes with the plan carries the agent's questions, and the owner
+        # answers once. An interview before it would ask them twice (run_direction.py).
+        interview = False
     if body.freestyle or restart is not None or auto:
         # Freestyle talks to the agent directly: nothing to interview for or submit. A restart plans the added work.
         # An auto-started run has nobody to interview: the agent plans from the task.
@@ -2054,7 +2063,7 @@ def preflight(db, owner, task_id, harness="claude", execution_target_id=None, *,
             # The picker's data while a target resolves: the dialog's "Change" offers another repository.
             "choices": target_choices(db, owner, task) if out.get("target") and active is None else None,
             "active_run": {"id": active.id, "state": active.state} if active is not None else None,
-            "interview": not task.prd_note_id and not planned,
+            "interview": not task.prd_note_id and not planned and not direction_first(task, {"reviewer": reviewer_harness}),
             "harnesses": harnesses, "harness_reasons": reasons, "harness_note": note, "roles": roles,
             **target_readiness(db, owner, task, execution_target_id)}
 

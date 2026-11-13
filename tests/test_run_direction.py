@@ -89,3 +89,41 @@ def test_a_migration_after_the_answer_still_stops_and_other_routes_are_unchanged
     submit(other, other_task)
     assert state(other) == ("needs_you", "plan_approval", "pending")
     assert public(other)["open"] is False and public(other)["answer"] is None
+
+
+def test_a_direction_run_plans_from_the_task_instead_of_interviewing_first(host):
+    """The brief carries the agent's questions: an interview before it would ask the owner twice."""
+    from jarvis import agent_control as control
+
+    direction, other = task("Make the greeting friendlier", run_route="direction"), task("Rename a helper")
+    with session_scope() as db:
+        assert control.preflight(db, OWNER, direction["id"])["interview"] is False
+        assert control.preflight(db, OWNER, other["id"])["interview"] is True
+    states = {}
+    for name, made in (("direction", direction), ("other", other)):
+        run_id = start(host, made["id"])["id"]
+        attached(host, run_id)
+        with session_scope() as db:
+            states[name] = db.get(AgentRun, run_id).state
+    assert states["other"] == "interviewing" and states["direction"] != "interviewing", states
+
+
+def test_an_answer_sent_before_the_planning_turn_ends_is_not_a_missing_plan(host):
+    """A managed session's plan stops for the owner the moment it is submitted, while the agent is still writing
+    its closing words. An owner who answers in those seconds must not see "ended planning without a plan"."""
+    from uuid import uuid4
+
+    from test_agent_plan import turn
+
+    task_id, run_id = planning(host)
+    with session_scope() as db:
+        row = db.get(AgentRun, run_id)
+        row.sync_state = {**row.sync_state, "execution_mode": "managed"}
+    submit(run_id, task_id, brief=BRIEF, submission_id=str(uuid4()))
+    assert state(run_id)[:2] == ("needs_you", "plan_approval")
+    with session_scope() as db:
+        coordinator.revise_plan(db, db.get(AgentRun, run_id, with_for_update=True), "Keep the old flag.", actor=HUMAN)
+    turn(run_id, 1)  # The turn that submitted the first plan ends only now.
+    assert state(run_id)[:2] == ("planning", "plan_revise")
+    submit(run_id, task_id, submission_id=str(uuid4()))
+    assert state(run_id)[0] != "needs_you"
