@@ -21,7 +21,7 @@ dependencies = [
   "google-auth-oauthlib>=1.5.0,<2",
   "mcp>=2.3.0,<3",
   "pgvector>=0.4,<1",
-  "sentry-sdk>=2.72.0,<3",
+  "sentry-sdk>=2.74.0,<3",
   "langfuse>=5.0.4,<5.1",
 ]
 [dependency-groups]
