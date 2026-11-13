@@ -89,7 +89,7 @@ JARVIS_MAINTENANCE_MODE=false
 WEB_CONCURRENCY=1
 ```
 
-Do not set `JARVIS_OWNER_TOKEN` in cloud services. The public sign-in route is Google. API may set `FORWARDED_ALLOW_IPS=*` only while all inbound HTTP traffic enters through Railway's trusted HTTP proxy; do not expose a separate raw TCP route to that API. Railway supplies `PORT`.
+Do not set `JARVIS_OWNER_TOKEN` in cloud services other than a sandbox (below). The public sign-in route is Google. API may set `FORWARDED_ALLOW_IPS=*` only while all inbound HTTP traffic enters through Railway's trusted HTTP proxy; do not expose a separate raw TCP route to that API. Railway supplies `PORT`.
 
 Sign-in rate limits (pairing login and Google sign-in start) key on the browser's address from `jarvis/client_ip.py`, not on uvicorn's rewritten client: with `FORWARDED_ALLOW_IPS=*` uvicorn takes the leftmost `X-Forwarded-For` entry, which the browser writes itself. The limiter instead takes the rightmost entry (the address Railway's edge saw); when that is a Cloudflare edge it uses `CF-Connecting-IP`, which Cloudflare overwrites. `CF-Connecting-IP` on a request that did not come from a Cloudflare range is ignored, so a request sent straight to Railway cannot pick its own bucket. With a specific `FORWARDED_ALLOW_IPS` list, the peer uvicorn resolves is used the same way.
 
@@ -104,6 +104,32 @@ The page CSP allows the Cloudflare Web Analytics beacon (`static.cloudflareinsig
 Staging startup enforces both pause flags. The worker parks without starting DBOS; chat, voice, Calendar/Linear clients and linking are blocked from external effects. Google login remains available for checking access. Model and push credentials are cleared in memory while external services are paused. Edits may still change the staging database or queue work, so discard the rehearsal database and restore afresh before cutover.
 
 For deliberately enabled controlled integration tests, use a separate synthetic environment labeled `production`, with test accounts and records. Do not enable a worker on a restored personal database while the original worker is active.
+
+### A sandbox copy
+
+`JARVIS_DEPLOYMENT_ENVIRONMENT=sandbox` is a disposable public copy for automated testing: the real build, migrations, API and worker, on a database of its own that starts empty. It differs from `staging` (a paused rehearsal of restored data) in two ways:
+
+- The worker and external services run, so readiness, auto-start, the judge and the sweeps behave as in production.
+- Sign-in is the owner token, because a sandbox has no Google account to link: `JARVIS_PAIRING_ENABLED=true` with a random `JARVIS_OWNER_TOKEN` of at least 32 characters. Startup refuses a shorter token. Google OAuth variables are not needed. `staging` and `production` still refuse pairing.
+
+A sandbox must never see a person's data. API, worker and migrations refuse to start in this mode when the database holds a linked Google account (`deploy.refuse_real_data`). Keep it in its own Railway project, with its own PostgreSQL (the pgvector image; migrations create the extension), its own `JARVIS_INTEGRATION_ENCRYPTION_KEY`, and no production variables copied in except model keys. Do not duplicate the production environment to make one: the copy would inherit the database's point-in-time-recovery archive settings.
+
+Sandbox variables, on both services:
+
+```dotenv
+JARVIS_DEPLOYMENT_ENVIRONMENT=sandbox
+JARVIS_ORIGIN=https://<the sandbox's public domain>
+JARVIS_DATABASE_URL=<the sandbox PostgreSQL's private URL>
+JARVIS_PAIRING_ENABLED=true
+JARVIS_OWNER_TOKEN=<32+ random characters>
+JARVIS_INTEGRATION_ENCRYPTION_KEY=<a new Fernet key>
+JARVIS_WORKER_ENABLED=true
+JARVIS_EXTERNAL_SERVICES_ENABLED=true
+JARVIS_ENV_FILE=
+WEB_CONCURRENCY=1
+```
+
+Add `JARVIS_OPENAI_API_KEY` for the readiness pass and the judge. The API also needs `PORT=8765` and `FORWARDED_ALLOW_IPS=*`. Build, start, pre-deploy and health settings are the same as production's (above).
 
 ### Backup service only
 

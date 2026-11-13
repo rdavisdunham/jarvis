@@ -564,10 +564,11 @@ def housekeeping_owner(db, owner):
 
 
 def main():
-    from .deploy import stop_event, validate_deployment, worker_lease
+    from .deploy import refuse_real_data, stop_event, validate_deployment, worker_lease
 
     settings = get_settings()
     validate_deployment(settings)
+    refuse_real_data(settings)
     from .observability import init_sentry
 
     init_sentry("worker")

@@ -18,7 +18,9 @@ class Settings(BaseSettings):
         default="postgresql+psycopg://jarvis:jarvis@127.0.0.1:54329/jarvis",
         validation_alias=AliasChoices("JARVIS_DATABASE_URL", "DATABASE_URL"),
     )
-    deployment_environment: Literal["local", "staging", "production"] = "local"
+    # "sandbox": a disposable public copy for automated testing, with its own empty database, a running worker and
+    # sign-in by JARVIS_OWNER_TOKEN (deploy.validate_deployment, docs/CLOUD_MIGRATION.md "A sandbox copy").
+    deployment_environment: Literal["local", "staging", "sandbox", "production"] = "local"
     pairing_enabled: bool = True
     worker_enabled: bool = True
     external_services_enabled: bool = True
