@@ -22,7 +22,7 @@ dependencies = [
   "mcp>=2.3.0,<3",
   "pgvector>=0.4,<1",
   "sentry-sdk>=2.72.0,<3",
-  "langfuse>=5.0.4,<5.1",
+  "langfuse>=5.2.0,<5.3",
 ]
 [dependency-groups]
 dev = [
