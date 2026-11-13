@@ -25,6 +25,9 @@ from .db import engine, session_scope
 ROOT = Path(__file__).resolve().parents[3]
 
 
+SANDBOX_TOKEN_CHARS = 32
+
+
 class DeploymentConfigurationError(RuntimeError):
     """Only include operator-safe configuration guidance in this error."""
 
@@ -48,9 +51,15 @@ def validate_deployment(settings):
         or origin.fragment
     ):
         failures.append("JARVIS_ORIGIN must be the public HTTPS origin without a path.")
-    if settings.pairing_enabled:
+    sandbox = settings.deployment_environment == "sandbox"
+    if sandbox:
+        # A sandbox has no Google account to sign in with: its one way in is the owner token, on a public address.
+        if not settings.pairing_enabled or len(settings.owner_token) < SANDBOX_TOKEN_CHARS:
+            failures.append(f"A sandbox signs in with JARVIS_OWNER_TOKEN: enable JARVIS_PAIRING_ENABLED and set a "
+                            f"random token of at least {SANDBOX_TOKEN_CHARS} characters.")
+    elif settings.pairing_enabled:
         failures.append("Disable JARVIS_PAIRING_ENABLED for public deployments.")
-    if not settings.google_client_id or not settings.google_client_secret:
+    if not sandbox and (not settings.google_client_id or not settings.google_client_secret):
         failures.append("Google OAuth credentials are required for cloud sign-in.")
     try:
         Fernet(settings.integration_encryption_key.encode())
@@ -73,6 +82,19 @@ def validate_deployment(settings):
     if failures:
         # Never include settings, connection strings, credentials, or exception reprs.
         raise DeploymentConfigurationError("Deployment checks failed: " + " ".join(failures))
+
+
+def refuse_real_data(settings):
+    """A sandbox opens with a token, so it must never be pointed at a database that holds a person's data.
+
+    A linked Google account is the mark of one: production signs in with Google, and a sandbox cannot link any."""
+    if settings.deployment_environment != "sandbox":
+        return
+    with session_scope() as db:
+        if db.scalar(text("SELECT to_regclass('google_identities') IS NOT NULL")) and \
+                db.scalar(text("SELECT EXISTS (SELECT 1 FROM google_identities)")):
+            raise DeploymentConfigurationError(
+                "A sandbox needs its own empty database: this one holds a linked Google account.")
 
 
 @lru_cache
@@ -177,11 +199,13 @@ def main():
     try:
         if args.mode == "migrate":
             validate_deployment(get_settings())
+            refuse_real_data(get_settings())
             command.upgrade(alembic_config(), "head")
         elif args.mode == "preflight":
             print(json.dumps(preflight(args.database)))
         elif args.mode == "api":
             validate_deployment(get_settings())
+            refuse_real_data(get_settings())
             port = int(os.getenv("PORT", "8765"))
             if not 1 <= port <= 65535:
                 raise RuntimeError("PORT must be between 1 and 65535.")
