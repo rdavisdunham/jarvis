@@ -78,18 +78,17 @@ Asked for by Davis on 2026-11-13. Not built yet.
 | `ce-work` | Executes the plan | The execution turns, verify and the judge |
 | `ce-compound` | Writes down what was learned so the next run starts ahead | Nothing per repository |
 
-It does not have to be those skills exactly. The first step is to look into them properly, then choose between:
+**Decided 2026-11-13: build the shape into Eridani.** It has to work with any harness, including ones without the skills, and installing the skills on every host is not worth the complexity. The skills are the reference for how each stage should behave, not a dependency. Using them directly on hosts that have them stays possible later.
 
-1. **Run the skills as they are.** The planning agent is told to use `ce-brainstorm` and `ce-plan`; Eridani carries the conversation (each agent question becomes a message you answer in the app or by voice) and takes the resulting requirements and plan documents as the PRD and plan. Least to build, and it is the flow Brainforge people already know. It ties the flow to Claude Code and to the plugin being installed on the host.
-2. **Build the same shape into Eridani.** A "talk first" stage before planning that works with any harness, borrowing the skills' structure (what before how, a requirements document as the hand-over, a learnings step at the end). More to build; not locked to one plugin, which matters for people outside Brainforge.
+How it works:
+- **Brainstorm is a yes/no choice when a run starts.** Off: the agent works the task out and asks its planning questions, as today. On: the agent reads the task and the code, then opens a conversation ("let's talk about this") and nothing is planned until you say so.
+- **The conversation follows `ce-brainstorm`'s rules:** it asks what you already think before offering ideas, one question per turn with options where a choice is being made, settles *what* before *how*, checks the code before claiming something exists or not, offers two or three approaches when more than one is plausible, and plays back "what we're building" before planning.
+- **It ends when you say "plan it"** (a button, or saying so in the conversation). What was agreed becomes the plan's requirements; the plan then takes the route's usual review.
+- **Order of building:** brainstorm first (the conversation before a plan), then compound (what was learned, written down per repository so the next run starts ahead), then ideate (ideas for a goal or project before any task exists). Plan and work are today's planning and execution.
 
-Likely answer: 1 where the plugin is present, with 2's stage as the general mechanism underneath, so the conversation works either way.
-
-To settle while looking into it:
-- Which route gets the conversation. Probably a fourth choice beside Auto, Direction and Plan review ("Talk it through first"), and what Dani offers when a task is too vague to plan.
-- Where the conversation happens: the run's page, and voice through Dani, as one thread.
-- What ends it: you say "plan it", or the agent proposes it has enough and you agree.
-- Whether the learnings step (`ce-compound`) writes into the repository, into Eridani, or both.
+Still to settle as it is built:
+- Whether Dani offers brainstorm by itself when a task is too vague to plan, and the same conversation by voice.
+- Whether the learnings step writes into the repository, into Eridani, or both.
 
 Done when: you can open a vague task, talk it through with the agent over several turns, and end with a plan you did not have to write.
 
