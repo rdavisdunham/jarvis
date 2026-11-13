@@ -62,6 +62,36 @@ Done when: remotea runs what is merged, all eight targets pass verify readiness,
 
 Done when: an `ai-assignable` Linear issue in a ready target reaches an open PR with no click from you.
 
+### Phase 1b: talk it through, then plan, then work
+
+Asked for by Davis on 2026-11-13. Not built yet.
+
+**What exists today.** Before a plan, the agent can ask one form of up to 12 questions (the interview), or on the direction route send a brief with up to three. Both are a single round: the agent asks, you answer once, it plans. There is no back-and-forth about the task itself, and nothing that helps decide *what* to build before deciding *how*.
+
+**What is wanted.** A run that opens as a conversation about the task: you and the agent go back and forth, it reads the code as it goes, and only when you say so does it write the plan. The flow to follow is the Compound Engineering one Brainforge already uses (the `compound-engineering` plugin is installed on the host under the brainforge marketplace):
+
+| CE skill | What it does | Closest thing in Eridani today |
+|---|---|---|
+| `ce-ideate` | Generates and ranks ideas for a topic, before any one is picked | Nothing |
+| `ce-brainstorm` | Dialogue about *what* to build; ends in a right-sized requirements document | The interview (one round, a form) |
+| `ce-plan` | *How* to build it: a structured plan from the requirements document | `submit_plan` (PRD, steps, criteria) |
+| `ce-work` | Executes the plan | The execution turns, verify and the judge |
+| `ce-compound` | Writes down what was learned so the next run starts ahead | Nothing per repository |
+
+**Decided 2026-11-13: build the shape into Eridani.** It has to work with any harness, including ones without the skills, and installing the skills on every host is not worth the complexity. The skills are the reference for how each stage should behave, not a dependency. Using them directly on hosts that have them stays possible later.
+
+How it works:
+- **Brainstorm is a yes/no choice when a run starts.** Off: the agent works the task out and asks its planning questions, as today. On: the agent reads the task and the code, then opens a conversation ("let's talk about this") and nothing is planned until you say so.
+- **The conversation follows `ce-brainstorm`'s rules:** it asks what you already think before offering ideas, one question per turn with options where a choice is being made, settles *what* before *how*, checks the code before claiming something exists or not, offers two or three approaches when more than one is plausible, and plays back "what we're building" before planning.
+- **It ends when you say "plan it"** (a button, or saying so in the conversation). What was agreed becomes the plan's requirements; the plan then takes the route's usual review.
+- **Order of building:** brainstorm first (the conversation before a plan), then compound (what was learned, written down per repository so the next run starts ahead), then ideate (ideas for a goal or project before any task exists). Plan and work are today's planning and execution.
+
+Still to settle as it is built:
+- Whether Dani offers brainstorm by itself when a task is too vague to plan, and the same conversation by voice.
+- Whether the learnings step writes into the repository, into Eridani, or both.
+
+Done when: you can open a vague task, talk it through with the agent over several turns, and end with a plan you did not have to write.
+
 ### Phase 2: one queue
 
 - Merge meeting review, Questions, direction briefs, plan approvals, run questions, PRs ready for review and drafts awaiting send into a single "Needs you" list.
