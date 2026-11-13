@@ -57,6 +57,37 @@ def test_cloud_startup_rejects_unsafe_or_incomplete_configuration(change):
     assert "user:secret@" not in str(error.value)
 
 
+def sandbox_settings(**values):
+    return cloud_settings(**{"deployment_environment": "sandbox", "pairing_enabled": True, "worker_enabled": True,
+                             "external_services_enabled": True, "google_client_id": "", "google_client_secret": "",
+                             "owner_token": "s" * 32, **values})
+
+
+def test_a_sandbox_runs_its_worker_and_signs_in_with_a_long_token():
+    deploy.validate_deployment(sandbox_settings())
+    for change in ({"owner_token": "short"}, {"owner_token": ""}, {"pairing_enabled": False},
+                   {"origin": "http://sandbox.example.com"}):
+        with pytest.raises(RuntimeError, match="Deployment checks failed"):
+            deploy.validate_deployment(sandbox_settings(**change))
+    # The token way in exists nowhere else in the cloud.
+    for environment in ("staging", "production"):
+        with pytest.raises(RuntimeError, match="Disable JARVIS_PAIRING_ENABLED"):
+            deploy.validate_deployment(cloud_settings(deployment_environment=environment, pairing_enabled=True,
+                                                      owner_token="s" * 32))
+
+
+def test_a_sandbox_refuses_a_database_with_a_linked_google_account(client):
+    from jarvis.db import session_scope
+    from jarvis.models import GoogleIdentity
+
+    deploy.refuse_real_data(sandbox_settings())
+    with session_scope() as db:
+        db.add(GoogleIdentity(owner_id="davin", subject="sub-1", email="someone@example.com"))
+    with pytest.raises(deploy.DeploymentConfigurationError, match="own empty database"):
+        deploy.refuse_real_data(sandbox_settings())
+    deploy.refuse_real_data(cloud_settings(deployment_environment="production"))
+
+
 def test_staging_clears_model_and_push_credentials(monkeypatch):
     for name in ("OPENAI_API_KEY", "GEMINI_API_KEY", "JARVIS_VAPID_PRIVATE_KEY"):
         monkeypatch.setenv(name, "must-not-be-used")
