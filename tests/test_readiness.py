@@ -70,8 +70,14 @@ def test_a_new_task_gets_criteria_a_verify_command_and_the_direction_route(on, h
     assert [(c["text"], c["by"]) for c in row.success_criteria] == [("Uploads retry three times", "agent")]
     assert row.verify == {"target_id": host.target_id, "verify_id": "quick", "by": "default"}
     assert row.plan_revision == made["plan_revision"] + 1 and row.revision == made["revision"]
-    with session_scope() as db:  # The draft is not a plan: a run still interviews first, until someone writes criteria.
+    with session_scope() as db:
+        # On the direction route the agent's brief stands in for the interview (agent_control.direction_first).
+        assert control.preflight(db, OWNER, made["id"])["interview"] is False
+        # On any other route the draft is not a plan: a run still interviews first, until someone writes criteria.
+        db.get(Task, made["id"]).run_route = "plan_review"
+        db.flush()
         assert control.preflight(db, OWNER, made["id"])["interview"] is True
+        db.get(Task, made["id"]).run_route = "direction"
     run("task.update", task_id=made["id"], expected_revision=row.revision,
         success_criteria=[{"text": "Uploads retry three times, then report the failure"}])
     with session_scope() as db:
