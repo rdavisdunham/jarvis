@@ -682,6 +682,9 @@ def _submit_plan(db, bot, body):
                         proposals=proposals, migration=migration))
     run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
     run_direction.remember(run, body.brief, revision)
+    from . import run_brainstorm
+
+    run_brainstorm.close(run, "plan_submitted")  # The owner asked for the plan in the conversation itself.
     # The turn that sent this plan is still open: the plan is concluded now, so an approval or a revision can come
     # before that turn ends. record_turn then knows the late turn end for what it is (a managed session reports
     # its turn end the same way a terminal one does).

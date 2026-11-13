@@ -41,6 +41,7 @@ ATTENTION = {
     "turn_cap": ("The run reached its turn cap.", "Approve the work as it is, or send the agent back with a note."),
     "question_timed_out": ("The agent's question timed out here.", "Answer it in the terminal."),
     "no_plan": ("The agent ended planning without questions or a plan.", "Retry planning or send the agent a note."),
+    "brainstorm": ("The agent is talking the task through with you.", "Reply to it, or tell it to plan."),
     "planning_retry": ("Retrying the rejected planning handoff.", "Nothing to do yet."),
     "plan_review": ("The agent proposes changes to your success criteria.", "Accept or keep each one to start the work."),
     "plan_approval": ("The plan is final.", "Approve it to start the work, or send it back with a note."),

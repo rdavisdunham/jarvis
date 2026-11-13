@@ -162,6 +162,7 @@ REASONS = {
     "turn_cap": "The run reached its turn cap.",
     "question_timed_out": "The question timed out here; answer it in the terminal.",
     "no_plan": "The agent ended its planning turn without asking questions or submitting a plan.",
+    "brainstorm": "The agent is talking the task through with you and waits for your reply.",
     "planning_retry": "Retrying the rejected planning handoff in the existing conversation.",
     "plan_review": "The agent proposes changes to your success criteria; accept or keep each one to start the work.",
     "plan_approval": "The plan is final; approve it to start the work, or send it back with a note.",
@@ -1244,6 +1245,10 @@ def settle_planning(db, run):
     if open_questions(db, run) or open_interview(db, run):
         return  # The operator has the next move.
     if not run.plan_pending:
+        from . import run_brainstorm
+
+        if run_brainstorm.turn_ended(db, run):
+            return  # A conversation turn: the owner's reply is the next move, not a missing plan.
         failure = (run.sync_state or {}).get("coordination_failure")
         if failure:
             run.sync_state = {**run.sync_state, "coordination_failure": {**failure, "recovering": False}}

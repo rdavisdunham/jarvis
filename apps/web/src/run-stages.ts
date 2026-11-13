@@ -14,7 +14,7 @@ const PLAN_KEYS = new Set(["starting", "queued", "spawning", "interviewing", "pl
 // awaiting_ci: the criteria are met on the quick local check; GitHub CI on the pull request is the final word (run_ci.py).
 const VERIFY_KEYS = new Set(["verifying", "judging", "checking_results", "awaiting_ci", "awaiting_approval", "ready_for_review", "awaiting_integration"]);
 /** needs_you stops that wait on the plan itself: nothing has been worked yet. */
-const PLAN_REASONS = new Set(["no_plan", "review_failed", ...PLAN_STOPS]);
+const PLAN_REASONS = new Set(["no_plan", "review_failed", "brainstorm", ...PLAN_STOPS]);
 /** needs_you stops whose next human action is about the criteria or the result, not the steps (ci_timeout,
  * ci_failed_again and ci_unavailable included: GitHub CI is the final verification). */
 const VERIFY_REASONS = /^(judge_|verify_|ci_)|^(not_met|no_progress_gap|pr_unknown|awaiting_merge|merged|integrated)$/;

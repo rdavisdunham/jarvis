@@ -35,8 +35,8 @@ def state(run) -> dict:
 
 def on_route(db, run) -> bool:
     """Does this run take the direction check? Its task is on the `direction` route and the run has no reviewer."""
-    if run.freestyle or (run.roles or {}).get("reviewer"):
-        return False
+    if run.freestyle or (run.roles or {}).get("reviewer") or (run.sync_state or {}).get("brainstorm"):
+        return False  # A run that talked the task through already has its direction (run_brainstorm.py).
     task = db.get(Task, run.task_id)
     return task is not None and task.run_route == "direction"
 
