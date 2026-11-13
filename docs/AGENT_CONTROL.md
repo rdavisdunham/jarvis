@@ -692,6 +692,21 @@ run-bound HTTP routes with the key and run token from its `--mcp-config`, on a w
 worktree. The test process plays the worker (readiness job, auto-start sweep, judge, the sweep that ends a held
 verdict), each with a scripted model. Run all five suites with `-m e2e_protocol tests/`.
 
+**With a real agent.** `tests/test_real_agent_smoke.py` (marker `real_agent`) replaces the stub with the installed
+Claude Code, so it finds what a script cannot: a prompt the agent misreads, a tool it cannot call, a launch flag a
+new release dropped. Two cases in a scratch repository: a labelled task that auto-starts, is planned over MCP, done,
+verified, judged (by the real judge when `JARVIS_OPENAI_API_KEY` is set) and approved; and a direction check whose
+brief is answered at once. It spends real tokens (about a minute of Sonnet per case), so it runs only when asked:
+
+```
+ERIDANI_REAL_AGENT=1 REMOTEA_CHECKOUT=~/remotea/server uv run --no-sync python -m pytest -q -s -m real_agent tests/test_real_agent_smoke.py
+```
+
+The agent runs in a scratch HOME with this machine's current Claude access token passed as
+`CLAUDE_CODE_OAUTH_TOKEN` and nothing else: no refresh token (the real login cannot be rotated away), no real
+`~/.claude`, no transcripts for the collector. It skips when the token has under 20 minutes left (open `claude`
+once to renew it).
+
 **In the browser.** `scripts/validate_full_stack.py` boots the same real pieces for Chromium: a disposable migrated
 database, the API with a stand-in for the worker (`tests/fixtures/full_stack_acceptance.py`: scripted readiness and
 judge models, the supervisor's sweeps), and a remotea server with the scripted agent. `apps/web/e2e/full-stack.mjs`
@@ -856,6 +871,9 @@ keep it from starting.
 - The planning prompts tell the agent to send `brief` with `submit_plan` when the task's route is `direction`
   (`agent_prompts.direction_note`): `reading`, `approach`, `leaves_alone` (each up to 400 characters) and up to
   three `questions`.
+- A run on this route does not interview first by default (`agent_control.direction_first`): the brief carries the
+  agent's questions, and an interview before it would ask the owner twice. `interview: true` on the start still asks
+  for one, and a run with a reviewer keeps its own flow.
 - The run stops at `needs_you(plan_approval)` as before; no new state or reason. The run carries
   `direction: {brief, answer, answered_at, accepted_at, open}` and the plan card leads with the brief while `open`
   ("Direction check": Accept, or Send answer).
@@ -863,6 +881,9 @@ keep it from starting.
   submits again `conclude_planning` approves the plan without a second stop (`run_direction.approves`, history
   `plan_approved` by `direction_check`). It still stops when the revised plan declares a migration or proposes
   changing something a human set.
+- The stop comes when the plan is submitted, while the agent's turn is still open. An answer sent in those seconds
+  marks that turn's end as a continuation (`planning_turn_pending`, now set for managed sessions too), so it is
+  not read as a planning turn that ended without a plan.
 - The judge receives the brief and the owner's answer as `direction`: context, never evidence (`judge-v7`).
 - Runs with a reviewer (hyperplan), freestyle runs, and runs whose task has another route or none are unchanged. A
   brief sent by an agent nobody asked is stored and has no effect.

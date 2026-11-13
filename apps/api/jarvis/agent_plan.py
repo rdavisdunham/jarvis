@@ -682,9 +682,11 @@ def _submit_plan(db, bot, body):
                         proposals=proposals, migration=migration))
     run.plan_revision, run.plan_pending, run.completion_policy = revision, True, task.completion_policy or "code_ready"
     run_direction.remember(run, body.brief, revision)
-    if (run.sync_state or {}).get("execution_mode") != "managed":
-        run.sync_state = {**(run.sync_state or {}), "planning_turn_pending": True,
-                          "planning_turn_generation": run.generation}
+    # The turn that sent this plan is still open: the plan is concluded now, so an approval or a revision can come
+    # before that turn ends. record_turn then knows the late turn end for what it is (a managed session reports
+    # its turn end the same way a terminal one does).
+    run.sync_state = {**(run.sync_state or {}), "planning_turn_pending": True,
+                      "planning_turn_generation": run.generation}
     if run.state in ("interviewing", "replanning"):
         coordinator.transition(db, run, "planning", actor=actor, reason="plan_submitted")
     coordinator.note(run, "plan_submitted", plan_revision=revision, actor=actor.record(),
