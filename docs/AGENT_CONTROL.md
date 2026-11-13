@@ -694,7 +694,7 @@ verdict), each with a scripted model. Run all five suites with `-m e2e_protocol 
 
 **With a real agent.** `tests/test_real_agent_smoke.py` (marker `real_agent`) replaces the stub with the installed
 Claude Code, so it finds what a script cannot: a prompt the agent misreads, a tool it cannot call, a launch flag a
-new release dropped. Two cases in a scratch repository: a labelled task that auto-starts, is planned over MCP, done,
+new release dropped. Three cases in a scratch repository: a brainstorm that is talked through and planned when told; a labelled task that auto-starts, is planned over MCP, done,
 verified, judged (by the real judge when `JARVIS_OPENAI_API_KEY` is set) and approved; and a direction check whose
 brief is answered at once. It spends real tokens (about a minute of Sonnet per case), so it runs only when asked:
 
@@ -712,7 +712,8 @@ database, the API with a stand-in for the worker (`tests/fixtures/full_stack_acc
 judge models, the supervisor's sweeps), and a remotea server with the scripted agent. `apps/web/e2e/full-stack.mjs`
 then drives the web app: the route on a task and changing it, a run started from the Run dialog that stops on the
 direction check and continues after one answer, and auto-start switched on in Settings followed by a labelled task
-that runs by itself. Screenshots and `evidence.json` land in `artifacts/full-stack/`.
+that runs by itself, and a run started with "Talk it through" that takes a reply and plans on Plan it. Screenshots
+and `evidence.json` land in `artifacts/full-stack/`.
 
 ```sh
 npm --prefix apps/web run build
@@ -863,6 +864,34 @@ which case the run stops at `needs_you(plan_approval)` as usual:
 Everything after the plan is unchanged: verify, the judge, CI, then the owner's approval, or the existing
 `remotea_auto_complete` and `remotea_auto_merge` settings. Moving a task off the `auto` route is the per-task way to
 keep it from starting.
+
+## Brainstorm
+
+`run_brainstorm.py`: a run that opens as a conversation about the task and plans only when the owner says so
+(docs/END_TO_END_UPGRADE_PLAN.md, phase 1b). It is built into Eridani, modelled on Compound Engineering's
+`ce-brainstorm`, and needs nothing installed on the host: the conversation is ordinary turns and messages, so it
+works with any harness.
+
+- A choice at the start: `StartInput.brainstorm` (the Run dialog's "Before planning": Talk it through, Auto, Skip).
+  It replaces the interview form. Refused together with `interview: false` (run the plan as it stands); ignored for
+  freestyle, restarts and auto-started runs.
+- The spawn prompt (`agent_prompts.brainstorm`) tells the agent to read the task and the code, then talk: say how it
+  reads the task, ask what the owner already has in mind, one question per turn with options when it is a choice,
+  what before how, check the code before claiming, two or three approaches when more than one is plausible, and a
+  playback ("What we're building", out of scope, still open) before asking whether to plan. No code changes, no
+  `task_interview`, no `submit_plan` until told.
+- Each agent turn that ends without a plan stops the run at `needs_you(brainstorm)` instead of `no_plan`
+  (`settle_planning` → `run_brainstorm.turn_ended`). The owner's reply is a queued message
+  (`POST /runs/{id}/message`), which returns the run to planning.
+- "Plan it" (`POST /runs/{id}/brainstorm/plan`, `run_brainstorm.plan_it`) closes the conversation and sends
+  `agent_prompts.brainstorm_plan`: write the PRD from what was agreed, steps and criteria, `submit_plan`. A
+  `submit_plan` the agent sends because the owner asked for the plan in the conversation closes it the same way.
+  After that a planning turn without a plan is `no_plan` again.
+- The plan takes the usual approval (`needs_you(plan_approval)`). It never takes the direction check
+  (`run_direction.on_route` is false for a run that brainstormed): the conversation was the direction.
+- State: `run.sync_state["brainstorm"] = {open, started_at, turns, ended_at, ended_by}`; the run carries
+  `brainstorm: {open, turns, started_at, ended_at, ended_by}` (null for a run that did not brainstorm). The run page
+  shows a "Talking it through" card while it is open: the agent's latest message, a reply box and Plan it.
 
 ## Direction check
 

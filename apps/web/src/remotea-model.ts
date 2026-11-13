@@ -227,6 +227,8 @@ export type Run = {
   /** Direction check (run_direction.py): the agent's brief, the owner's one answer, and whether it is still open. */
   direction?: { brief: { reading: string; approach: string; leaves_alone: string; questions: string[] } | null;
     answer: string | null; answered_at: string | null; accepted_at: string | null; open: boolean } | null;
+  /** Brainstorm (run_brainstorm.py): the run opened as a conversation; `open` until the owner says "plan it". */
+  brainstorm?: { open: boolean; turns: number; started_at: string | null; ended_at: string | null; ended_by: string | null } | null;
   /** Started by auto-start, not by the owner. */
   auto_started?: boolean;
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */
@@ -568,7 +570,7 @@ export function stopLine(run: Pick<Run, "attention_detail" | "reason_text">) {
  * queued message, which resumes the run). Null when there is nothing to show. */
 export function stopCard(run: RunDetail) {
   const a = run.attention_detail;
-  if (!a || run.state !== "needs_you" || PLAN_STOPS.includes(run.state_reason) || run.state_reason === "no_plan") return null;
+  if (!a || run.state !== "needs_you" || PLAN_STOPS.includes(run.state_reason) || run.state_reason === "no_plan" || run.state_reason === TALK_STOP) return null;
   const terminal = run.controller === "terminal";
   const hasVerify = !!run.plan?.verify;
   const passing = run.verification?.status === "passed" && run.verification.evidence === "fresh";
@@ -743,7 +745,7 @@ const OPEN_QUESTION = new Set(["open", "submitted", "timed_out"]);
  * judge's full reason. Null while the run is working (nothing to review) or in a plan review (PlanReview shows it).
  * agent_control.review_packet builds the same sentence for control_status. */
 export function reviewPacket(run: RunDetail, now = Date.now()): ReviewPacket | null {
-  const parked = run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason));
+  const parked = run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason) && run.state_reason !== TALK_STOP);
   if (!parked && !isSettled(run) && run.state !== "stopping") return null;
   const word = { met: "met", not_met: "not met", unclear: "unknown", pending: "unknown" } as const;
   const criteria = criteriaEvidence(run).map(c => ({ id: c.id, text: c.text, status: word[c.status as keyof typeof word] ?? "unknown",
@@ -847,7 +849,15 @@ function commandTone(c: RunCommand): TimelineEntry["tone"] {
 }
 /** needs_you reasons that stop on the plan, before any work: the proposals review and the hyperplan final-plan
  * approval. Their own cards decide them; the review packet, Edit criteria and Judge again stay away. */
+/** The agent's latest message in an open brainstorm: its last finished turn of the current generation. */
+export function brainstormSaid(run: Pick<RunDetail, "turns" | "generation">): string {
+  const mine = (run.turns ?? []).filter(t => t.role !== "user" && t.text.trim() && t.generation === run.generation);
+  return mine.length ? mine.reduce((a, b) => (b.seq >= a.seq ? b : a)).text.trim() : "";
+}
+
 export const PLAN_STOPS = ["plan_review", "plan_approval"];
+/** The stop of an open brainstorm: the agent waits for the owner's reply; nothing to approve, verify or review yet. */
+export const TALK_STOP = "brainstorm";
 
 // ---------------------------------------------------------------- hyperplan: roles, reviews and who acts now
 
@@ -1506,7 +1516,7 @@ export const ATTENTION_GROUPS: { key: AttentionKey; verb: string; action: boolea
 // host_busy: the host is at limits.maxRuns, so a reviewer or the worker cannot start until a slot frees up.
 // ci_unavailable: the host cannot report GitHub CI (remotea without ci.status).
 const REPAIR_REASONS = new Set(["host_offline", "surface_lost", "exited", "spawn_expired", "delivery_uncertain", "verify_infra", "host_busy", "ci_unavailable"]);
-const ANSWER_REASONS = new Set(["question_timed_out"]);
+const ANSWER_REASONS = new Set(["question_timed_out", "brainstorm"]);
 const UNMERGED_REASONS = new Set(["awaiting_merge"]);
 
 function hostOffline(run: Run, hosts: Host[]) {
@@ -1571,7 +1581,7 @@ export type HarnessId = typeof HARNESSES[number]["id"];
 export type RoleChoice = { harness: HarnessId; model: string; effort?: string; permission_profile?: string };
 /** `harness` / `model` are the planner (the only agent of a classic run). The hyperplan fields are optional so a
  * draft without them is a classic run. */
-export type RunDraft = { harness: HarnessId; model: string; effort?: string; permission_profile?: string; interview: "auto" | "skip"; target: string | null;
+export type RunDraft = { harness: HarnessId; model: string; effort?: string; permission_profile?: string; interview: "auto" | "skip" | "talk"; target: string | null;
   /** Start in freestyle: no interview, no judge; the only way to start where agents have no Eridani tools. */
   freestyle?: boolean;
   /** Who executes the approved plan; null: the planner's own session ("Same as planner"). */
@@ -1641,7 +1651,9 @@ export function startBody(taskId: string, draft: RunDraft) {
     ...(worker ? { worker: rolePart(worker) } : {}), approve_final: draft.approveFinal ?? true,
   } : {};
   return { task_id: taskId, harness: draft.harness, ...(model ? { model } : {}), ...(draft.effort ? { effort: draft.effort } : {}), ...(draft.permission_profile ? { permission_profile: draft.permission_profile } : {}),
-    ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" ? { interview: false } : {}),
+    ...(draft.target ? { execution_target_id: draft.target } : {}), ...(draft.interview === "skip" && !draft.freestyle ? { interview: false } : {}),
+    // "Talk it through": the run opens as a conversation and plans when the owner says so (run_brainstorm.py).
+    ...(draft.interview === "talk" && !draft.freestyle ? { brainstorm: true } : {}),
     ...(draft.freestyle ? { freestyle: true } : {}), ...roles };
 }
 

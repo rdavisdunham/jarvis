@@ -266,3 +266,52 @@ def test_a_real_agent_writes_a_direction_brief_and_takes_one_answer(stack):
     except BaseException:
         explain(stack, eri, host)
         raise
+
+
+def test_a_real_agent_talks_a_vague_task_through_and_plans_when_told(stack):
+    """Brainstorm (run_brainstorm.py): the agent opens a conversation, asks one thing at a time, and plans on "plan it"."""
+    eri, proxy, host, host_id = boot(stack)
+    try:
+        task_id = new_task("Make the greeting friendlier", completion_policy="code_ready",
+                           notes="greeting.py should greet people in a way that feels warmer.")
+        save_target(eri, host, host_id, task_id)
+        run_id = eri.post("/api/v1/remotea/runs", {"task_id": task_id, "harness": "claude", "model": "sonnet",
+                                                   "brainstorm": True})["id"]
+
+        def said():
+            turns = [t for t in eri.get(f"/api/v1/remotea/runs/{run_id}")["turns"] if t.get("role") != "user" and t["text"].strip()]
+            return max(turns, key=lambda t: t["seq"])["text"] if turns else ""
+
+        def waiting(turns):
+            now_ = run_state(run_id)
+            shown = eri.get(f"/api/v1/remotea/runs/{run_id}")["brainstorm"]
+            return (now_.state, now_.reason) == ("needs_you", "brainstorm") and shown["turns"] >= turns
+
+        until(lambda: waiting(1), PLAN, "the agent's opening message", interval=1)
+        opening = said()
+        print(f"\nreal agent opens:\n{opening}\n")
+        assert opening.count("?") >= 1, opening
+        with session_scope() as db:
+            assert not db.get(Task, task_id).success_criteria, "nothing is planned while the conversation is open"
+
+        eri.post(f"/api/v1/remotea/runs/{run_id}/message",
+                 {"text": "I want it to say exactly 'Hey <name>, good to see you!'. Nothing else changes.", "mode": "queue"})
+        until(lambda: waiting(2), PLAN, "the agent's second message", interval=1)
+        second = said()
+        print(f"real agent replies:\n{second}\n")
+        assert second and second != opening
+
+        current = run_state(run_id)
+        eri.post(f"/api/v1/remotea/runs/{run_id}/brainstorm/plan", {"expected_revision": current.revision})
+        until(lambda: (run_state(run_id).state, run_state(run_id).reason) == ("needs_you", "plan_approval"), PLAN,
+              "the plan to arrive for approval", interval=1)
+        with session_scope() as db:
+            task = db.get(Task, task_id)
+            criteria = [c["text"] for c in task.success_criteria]
+        print(f"plan criteria after the conversation: {criteria}")
+        assert any("good to see you" in c.lower() for c in criteria), criteria
+        assert not host.commits(), "no code changes before the plan is approved"
+        eri.post(f"/api/v1/remotea/runs/{run_id}/stop", {"mode": "kill"})
+    except BaseException:
+        explain(stack, eri, host)
+        raise

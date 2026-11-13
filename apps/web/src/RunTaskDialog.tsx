@@ -172,6 +172,7 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
   const setupLink = setup && onSetup && <SetupLink reason={setup} onSetup={onSetup}/>;
   const interviewHint = roleRun(effective) && (draft.interview === "skip" || (pre && !pre.interview))
     ? "With a reviewer or a separate worker the planner always plans first, from the task as written."
+    : draft.interview === "talk" ? "The agent reads the task and the code, then talks it through with you, one question at a time. It plans when you say so."
     : draft.interview === "skip" ? "Starts on the task as written; no questions first."
     : pre?.interview ? "The agent asks you a few questions first, then plans." : pre ? "This task is already planned; the agent starts on its plan." : "";
   return <RunModelsContext.Provider value={targetCatalog}><Dialog className="dialog run-dialog" aria-labelledby={heading} onEscape={onClose} onBackdrop={onClose}>
@@ -209,9 +210,12 @@ export function RunTaskDialog({ taskId, onClose, onStarted, onSetup }: {
         <RoleControls draft={draft} setDraft={change => { setRoleProblem(null); changeDraft(change); }} choice={choice} roles={pre?.roles} rolesReason={noRoles}
           problems={roleProblems} idPrefix={heading}/>
         <div className="run-dialog-row">
-          <span id={heading + "-interview"}>Interview first</span>
+          <span id={heading + "-interview"}>Before planning</span>
           <div className="segmented" role="group" aria-labelledby={heading + "-interview"}>
-            <button type="button" aria-pressed={draft.interview === "auto"} onClick={() => setDraft(d => ({ ...d, interview: "auto" }))}>Auto</button>
+            <button type="button" aria-pressed={draft.interview === "talk"} title="Brainstorm: a conversation about the task before any plan"
+              onClick={() => setDraft(d => ({ ...d, interview: "talk" }))}>Talk it through</button>
+            <button type="button" aria-pressed={draft.interview === "auto"} title="The agent works it out and asks its planning questions"
+              onClick={() => setDraft(d => ({ ...d, interview: "auto" }))}>Auto</button>
             <button type="button" aria-pressed={draft.interview === "skip"} onClick={() => setDraft(d => ({ ...d, interview: "skip" }))}>Skip</button>
           </div>
           {interviewHint && <p className="footnote">{interviewHint}</p>}

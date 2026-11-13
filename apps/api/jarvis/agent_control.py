@@ -76,6 +76,8 @@ class StartInput(Input):
     # Start in freestyle (no interview, no judge): the only way to start on a target whose agents have no Eridani
     # tools (MCP_UNCONFIGURED).
     freestyle: bool = False
+    # Talk the task through first (run_brainstorm.py): the run opens as a conversation and plans when the owner says so.
+    brainstorm: bool = False
     # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): a reviewer turns the review loop on (`rounds` reviews,
     # each a fresh read-only session); a worker that differs from the planner gets the approved plan in a fresh
     # session; approve_final pauses in needs_you(plan_approval) before the work starts. Either forces a planning
@@ -114,6 +116,11 @@ class RestartInput(Input):
 
 class FreestyleInput(Input):
     enabled: bool
+    expected_revision: int | None = Field(default=None, ge=1)
+    action_id: UUID | None = None  # agent_receipts.once
+
+
+class BrainstormPlanInput(Input):
     expected_revision: int | None = Field(default=None, ge=1)
     action_id: UUID | None = None  # agent_receipts.once
 
@@ -192,6 +199,11 @@ class TargetInput(Input):
 
 
 # ---------------------------------------------------------------- execution targets
+
+
+def brainstorm_public(run):
+    from .run_brainstorm import public
+    return public(run)
 
 
 def direction_first(task, roles) -> bool:
@@ -736,6 +748,11 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening="", resta
         # "Your direction first": the brief that comes with the plan carries the agent's questions, and the owner
         # answers once. An interview before it would ask them twice (run_direction.py).
         interview = False
+    brainstorm = bool(body.brainstorm) and not body.freestyle and restart is None and not auto
+    if brainstorm and body.interview is False:
+        raise DomainError("INVALID_ARGUMENT", "Talking it through first and running the plan as it stands are opposites; choose one.")
+    if brainstorm:
+        interview = False  # The conversation replaces the interview form.
     if body.freestyle or restart is not None or auto:
         # Freestyle talks to the agent directly: nothing to interview for or submit. A restart plans the added work.
         # An auto-started run has nobody to interview: the agent plans from the task.
@@ -763,7 +780,17 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening="", resta
     db.flush()
     verify, migration = None, None
     manual_plan = body.interview is False and roles is None and not body.freestyle and restart is None
-    if interview:
+    if brainstorm:
+        from . import agent_prompts as prompts
+        from . import run_brainstorm
+        from .agent_plan import verify_ids
+
+        note = db.get(Note, task.prd_note_id) if task.prd_note_id else None
+        prd = note.content if note and note.owner_id == owner and not note.archived else ""
+        run_brainstorm.begin(run)
+        prompt = prompts.brainstorm(task, coordinator.children(db, task), task.notes or "", prd,
+                                    verify_ids(db, run)[1], roles)[:PROMPT_CHARS]
+    elif interview:
         from . import agent_prompts as prompts
 
         prompt = prompts.interview(task, coordinator.children(db, task), task.notes or "", roles)[:PROMPT_CHARS]
@@ -1470,6 +1497,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "completion_policy": run.completion_policy,
         # Direction check (run_direction.py): the agent's brief, the owner's one answer, and whether it is open.
         "direction": direction_public(db, run),
+        # Brainstorm (run_brainstorm.py): the conversation before the plan, and whether it is still open.
+        "brainstorm": brainstorm_public(run),
         # Started by auto-start (auto_start.py), not by the owner.
         "auto_started": bool((run.sync_state or {}).get("auto_start")),
         # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): null roles is a classic run. `actor` is who acts

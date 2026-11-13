@@ -33,7 +33,7 @@ import { focusTarget } from "./run-restart";
 import { anchoredScrollTop, earlierLine, mergeDetail, nextOffset, scrollAnchor, type FullTurn } from "./remotea-model";
 import { focusSentText, reopenButton, terminalFallback, type FocusResult } from "./remotea-model";
 import { APPROVAL_FACTS, ciCard, freshnessFacts, mergePanel, type Fact } from "./remotea-model";
-import { actorChip, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
+import { actorChip, brainstormSaid, hostBusyText, modelLabel, planApprovalBody, PLAN_STOPS, reviewFindings, reviewTitle, type PlanReviewRow } from "./remotea-model";
 import { dismissQuestion, looseSessions, originLabel, sessionTargets, unmergedWithRuns, type AdvertisedTarget, type SavedTarget, type SessionTarget } from "./remotea-model";
 import { Dialog } from "./ux";
 
@@ -553,6 +553,42 @@ export function PlanReview({ run, onDone, onConflict }: { run: RunDetail; onDone
 
 /** Hyperplan's final-plan stop (needs_you(plan_approval)): the frozen plan and the review history; Approve starts the
  * work (or hands the plan to the worker), Revise with note sends it back to the planner. */
+/** Brainstorm (run_brainstorm.py): the run opened as a conversation. The card shows the agent's latest message,
+ * takes the owner's reply (a queued message, which resumes planning) and ends the conversation with "Plan it". */
+export function BrainstormCard({ run, disabled, onDone, onConflict }: { run: RunDetail; disabled?: boolean; onDone: () => void; onConflict?: () => void }) {
+  const [reply, setReply] = useRunDraft("talk-reply:" + run.id, ""), [busy, setBusy] = useState<"" | "reply" | "plan">(""), [error, setError] = useState("");
+  const waiting = run.state === "needs_you" && run.state_reason === "brainstorm";
+  const said = brainstormSaid(run);
+  const send = async (what: "reply" | "plan") => {
+    setBusy(what); setError("");
+    try {
+      if (what === "reply") await postAction(`/remotea/runs/${run.id}/message`, { text: reply.trim(), mode: "queue" });
+      else await postAction(`/remotea/runs/${run.id}/brainstorm/plan`, { expected_revision: run.state_revision });
+      if (what === "reply") setReply("");
+      onDone();
+    } catch (e) {
+      if (!isRevisionConflict(e)) setError(message(e));
+      else if (onConflict) onConflict();
+      else { setError(RUN_CHANGED); onDone(); }
+    } finally { setBusy(""); }
+  };
+  return <DecisionCard title="Talking it through" task={run.task?.title} agent={actorChip(run)} className="run-brainstorm"
+    reason={waiting ? "The agent is waiting for your reply. It asks one thing at a time." : "The agent is reading and thinking. Its reply will appear here."}>
+    {said && <div className="run-brainstorm-said"><span>{waiting ? "It says" : "It last said"}</span><p className="remotea-plan-text">{said}</p></div>}
+    <label>Your reply
+      <textarea rows={3} value={reply} disabled={disabled || !!busy} placeholder="Answer, push back, or add what it is missing"
+        onChange={e => setReply(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && reply.trim() && !disabled && !busy) { e.preventDefault(); void send("reply"); } }}/>
+    </label>
+    {error && <p role="alert" className="work-error">{error}</p>}
+    <div className="run-brainstorm-actions">
+      <button type="button" className="btn btn-primary btn-sm" disabled={disabled || !!busy || !reply.trim()} onClick={() => void send("reply")}>{busy === "reply" ? "Sending…" : "Send reply"}</button>
+      <button type="button" className="btn btn-sm" disabled={disabled || !!busy} onClick={() => void send("plan")}>{busy === "plan" ? "Asking for the plan…" : "Plan it"}</button>
+      <small>Plan it ends the conversation: the agent writes the plan from what you agreed, and you approve it before any work starts.</small>
+    </div>
+  </DecisionCard>;
+}
+
 export function PlanApproval({ run, onDone, onConflict }: { run: RunDetail; onDone: () => void; onConflict?: () => void }) {
   const [note, setNote] = useRunDraft("plan-note:" + run.id + ":" + run.plan_revision, ""), [busy, setBusy] = useState<"" | "approve" | "revise">(""), [error, setError] = useState("");
   const receipts = useReceipts();
@@ -955,7 +991,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
   const [verifyPick, setVerifyPick] = useState("");
   const packet = run ? reviewPacket(run) : null;
   // Edit criteria / Judge again: only while the run is parked for you (not during a plan review).
-  const parked = !!run?.plan && bound && !run.freestyle && !recoveryShown(run) && (run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason)));
+  const parked = !!run?.plan && bound && !run.freestyle && !recoveryShown(run) && (run.state === "awaiting_approval" || (run.state === "needs_you" && !PLAN_STOPS.includes(run.state_reason) && run.state_reason !== "brainstorm"));
   const busyHost = run ? hostBusyText(run) : null;
   const [editing, setEditing] = useState(false);
   // Host lease, transcript, state, verification, workspace and unconfirmed controls, each with its own age (E-S6).
@@ -974,6 +1010,8 @@ export function RunDrawer({ id, onClose, preloaded }: {
   const planReviewCard = run && bound ? <PlanReview key={run.plan?.revision ?? 0} run={run} onDone={refresh} onConflict={changed}/> : null;
   const planCard = run?.plan && bound ? <PlanApproval key={"approval-" + run.plan_revision} run={run} onDone={refresh} onConflict={changed}/> : null;
   const interviewCards = run && bound ? <OpenInterviews run={run} onDone={refresh}/> : null;
+  const talkCard = run && bound && run.brainstorm?.open && !isSettled(run)
+    ? <BrainstormCard key={"talk-" + run.id} run={run} disabled={off || run.controller === "terminal"} onDone={refresh} onConflict={changed}/> : null;
   const liveCards = run && bound ? <>
     {run.questions.map(q => <QuestionCard key={q.id + q.status} question={q} run={run} onDone={refresh}/>)}
     {(run.decisions ?? []).filter(d => d.kind === "control" && ["open", "pending"].includes(d.status)).map(d =>
@@ -1050,7 +1088,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
         {chatOpen ? <>
           {stopEl}{ciEl}{run.state !== "awaiting_approval" && mergeEl}
           {stage === "plan" && planCard}
-          {bound && decisionsHere(<>{recoveryCard}{planReviewCard}{liveCards}{interviewCards}{acceptance(true)}</>)}
+          {bound && decisionsHere(<>{recoveryCard}{talkCard}{planReviewCard}{liveCards}{interviewCards}{acceptance(true)}</>)}
           <section className="run-conversation" aria-label="Conversation">
             {shown?.retention?.expired && <p className="remotea-log-note"><span className="remotea-label label-expired">Expired</span> This run ended more than 90 days ago, so its turns and commands were deleted.</p>}
             {pagedOut && <div className="remotea-log-note"><span className="remotea-label label-paged">Paged out</span> {pagedOut}
@@ -1062,7 +1100,7 @@ export function RunDrawer({ id, onClose, preloaded }: {
           </section>
         </> : <div className="run-stages">
           <StageSection name="plan" summary={planSummary(run)} open={sections.plan} attention={attention.plan} onToggle={() => toggleSection("plan")}>
-            {recoveryCard}{interviewCards}{planReviewCard}
+            {recoveryCard}{talkCard}{interviewCards}{planReviewCard}
             {stage === "plan" && <>{stopEl}{ciCardHere && ciEl}{bound && decisionsHere(liveCards)}</>}
             {planCard ?? (!recoveryCard && !(run.interviews ?? []).some(i => i.status === "open") && <p className="footnote">{isSettled(run) ? "This run ended before a plan was saved." : "The plan appears here once the planner submits it."}</p>)}
           </StageSection>
