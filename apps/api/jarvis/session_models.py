@@ -440,6 +440,29 @@ class AgentAttempt(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class AgentRunLearning(Base):
+    """Compound (run_learnings.py): one thing a finished run learned, kept for later runs in the same repository."""
+    __tablename__ = "agent_run_learnings"
+    __table_args__ = (Index("ix_agent_run_learnings_target", "owner_id", "execution_target_id", "status"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    owner_id: Mapped[str] = mapped_column(String(100), index=True)
+    execution_target_id: Mapped[str] = mapped_column(String(36))
+    run_id: Mapped[str | None] = mapped_column(String(36))
+    task_id: Mapped[str | None] = mapped_column(String(36))
+    kind: Mapped[str] = mapped_column(String(20), default="knowledge")
+    title: Mapped[str] = mapped_column(String(200), default="")
+    applies_when: Mapped[str] = mapped_column(Text, default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    paths: Mapped[list] = mapped_column(JSONB, default=list)
+    # Later runs that found the same thing again: the entry's weight when a new run is given the list.
+    confirmations: Mapped[int] = mapped_column(Integer, default=0)
+    confirmed_by: Mapped[list] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | removed
+    meta: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
 class AgentInterview(Base):
     """The interview phase's question form (task_interview → one form on the page → answers as the next prompt)."""
     __tablename__ = "agent_interviews"

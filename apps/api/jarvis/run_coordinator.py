@@ -1629,6 +1629,12 @@ def send_worker_spawn(db, run, plan):
     handoff = (run.sync_state or {}).get("handoff") or {}
     token = mint_token(run, fresh=True)
     prompt = prompts.worker(render_plan(db, run, plan), decisions_digest(db, run))
+    from . import run_learnings
+
+    # Compound: the worker is a fresh session, so it gets the repository's learnings too.
+    learned = run_learnings.prompt_block(db, run.owner_id, run.execution_target_id)
+    if learned:
+        prompt = prompt[:PROMPT_CHARS - len(learned) - 2] + "\n\n" + learned
     verify = verify_config(plan)
     migration = {k: plan.migration[k] for k in ("number", "dir")} if plan and plan.migration else None
     command(db, run, "spawn", spawn_body(db, run, handoff["attempt"], run.tool, run.model, prompt[:PROMPT_CHARS], token,

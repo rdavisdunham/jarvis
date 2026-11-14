@@ -893,6 +893,32 @@ works with any harness.
   `brainstorm: {open, turns, started_at, ended_at, ended_by}` (null for a run that did not brainstorm). The run page
   shows a "Talking it through" card while it is open: the agent's latest message, a reply box and Plan it.
 
+## Compound
+
+`run_learnings.py`: what a finished run learned is kept per repository and given to later runs there
+(docs/END_TO_END_UPGRADE_PLAN.md, phase 1b). Modelled on Compound Engineering's `ce-compound`; it is built into
+Eridani, works with any harness, and writes nothing into the repository.
+
+- **When.** The worker's sweep queues one `run_learning` job for each run that completed in the last 24 hours and has
+  not been looked at (`sync_state.learning` unset). Freestyle runs and runs without a repository are skipped.
+- **What it reads** (`evidence`): the task and plan, the owner's own words (messages they typed, plans they sent back,
+  a direction answer), every verdict with its gap, failed verifications with the end of their output, the reasons
+  the run stopped, the changed files, the agent's last message, and the repository's existing entries.
+- **Most runs keep nothing.** A run with no gap, no failed verification, no owner correction and no unusual stop is
+  not sent to the model at all (`eventful`). Otherwise the model answers `keep` or not; it is told to refuse
+  descriptions of what was built, generic practice and anything specific to the one task.
+- **An entry** (`agent_run_learnings`): `kind` (bug | knowledge), `title`, `applies_when` (when it matters), `body`
+  (what to do or avoid, and why), `paths` (repository-relative). When the model names an existing entry as saying
+  the same thing (`duplicate_of`), that entry's `confirmations` goes up instead of a new row.
+- **Given to later runs.** `prompt_block` adds up to 8 active entries (most confirmed, then most recent; 3,000
+  characters at most) to a run's first prompt and to a separate worker's hand-off prompt, fenced as
+  `ERIDANI_LEARNED` and described as data to check, not instructions.
+- **Visible and removable.** The run carries `learning: {state, entry}` (state: kept, confirmed, none, unavailable;
+  null until looked at) and its page shows the entry. Settings → Connections → remotea lists every entry by
+  repository with Remove (`GET /remotea/learnings`, `POST /remotea/learnings/{id}/remove`); a removed entry is no
+  longer given out.
+- Cost bucket `run_learnings`; model job `run_learning` in `model_map.JOBS`.
+
 ## Direction check
 
 `run_direction.py`: on the `direction` route the owner answers the agent's brief once, then the plan starts.
