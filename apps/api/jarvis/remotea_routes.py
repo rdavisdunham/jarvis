@@ -641,6 +641,26 @@ def freestyle(identity: UUID, body: control.FreestyleInput, user: User):
             db, user.owner_id, str(identity), body, actor=actor_for(user)))
 
 
+@router.get("/learnings")
+def learnings(user: User, target_id: UUID | None = None):
+    """Compound: what finished runs wrote down, per repository (run_learnings.py)."""
+    from . import run_learnings
+
+    with session_scope() as db:
+        gated(db, user)
+        return run_learnings.listing(db, user.owner_id, str(target_id) if target_id else None)
+
+
+@router.post("/learnings/{learning_id}/remove")
+def remove_learning(learning_id: UUID, user: User):
+    """Stop giving this entry to later runs. The row stays, marked removed."""
+    from . import run_learnings
+
+    with session_scope() as db:
+        writable(db, user)
+        return run_learnings.remove(db, user.owner_id, str(learning_id))
+
+
 @router.post("/runs/{identity}/brainstorm/plan")
 def brainstorm_plan(identity: UUID, body: control.BrainstormPlanInput, user: User):
     """"Plan it": end a run's opening conversation and ask the agent for the plan (run_brainstorm.plan_it)."""

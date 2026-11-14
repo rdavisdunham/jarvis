@@ -1977,6 +1977,20 @@
     },
     {
       "method": "GET",
+      "path": "/api/v1/remotea/learnings",
+      "handler": "learnings",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remotea/learnings/{learning_id}/remove",
+      "handler": "remove_learning",
+      "source": "apps/api/jarvis/remotea_routes.py",
+      "feature": "agent_control"
+    },
+    {
+      "method": "GET",
       "path": "/api/v1/remotea/migrations",
       "handler": "migrations",
       "source": "apps/api/jarvis/remotea_routes.py",

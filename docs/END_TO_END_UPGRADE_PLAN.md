@@ -86,6 +86,8 @@ How it works:
 - **It ends when you say "plan it"** (a button, or saying so in the conversation). What was agreed becomes the plan's requirements; the plan then takes the route's usual review.
 - **Order of building:** brainstorm first (the conversation before a plan), then compound (what was learned, written down per repository so the next run starts ahead), then ideate (ideas for a goal or project before any task exists). Plan and work are today's planning and execution.
 
+Built so far: brainstorm (2026-11-13) and compound (2026-11-14). Compound keeps what a run learned in Eridani, per repository, and gives it to later runs there; it does not write files into the repository. Ideate is not started.
+
 Still to settle as it is built:
 - Whether Dani offers brainstorm by itself when a task is too vague to plan, and the same conversation by voice.
 - Whether the learnings step writes into the repository, into Eridani, or both.

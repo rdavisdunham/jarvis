@@ -897,6 +897,32 @@ works with any harness.
   `brainstorm: {open, turns, started_at, ended_at, ended_by}` (null for a run that did not brainstorm). The run page
   shows a "Talking it through" card while it is open: the agent's latest message, a reply box and Plan it.
 
+## Compound
+
+`run_learnings.py`: what a finished run learned is kept per repository and given to later runs there
+(docs/END_TO_END_UPGRADE_PLAN.md, phase 1b). Modelled on Compound Engineering's `ce-compound`; it is built into
+Eridani, works with any harness, and writes nothing into the repository.
+
+- **When.** The worker's sweep queues one `run_learning` job for each run that completed in the last 24 hours and has
+  not been looked at (`sync_state.learning` unset). Freestyle runs and runs without a repository are skipped.
+- **What it reads** (`evidence`): the task and plan, the owner's own words (messages they typed, plans they sent back,
+  a direction answer), every verdict with its gap, failed verifications with the end of their output, the reasons
+  the run stopped, the changed files, the agent's last message, and the repository's existing entries.
+- **Most runs keep nothing.** A run with no gap, no failed verification, no owner correction and no unusual stop is
+  not sent to the model at all (`eventful`). Otherwise the model answers `keep` or not; it is told to refuse
+  descriptions of what was built, generic practice and anything specific to the one task.
+- **An entry** (`agent_run_learnings`): `kind` (bug | knowledge), `title`, `applies_when` (when it matters), `body`
+  (what to do or avoid, and why), `paths` (repository-relative). When the model names an existing entry as saying
+  the same thing (`duplicate_of`), that entry's `confirmations` goes up instead of a new row.
+- **Given to later runs.** `prompt_block` adds up to 8 active entries (most confirmed, then most recent; 3,000
+  characters at most) to a run's first prompt and to a separate worker's hand-off prompt, fenced as
+  `ERIDANI_LEARNED` and described as data to check, not instructions.
+- **Visible and removable.** The run carries `learning: {state, entry}` (state: kept, confirmed, none, unavailable;
+  null until looked at) and its page shows the entry. Settings → Connections → remotea lists every entry by
+  repository with Remove (`GET /remotea/learnings`, `POST /remotea/learnings/{id}/remove`); a removed entry is no
+  longer given out.
+- Cost bucket `run_learnings`; model job `run_learning` in `model_map.JOBS`.
+
 ## Direction check
 
 `run_direction.py`: on the `direction` route the owner answers the agent's brief once, then the plan starts.
@@ -2582,6 +2608,7 @@ the same rows, so after either redaction they show the marker and never the text
 | `agent_sessions` title, prompts, excerpt, `summary`, `recall` | the collector's session ledger (redacted on ingestion); `recall` is the summary job's record of what was discussed, written from the turns | kept: it is the collector's record of a session on your machine, re-reported by the collector; not run content this module owns. `recall` outlives the turns on purpose, so old remotea conversations stay findable |
 | `agent_session_rules`, `agent_hosts`, `execution_targets`, `autolink_rejections`, `migration_counters`, `migration_reservations` | configuration: folder rules, host caps and worktree reports, repo paths and verify commands, numbers | kept until changed or removed; no run text |
 | `agent_swarms` `tasks`, `planner`, `batches` | a swarm plan: task titles, the planner's one-line reasons and predicted areas, run ids, start refusals | kept, finished and canceled plans too (no agent output: titles and the planner's text only); exported |
+| `agent_run_learnings` `title`, `applies_when`, `body` | Compound: what a finished run learned, written by the worker from the run's record (a few sentences, no transcript) | kept until the owner removes it (Settings, `POST /remotea/learnings/{id}/remove`): it is meant to outlive the run, so the window does not touch it. Deleting the run now (the redact route) blanks the entries that run wrote and stops giving them out; exported |
 | `agent_parity`, `agent_parity_days`, `agent_ingest_days` | collector-vs-link diffs, daily counts | 30 days |
 | Bot `agents:read` output | `public_run` of the rows above | live view: the marker after redaction, nothing after deletion |
 | Action journal (`action_changes`) | an encrypted `control.*` entry: title (proposal summary or task title) and status | follows the action journal's retention |
@@ -2590,7 +2617,7 @@ the same rows, so after either redaction they show the marker and never the text
 **Account export.** `GET /api/v1/export` includes `agent_runs` (without `run_token_hash` / `run_token_salt`),
 `agent_run_plans`, `agent_attempts`, `agent_questions`, `agent_interviews`, `agent_plan_reviews` (without
 `token_hash` / `token_salt`), `agent_sessions` (without the
-embedding and fingerprints) and `agent_swarms` as they are now: redacted rows export the marker, deleted rows are absent
+embedding and fingerprints), `agent_swarms` and `agent_run_learnings` as they are now: redacted rows export the marker, deleted rows are absent
 (`agent_retention.export_tables`). It leaves out `agent_turns` (up to 64 MiB a day per owner, and the export
 is built in memory; the host keeps the transcript and `GET /remotea/runs/{id}` pages them), `agent_commands`
 (the host-facing journal: its input texts are the `sent` history entries, and a spawn payload carried a run

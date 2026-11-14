@@ -229,6 +229,9 @@ export type Run = {
     answer: string | null; answered_at: string | null; accepted_at: string | null; open: boolean } | null;
   /** Brainstorm (run_brainstorm.py): the run opened as a conversation; `open` until the owner says "plan it". */
   brainstorm?: { open: boolean; turns: number; started_at: string | null; ended_at: string | null; ended_by: string | null } | null;
+  /** Compound (run_learnings.py): what this run wrote down for later runs in its repository; `state` null until looked at. */
+  learning?: { state: "kept" | "confirmed" | "none" | "unavailable" | null;
+    entry: { id: string; kind: string; title: string; applies_when: string; learning: string; confirmations: number } | null } | null;
   /** Started by auto-start, not by the owner. */
   auto_started?: boolean;
   /** What the run's worktree is based on; behind is live from the host's worktrees report when `live`. Null: older host. */

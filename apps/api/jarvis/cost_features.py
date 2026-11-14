@@ -27,6 +27,7 @@ LABELS = {
     "record_overviews": "Client and project overviews (Eridani)",
     "placement_by_meaning": "Filing tasks by meaning (Eridani)",
     "task_readiness": "Preparing tasks for agent runs (Eridani)",
+    "run_learnings": "What finished runs learned (Eridani)",
     "context_extraction": "Meeting context extraction",
     "context_linking": "Meeting people and entity linking",
     "context_reconciliation": "Meeting context reconciliation",

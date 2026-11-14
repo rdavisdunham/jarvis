@@ -201,6 +201,11 @@ class TargetInput(Input):
 # ---------------------------------------------------------------- execution targets
 
 
+def learning_public(db, run):
+    from .run_learnings import for_run
+    return for_run(db, run)
+
+
 def brainstorm_public(run):
     from .run_brainstorm import public
     return public(run)
@@ -831,6 +836,13 @@ def start_run(db, owner, account_id, body, *, actor, brief="", opening="", resta
     resume = (restart or {}).get("resume_session_id")
     if brief:
         prompt = prompt[:PROMPT_CHARS - len(brief) - 2] + "\n\n" + brief
+    if not body.freestyle:
+        from . import run_learnings
+
+        # Compound: what earlier runs in this repository learned comes with the first prompt.
+        learned = run_learnings.prompt_block(db, owner, target.id)
+        if learned:
+            prompt = prompt[:PROMPT_CHARS - len(learned) - 2] + "\n\n" + learned
     token = coordinator.mint_token(run, fresh=True)
     coordinator.command(db, run, "spawn", {
         "attempt": run.attempt, "harness": run.tool, "model": run.model,
@@ -1499,6 +1511,8 @@ def public_run(db, run, *, detail=False, limit=DETAIL_PAGE, offset=0):
         "direction": direction_public(db, run),
         # Brainstorm (run_brainstorm.py): the conversation before the plan, and whether it is still open.
         "brainstorm": brainstorm_public(run),
+        # Compound (run_learnings.py): what this run wrote down for later runs in its repository, if anything.
+        "learning": learning_public(db, run),
         # Started by auto-start (auto_start.py), not by the owner.
         "auto_started": bool((run.sync_state or {}).get("auto_start")),
         # Hyperplan (docs/AGENT_CONTROL.md, "Hyperplan and roles"): null roles is a classic run. `actor` is who acts
