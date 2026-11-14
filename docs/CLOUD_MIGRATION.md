@@ -131,6 +131,15 @@ WEB_CONCURRENCY=1
 
 Add `JARVIS_OPENAI_API_KEY` for the readiness pass and the judge. The API also needs `PORT=8765` and `FORWARDED_ALLOW_IPS=*`. Build, start, pre-deploy and health settings are the same as production's (above).
 
+**The sandbox that exists (since 2026-11-14).** Railway project "eridani sandbox": `Sandbox_Postgres` (the production pgvector image on its own volume), `Sandbox_Web` and `Sandbox_Worker`, both built from `main`, so every merge redeploys them. Its address and sign-in token are in a private file on the owner's machine (`~/.config/eridani-sandbox/secrets.env`, lines `ORIGIN` and `OWNER_TOKEN`); neither belongs in this repository. Build and start settings were applied through the Railway API (`serviceInstanceUpdate`), because `railway environment edit --service-config` reported no changes.
+
+**Testing against it.** `scripts/sandbox_smoke.py` signs in as the owner, links a throwaway remotea server with a scratch repository and the installed Claude Code, and runs two flows in which the deployed worker does all the deciding: a labelled task from creation to a completed run (readiness pass, auto-start, plan, work, verify, judge, the CI wait, approval), and a brainstorm that takes one reply and plans on "Plan it". It refuses an origin that offers Google sign-in, turns auto-start off and stops unfinished runs when it ends, and spends real tokens.
+
+```
+SANDBOX_ENV=~/.config/eridani-sandbox/secrets.env REMOTEA_CHECKOUT=~/remotea/server uv run --no-sync python scripts/sandbox_smoke.py
+```
+
+
 ### Backup service only
 
 Give the backup service `JARVIS_DATABASE_URL`, the existing `JARVIS_BACKUP_KEY`, and:

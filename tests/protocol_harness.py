@@ -594,6 +594,61 @@ class RemoteaHost:
                     os.kill(int(pid), signal.SIGKILL)
 
 
+# ---------------------------------------------------------------- a real agent instead of the stub
+
+CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
+MARGIN = 20 * 60  # The access token must outlive the test: the scratch home cannot refresh it.
+CHECK = "import greeting; assert greeting.greet('Ada') == 'Hello, Ada!', greeting.greet('Ada'); print('1 passed in 0.01s')"
+
+
+def access_token():
+    try:
+        oauth = json.loads(CREDENTIALS.read_text())["claudeAiOauth"]
+    except (OSError, ValueError, KeyError):
+        return None, f"no Claude Code login at {CREDENTIALS}"
+    if oauth.get("expiresAt", 0) / 1000 - time.time() < MARGIN:
+        return None, "the Claude Code access token expires too soon: open `claude` once to renew it"
+    return oauth["accessToken"], None
+
+
+class RealAgentHost(RemoteaHost):
+    """The harness's host, launching the installed Claude Code in a scratch home instead of the stub."""
+
+    def __init__(self, checkout, tmp, link_url, link_key):
+        super().__init__(checkout, tmp, link_url, link_key)
+        self.claude = shutil.which("claude")
+        (self.repo / "greeting.py").write_text('"""Greetings."""\n')
+        (self.repo / "README.md").write_text("# Scratch repository\n\nA small Python module, `greeting.py`. "
+                                             "Check it with `python3 -c \"import greeting\"`.\n")
+        git(self.repo, "add", ".")
+        git(self.repo, "commit", "-q", "-m", "A greeting module")
+        git(self.repo, "push", "-q", "origin", "main")
+        config = json.loads((self.config / "eridani.json").read_text())
+        config["targets"][0]["launch"] = {"claude": {"bin": self.claude}}
+        config["targets"][0]["verify"] = [{"id": self.VERIFY_ID, "argv": ["python3", "-c", CHECK], "timeout": 60}]
+        self.write("eridani.json", config)
+        # First-run questions nobody is there to answer: onboarding, and trusting the folders the run works in.
+        trusted = {"hasTrustDialogAccepted": True, "hasCompletedProjectOnboarding": True}
+        (self.home / ".claude.json").write_text(json.dumps({
+            "hasCompletedOnboarding": True, "projects": {str(p): trusted for p in (self.repo, self.worktrees, self.home)}}))
+
+    def env(self):
+        token, _ = access_token()
+        path = os.pathsep.join([str(Path(self.claude).parent), str(Path(self.node).parent), "/usr/local/bin", "/usr/bin", "/bin"])
+        return {**super().env(), "PATH": path, "CLAUDE_CODE_OAUTH_TOKEN": token, "DISABLE_AUTOUPDATER": "1"}
+
+    def commits(self):
+        """Commits on any run branch that main does not have: [(subject, [files])]."""
+        out = git(self.repo, "log", "--all", "--not", "main", "--name-only", "--format=@%s")
+        rows = []
+        for line in out.splitlines():
+            if line.startswith("@"):
+                rows.append((line[1:], []))
+            elif line.strip() and rows:
+                rows[-1][1].append(line.strip())
+        return rows
+
+
 # ---------------------------------------------------------------- wire fixtures: keys and types
 
 

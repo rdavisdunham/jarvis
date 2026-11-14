@@ -707,6 +707,10 @@ The agent runs in a scratch HOME with this machine's current Claude access token
 `~/.claude`, no transcripts for the collector. It skips when the token has under 20 minutes left (open `claude`
 once to renew it).
 
+**Against the deployed sandbox.** `scripts/sandbox_smoke.py` runs the real agent against the sandbox copy on
+Railway, where the real worker (not the test process) runs the readiness pass, auto-start, the judge and the CI
+sweep: docs/CLOUD_MIGRATION.md, "A sandbox copy".
+
 **In the browser.** `scripts/validate_full_stack.py` boots the same real pieces for Chromium: a disposable migrated
 database, the API with a stand-in for the worker (`tests/fixtures/full_stack_acceptance.py`: scripted readiness and
 judge models, the supervisor's sweeps), and a remotea server with the scripted agent. `apps/web/e2e/full-stack.mjs`
