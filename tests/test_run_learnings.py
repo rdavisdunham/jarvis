@@ -118,3 +118,14 @@ def test_the_sweep_queues_completed_runs_once(host, monkeypatch):
     with session_scope() as db:
         learnings.sweep(db)
         assert len(db.scalars(select(Job).where(Job.kind == learnings.KIND)).all()) == 1
+
+
+def test_deleting_a_runs_content_takes_what_it_wrote_down_with_it(host, client):
+    run_id = finished(host, gap="ImportError from quick")
+    learn(run_id, LESSON)
+    done = client.post(f"/api/v1/remotea/runs/{run_id}/redact")
+    assert done.status_code == 200 and done.json()["redacted"]["learnings"] == 1
+    with session_scope() as db:
+        row = db.scalar(select(AgentRunLearning))
+        assert (row.status, row.title, row.body, row.paths) == ("removed", "", "", [])
+    assert client.get("/api/v1/remotea/learnings").json()["items"] == []

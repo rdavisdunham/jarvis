@@ -32,6 +32,7 @@ from .session_models import (
     TERMINAL_RUN_STATES,
     AgentActionReceipt,
     AgentAttempt,
+    AgentRunLearning,
     AgentCommand,
     AgentIngestDay,
     AgentInterview,
@@ -196,6 +197,12 @@ def redact_now(db, owner, run_id, *, actor):
                           data={"run_id": run.id, "state": run.state})
     counts = run_children(db, select(AgentRun.id).where(AgentRun.id == run.id), attempts=False)
     counts.update(redact(db, run, actor=actor, reason="owner", attempts=True))
+    # Compound: what this run wrote down came from the content being deleted, so it goes too (run_learnings.py).
+    counts["learnings"] = 0
+    for entry in db.scalars(select(AgentRunLearning).where(AgentRunLearning.owner_id == owner, AgentRunLearning.run_id == run.id)):
+        entry.status, entry.title, entry.applies_when, entry.body, entry.paths = "removed", "", "", "", []
+        entry.updated_at = now()
+        counts["learnings"] += 1
     emit(db, owner, "agent.changed", run.id, run.state_revision)
     return counts
 
@@ -238,7 +245,8 @@ def sweep(db, clock=None):
     return counts
 
 
-EXPORTED = (AgentRun, AgentRunPlan, AgentAttempt, AgentQuestion, AgentInterview, AgentPlanReview, AgentSession, AgentSwarm)
+EXPORTED = (AgentRun, AgentRunPlan, AgentAttempt, AgentQuestion, AgentInterview, AgentPlanReview, AgentSession, AgentSwarm,
+            AgentRunLearning)
 # Not exported: run token material; agent_turns (up to 64 MiB a day per owner, built in memory here; the host
 # keeps the transcript and GET /remotea/runs/{id} pages them); agent_commands, the host-facing journal (its
 # input texts are the `sent` history entries; a spawn payload carried a run token). docs/AGENT_CONTROL.md
