@@ -94,6 +94,34 @@ Still to settle as it is built:
 
 Done when: you can open a vague task, talk it through with the agent over several turns, and end with a plan you did not have to write.
 
+### Model gateway: try cheaper models
+
+Asked for by Davis on 2026-11-14. Plan only; nothing is being built for it yet.
+
+**Why.** Every background job (readiness, the judge, run summaries, filing, meeting extraction, and so on) runs on one OpenAI model today. Cheaper models may do several of these jobs just as well, and there is currently no easy way to find out or to switch.
+
+**What already exists.**
+- `model_map.py` lists every job that calls a text model (18 of them) and which model profile it uses. One line changes a job's model.
+- Profiles exist for OpenAI and Anthropic models, plus a generic OpenAI-compatible adapter with unverified placeholders for DeepSeek, Kimi and MiniMax.
+- `scripts/model_eval.py` already replays recorded cases against candidate models and reports pass rate, cost per job, latency and refusals for five job types.
+
+**What is missing.**
+- **A gateway:** one key and one endpoint that reaches many providers, so trying a model is a configuration change instead of a new account, key and adapter each time. Candidates to compare: a hosted router such as OpenRouter, the Langfuse gateway (rejected for tracing on 2026-11-06 because it missed embeddings and live voice and added a hop; that reasoning does not rule it out for background jobs), or a self-hosted proxy such as LiteLLM.
+- **Recorded cases for the newer jobs:** readiness, filing by meaning and the meeting jobs have no cases in the comparison script yet, so a cheaper model cannot be judged on them.
+- **A per-job switch outside the code:** a setting per job, so a model can be tried in the sandbox and rolled back without a deploy.
+
+**How it would go.**
+1. Pick the gateway and add it as one more profile type, behind the existing model map. Live voice and embeddings stay direct.
+2. Add recorded cases for the jobs that lack them, taken from real traces in Langfuse.
+3. Run the comparison across cheap candidates; for each job keep the cheapest model that matches today's pass rate.
+4. Switch jobs one at a time in the sandbox first, then production, watching the judge and readiness most closely because unattended runs depend on them.
+
+**To settle first.**
+- Whether client data may pass through a third-party router. Meeting and task content would; that may rule out a hosted router for Brainforge work and favour a self-hosted proxy or direct provider keys.
+- Whether the gateway is only for testing, or also serves production traffic (a single point of failure for every background job).
+
+Done when: each background job runs on the cheapest model that passed its recorded cases, and changing one is a setting.
+
 ### Phase 2: one queue
 
 - Merge meeting review, Questions, direction briefs, plan approvals, run questions, PRs ready for review and drafts awaiting send into a single "Needs you" list.
